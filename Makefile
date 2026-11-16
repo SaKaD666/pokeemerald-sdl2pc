@@ -178,10 +178,7 @@ else
   CPP := $(PREFIX)cpp
 endif
 
-ROM_NAME := $(FILE_NAME).gba
-
 OBJ_DIR_NAME := $(BUILD_DIR)/emerald
-MODERN_ROM_NAME := $(FILE_NAME)_modern.gba
 MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern
 PORTABLE_EXECUTABLE_NAME := $(FILE_NAME)$(BIT_WIDTH)$(BUILD_FEXTENSION)
 PORTABLE_OBJ_DIR_NAME := $(BUILD_DIR)/pc$(BIT_WIDTH)
@@ -189,11 +186,6 @@ PORTABLE_EXECUTABLE_NAME_OTHER := $(FILE_NAME)$(OTHER_BIT_WIDTH)$(BUILD_FEXTENSI
 PORTABLE_OBJ_DIR_NAME_OTHER := $(BUILD_DIR)/pc$(OTHER_BIT_WIDTH)
 ASSETS_DIR_NAME := $(BUILD_DIR)/assets
 PORTABLE_EXECUTABLE := $(PORTABLE_EXECUTABLE_NAME)
-
-ELF_NAME := $(ROM_NAME:.gba=.elf)
-MAP_NAME := $(ROM_NAME:.gba=.map)
-MODERN_ELF_NAME := $(MODERN_ROM_NAME:.gba=.elf)
-MODERN_MAP_NAME := $(MODERN_ROM_NAME:.gba=.map)
 
 # Pick the portable executable and object directory.
 ifeq ($(MODERN),0)
@@ -284,7 +276,7 @@ MAKEFLAGS += --no-print-directory
 # Delete files that weren't built properly
 .DELETE_ON_ERROR:
 
-RULES_NO_SCAN += clean clean-assets tidy tidyportable tidynonmodern tidymodern clean-platform generated clean-generated
+RULES_NO_SCAN += clean clean-assets tidy tidyportable clean-platform generated clean-generated
 .PHONY: all winwsl linux
 .PHONY: $(RULES_NO_SCAN)
 
@@ -357,7 +349,6 @@ linux: $(PORTABLE_EXECUTABLE)
 
 # Other rules
 clean: tidy clean-tools clean-generated clean-assets
-	@$(MAKE) clean -C libagbsyscall
 
 clean-assets:
 	rm -rf $(ASSETS_DIR_NAME)
@@ -368,15 +359,7 @@ clean-assets:
 	find . \( -iname '*.1bpp' -o -iname '*.4bpp' -o -iname '*.8bpp' -o -iname '*.gbapal' -o -iname '*.lz' -o -iname '*.rl' -o -iname '*.latfont' -o -iname '*.hwjpnfont' -o -iname '*.fwjpnfont' \) -exec rm {} +
 	find $(DATA_ASM_SUBDIR)/maps \( -iname 'connections.inc' -o -iname 'events.inc' -o -iname 'header.inc' \) -exec rm {} +
 
-tidy: tidynonmodern tidymodern tidyportable
-
-tidynonmodern:
-	rm -f $(ROM_NAME) $(ELF_NAME) $(MAP_NAME)
-	rm -rf $(OBJ_DIR_NAME)
-
-tidymodern:
-	rm -f $(MODERN_ROM_NAME) $(MODERN_ELF_NAME) $(MODERN_MAP_NAME)
-	rm -rf $(MODERN_OBJ_DIR_NAME)
+tidy: tidyportable
 
 tidyportable:
 	rm -f $(PORTABLE_EXECUTABLE_NAME)
