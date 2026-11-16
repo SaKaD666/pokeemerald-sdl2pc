@@ -61,13 +61,13 @@ The output executables are `pokeemerald64.exe` and `pokeemerald32.exe`. SDL2 is 
 
 ## Build all supported targets
 
-After installing the Linux and MinGW tools and preparing the SDL2 SDK above, build all four executables from the repository root with:
+After installing the Linux and 64-bit MinGW tools and preparing the SDL2 SDK above, build Linux and Windows 64-bit from the repository root with:
 
 ```sh
 ./build-all.sh
 ```
 
-The script uses all available CPU cores by default. Set `JOBS` to choose a different parallel build count, for example `JOBS=8 ./build-all.sh`.
+The script uses all available CPU cores by default. Set `JOBS` to choose a different parallel build count, for example `JOBS=8 ./build-all.sh`. The 32-bit Linux and Windows targets remain available through the individual `make` commands above, but are not run by `build-all.sh` or CI.
 
 ## Cleaning
 

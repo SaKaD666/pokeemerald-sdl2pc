@@ -22,8 +22,6 @@ fi
 
 missing=()
 for tool in make gcc g++ cpp as objcopy pkg-config \
-    i686-w64-mingw32-gcc i686-w64-mingw32-g++ i686-w64-mingw32-cpp \
-    i686-w64-mingw32-as i686-w64-mingw32-objcopy i686-w64-mingw32-windres \
     x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++ x86_64-w64-mingw32-cpp \
     x86_64-w64-mingw32-as x86_64-w64-mingw32-objcopy x86_64-w64-mingw32-windres; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -103,23 +101,12 @@ if ! pkg-config --exists sdl2 libpng vulkan; then
     exit 1
 fi
 
-for file in "$(gcc -m32 -print-file-name=Scrt1.o)" \
-    "$(gcc -m32 -print-file-name=libSDL2.so)" \
-    "$(gcc -m32 -print-file-name=libvulkan.so)"; do
-    if [[ ! -f "$file" ]]; then
-        printf 'Linux 32-bit runtime/SDL2/Vulkan dependencies are missing (%s); see INSTALL_PC.md.\n' "$file" >&2
-        exit 1
-    fi
-done
-
-for arch in i686-w64-mingw32 x86_64-w64-mingw32; do
-    sdk="$ROOT_DIR/SDL2/$arch"
-    if [[ ! -f "$sdk/include/SDL2/SDL.h" || ! -f "$sdk/lib/libSDL2.a" || ! -f "$sdk/lib/libSDL2main.a" ]]; then
-        printf 'The SDL2 MinGW SDK is missing or incomplete: %s\n' "$sdk" >&2
-        printf 'Install it as described in INSTALL_PC.md.\n' >&2
-        exit 1
-    fi
-done
+sdk="$ROOT_DIR/SDL2/x86_64-w64-mingw32"
+if [[ ! -f "$sdk/include/SDL2/SDL.h" || ! -f "$sdk/lib/libSDL2.a" || ! -f "$sdk/lib/libSDL2main.a" ]]; then
+    printf 'The 64-bit SDL2 MinGW SDK is missing or incomplete: %s\n' "$sdk" >&2
+    printf 'Install it as described in INSTALL_PC.md.\n' >&2
+    exit 1
+fi
 
 ensure_mingw_vulkan
 
@@ -157,8 +144,10 @@ build_one() {
 }
 
 build_one linux 1 64
-build_one linux 0 32
 build_one winwsl 1 64
-build_one winwsl 0 32
+# 32-bit targets remain available through Makefile; they are not part of the
+# routine build-all run anymore.
+# build_one linux 0 32
+# build_one winwsl 0 32
 
-printf '\nAll builds completed:\n  pokeemerald64\n  pokeemerald32\n  pokeemerald64.exe\n  pokeemerald32.exe\n'
+printf '\nBuilds completed:\n  pokeemerald64\n  pokeemerald64.exe\n'
