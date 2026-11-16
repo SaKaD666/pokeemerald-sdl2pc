@@ -53,7 +53,7 @@ For 32-bit Windows:
 make winwsl IS64BIT=0 -j"$(nproc)"
 ```
 
-The output executables are `pokeemerald64.exe` and `pokeemerald32.exe`. To run them on Windows, place the matching `SDL2.dll` beside the executable. MinGW SDL2 DLLs are available in the [32-bit](https://archive.org/download/sdl-2-2.0.16/SDL2-2.0.16-win32-x86.zip) and [64-bit](https://archive.org/download/sdl-2-2.0.16/SDL2-2.0.16-win32-x64.zip) archives.
+The output executables are `pokeemerald64.exe` and `pokeemerald32.exe`. SDL2 is linked statically, so you do not need to copy `SDL2.dll` beside the executable.
 
 ## Build all supported targets
 

@@ -136,7 +136,13 @@ ifeq ($(PORTABLE),1)
   endif
 
   ifeq ($(TARGET_PLATFORM), PLATFORM_SDL2)
-    PLATFORM_LFLAGS += -lSDL2main -lSDL2 -lm
+    ifeq ($(TARGET_OS),WINDOWS)
+      PLATFORM_LFLAGS += -lSDL2main -Wl,-Bstatic -lSDL2 -Wl,-Bdynamic -lm \
+        -ldinput8 -ldxguid -ldxerr8 -limm32 -lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid \
+        -lgdi32 -lopengl32
+    else
+      PLATFORM_LFLAGS += -lSDL2main -lSDL2 -lm
+    endif
     ifeq ($(IS64BIT),0)
       PLATFORM_INCLUDES += -DSDL_DISABLE_IMMINTRIN_H -DSDL_DISABLE_MMINTRIN_H -DSDL_DISABLE_XMMINTRIN_H -DSDL_DISABLE_EMMINTRIN_H -DSDL_DISABLE_PMMINTRIN_H
     endif
