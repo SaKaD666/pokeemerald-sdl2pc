@@ -82,7 +82,7 @@ vu16 GPIOPortDirection;
 extern vu16 GPIOPortDirection;
 #endif
 
-static u16 sDummy; // unused variable
+static u16 UNUSED sDummy;
 static bool8 sLocked;
 
 static int WriteCommand(u8 value);
@@ -190,8 +190,6 @@ bool8 SiiRtcReset(void)
 
 bool8 SiiRtcGetStatus(struct SiiRtcInfo *rtc)
 {
-    u8 statusData;
-
     if (sLocked == TRUE)
         return FALSE;
 
@@ -199,6 +197,8 @@ bool8 SiiRtcGetStatus(struct SiiRtcInfo *rtc)
 #ifdef PORTABLE
     Platform_GetStatus(rtc);
 #else
+    u8 statusData;
+
     GPIO_PORT_DATA = SCK_HI;
     GPIO_PORT_DATA = SCK_HI | CS_HI;
 
@@ -225,8 +225,6 @@ bool8 SiiRtcGetStatus(struct SiiRtcInfo *rtc)
 
 bool8 SiiRtcSetStatus(struct SiiRtcInfo *rtc)
 {
-    u8 statusData;
-
     if (sLocked == TRUE)
         return FALSE;
 
@@ -234,6 +232,8 @@ bool8 SiiRtcSetStatus(struct SiiRtcInfo *rtc)
 #ifdef PORTABLE
     Platform_SetStatus(rtc);
 #else
+    u8 statusData;
+
     GPIO_PORT_DATA = SCK_HI;
     GPIO_PORT_DATA = SCK_HI | CS_HI;
 
@@ -258,8 +258,6 @@ bool8 SiiRtcSetStatus(struct SiiRtcInfo *rtc)
 
 bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
 {
-    u8 i;
-
     if (sLocked == TRUE)
         return FALSE;
 
@@ -267,6 +265,8 @@ bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
 #ifdef PORTABLE
     Platform_GetDateTime(rtc);
 #else
+    u8 i;
+
     GPIO_PORT_DATA = SCK_HI;
     GPIO_PORT_DATA = SCK_HI | CS_HI;
 
@@ -291,8 +291,6 @@ bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
 
 bool8 SiiRtcSetDateTime(struct SiiRtcInfo *rtc)
 {
-    u8 i;
-
     if (sLocked == TRUE)
         return FALSE;
 
@@ -300,6 +298,8 @@ bool8 SiiRtcSetDateTime(struct SiiRtcInfo *rtc)
 #ifdef PORTABLE
     Platform_SetDateTime(rtc);
 #else
+    u8 i;
+
     GPIO_PORT_DATA = SCK_HI;
     GPIO_PORT_DATA = SCK_HI | CS_HI;
 
@@ -320,8 +320,6 @@ bool8 SiiRtcSetDateTime(struct SiiRtcInfo *rtc)
 
 bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
 {
-    u8 i;
-
     if (sLocked == TRUE)
         return FALSE;
 
@@ -330,6 +328,8 @@ bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
     Platform_GetTime(rtc);
     INFO_BUF(rtc, OFFSET_HOUR) &= 0x7F;
 #else
+    u8 i;
+
     GPIO_PORT_DATA = SCK_HI;
     GPIO_PORT_DATA = SCK_HI | CS_HI;
 
@@ -354,8 +354,6 @@ bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
 
 bool8 SiiRtcSetTime(struct SiiRtcInfo *rtc)
 {
-    u8 i;
-
     if (sLocked == TRUE)
         return FALSE;
 
@@ -363,6 +361,8 @@ bool8 SiiRtcSetTime(struct SiiRtcInfo *rtc)
 #ifdef PORTABLE
     Platform_SetTime(rtc);
 #else
+    u8 i;
+
     GPIO_PORT_DATA = SCK_HI;
     GPIO_PORT_DATA = SCK_HI | CS_HI;
 
@@ -383,7 +383,6 @@ bool8 SiiRtcSetTime(struct SiiRtcInfo *rtc)
 
 static bool8 UNUSED SiiRtcSetAlarm(struct SiiRtcInfo *rtc)
 {
-    u8 i;
     u8 alarmData[2];
 
     if (sLocked == TRUE)
@@ -405,6 +404,7 @@ static bool8 UNUSED SiiRtcSetAlarm(struct SiiRtcInfo *rtc)
 #ifdef PORTABLE
     Platform_SetAlarm(alarmData);
 #else
+    u8 i;
 
     GPIO_PORT_DATA = SCK_HI;
     GPIO_PORT_DATA = SCK_HI | CS_HI;

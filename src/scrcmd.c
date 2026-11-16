@@ -1424,27 +1424,23 @@ bool8 ScrCmd_multichoicegrid(struct ScriptContext *ctx)
 
 bool8 ScrCmd_erasebox(struct ScriptContext *ctx)
 {
-    u8 left = ScriptReadByte(ctx);
-    u8 top = ScriptReadByte(ctx);
-    u8 right = ScriptReadByte(ctx);
-    u8 bottom = ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
 
-    // Menu_EraseWindowRect(left, top, right, bottom);
+    // Parameters are consumed, but erasing is disabled in Emerald.
     return FALSE;
 }
 
 bool8 ScrCmd_drawboxtext(struct ScriptContext *ctx)
 {
-    u8 left = ScriptReadByte(ctx);
-    u8 top = ScriptReadByte(ctx);
-    u8 multichoiceId = ScriptReadByte(ctx);
-    bool8 ignoreBPress = ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
 
-    /*if (Multichoice(left, top, multichoiceId, ignoreBPress) == TRUE)
-    {
-        ScriptContext_Stop();
-        return TRUE;
-    }*/
+    // Parameters are consumed, but drawing the box text is disabled in Emerald.
     return FALSE;
 }
 
@@ -1787,8 +1783,8 @@ bool8 ScrCmd_hidemoneybox(struct ScriptContext *ctx)
 
 bool8 ScrCmd_updatemoneybox(struct ScriptContext *ctx)
 {
-    u8 x = ScriptReadByte(ctx);
-    u8 y = ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
     u8 ignore = ScriptReadByte(ctx);
 
     if (!ignore)
@@ -1807,8 +1803,8 @@ bool8 ScrCmd_showcoinsbox(struct ScriptContext *ctx)
 
 bool8 ScrCmd_hidecoinsbox(struct ScriptContext *ctx)
 {
-    u8 x = ScriptReadByte(ctx);
-    u8 y = ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
 
     HideCoinsWindow();
     return FALSE;
@@ -1816,8 +1812,8 @@ bool8 ScrCmd_hidecoinsbox(struct ScriptContext *ctx)
 
 bool8 ScrCmd_updatecoinsbox(struct ScriptContext *ctx)
 {
-    u8 x = ScriptReadByte(ctx);
-    u8 y = ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
+    (void)ScriptReadByte(ctx);
 
     PrintCoinsString(GetCoins());
     return FALSE;
@@ -2114,12 +2110,12 @@ bool8 ScrCmd_setdoorclosed(struct ScriptContext *ctx)
 // Below two are functions for elevators in RS, do nothing in Emerald
 bool8 ScrCmd_addelevmenuitem(struct ScriptContext *ctx)
 {
-    u8 v3 = ScriptReadByte(ctx);
-    u16 v5 = VarGet(ScriptReadHalfword(ctx));
-    u16 v7 = VarGet(ScriptReadHalfword(ctx));
-    u16 v9 = VarGet(ScriptReadHalfword(ctx));
+    (void)ScriptReadByte(ctx);
+    (void)VarGet(ScriptReadHalfword(ctx));
+    (void)VarGet(ScriptReadHalfword(ctx));
+    (void)VarGet(ScriptReadHalfword(ctx));
 
-    //ScriptAddElevatorMenuItem(v3, v5, v7, v9);
+    // Parameters are consumed, but elevator menus are disabled in Emerald.
     return FALSE;
 }
 
