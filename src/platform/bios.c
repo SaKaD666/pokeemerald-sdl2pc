@@ -8,9 +8,9 @@ static uint32_t CPUReadMemory(const void *src)
     return *(uint32_t *)src;
 }
 
-static void CPUWriteMemory(void *dest, uint32_t val)
+static void CPUWriteMemory(volatile void *dest, uint32_t val)
 {
-    *(uint32_t *)dest = val;
+    *(volatile uint32_t *)dest = val;
 }
 
 static uint16_t CPUReadHalfWord(const void *src)
@@ -18,9 +18,9 @@ static uint16_t CPUReadHalfWord(const void *src)
     return *(uint16_t *)src;
 }
 
-static void CPUWriteHalfWord(void *dest, uint16_t val)
+static void CPUWriteHalfWord(volatile void *dest, uint16_t val)
 {
-    *(uint16_t *)dest = val;
+    *(volatile uint16_t *)dest = val;
 }
 
 static uint8_t CPUReadByte(const void *src)
@@ -28,12 +28,12 @@ static uint8_t CPUReadByte(const void *src)
     return *(uint8_t *)src;
 }
 
-static void CPUWriteByte(void *dest, uint8_t val)
+static void CPUWriteByte(volatile void *dest, uint8_t val)
 {
-    *(uint8_t *)dest = val;
+    *(volatile uint8_t *)dest = val;
 }
 
-void CpuSet(const void *src, void *dst, u32 cnt)
+void CpuSet(const void *src, volatile void *dst, u32 cnt)
 {
     if(dst == NULL)
     {
@@ -44,7 +44,7 @@ void CpuSet(const void *src, void *dst, u32 cnt)
     int count = cnt & 0x1FFFFF;
 
     const u8 *source = src;
-    u8 *dest = dst;
+    volatile u8 *dest = dst;
 
     // 32-bit ?
     if ((cnt >> 26) & 1) {

@@ -103,7 +103,7 @@ static struct MP2KInstrument *SafeDereferenceMP2KInstrumentPtr(struct MP2KInstru
     return ret;
 }
 
-static void *SafeDereferenceVoidPtr(void **addr) {
+static void *SafeDereferenceVoidPtr(void * const *addr) {
     void *ret = *addr;
     VERIFY_PTR(addr);
     return ret;
