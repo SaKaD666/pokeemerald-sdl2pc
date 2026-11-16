@@ -23,12 +23,7 @@
 #define getBlueChannel(x) ((x >>  10) & 0x1F)
 #define isbgEnabled(x) ((REG_DISPCNT >> 8) & 0xF) & (1 << x)
 
-#ifdef PLATFORM_WIN32
-//gcc doesn't optimally inline some functions which causes a significant framerate drop in frame rate
-#define inline_hack __attribute__ ((always_inline))
-#else
 #define inline_hack
-#endif
 
 extern void (*const gIntrTable[])(void);
 

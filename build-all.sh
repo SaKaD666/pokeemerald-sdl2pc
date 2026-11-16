@@ -67,7 +67,7 @@ build_one() {
     # Linux and Windows currently share this object path per architecture.
     # Make does not track compiler/flag changes, so discard that cache first.
     rm -rf -- "$object_dir"
-    make -j"$JOBS" "IS64BIT=$is64bit" TARGET_PLATFORM=PLATFORM_SDL2 "$target"
+    make -j"$JOBS" "IS64BIT=$is64bit" "$target"
 }
 
 build_one linux 1 64

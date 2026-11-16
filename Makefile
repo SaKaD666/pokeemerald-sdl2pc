@@ -2,7 +2,6 @@ MODERN      ?= 0
 KEEP_TEMPS  ?= 0
 PORTABLE    ?= 0
 IS64BIT     ?= 1
-TARGET_PLATFORM ?= PLATFORM_SDL2
 TARGET_OS       ?= NONE
 TILE_RENDERER   ?= RENDERER_EASY_DRAW
 
@@ -114,47 +113,30 @@ ifeq ($(PORTABLE),1)
 
   PLATFORM_LFLAGS :=
   PLATFORM_INCLUDES :=
-  PLATFORM_CFLAGS :=
   BUILD_FEXTENSION :=
-  OS_CFLAGS :=
   OS_LFLAGS :=
 
   ifeq ($(TARGET_OS),WINDOWS)
-    OS_CFLAGS :=
     OS_LFLAGS := -lwinmm -lxinput
     BUILD_FEXTENSION := .exe
   else
-    OS_CFLAGS :=
     OS_LFLAGS := -no-pie
   endif
 
-  #Windows only
+  # Required by SDL2's MinGW entry point.
   ifeq ($(TARGET_OS),WINDOWS)
-    ifneq ($(NO_STD_LIB),1)
-      PLATFORM_LFLAGS += -lmingw32
-    endif
+    PLATFORM_LFLAGS += -lmingw32
   endif
 
-  ifeq ($(TARGET_PLATFORM), PLATFORM_SDL2)
-    ifeq ($(TARGET_OS),WINDOWS)
-      PLATFORM_LFLAGS += -lSDL2main -Wl,-Bstatic -lSDL2 -Wl,-Bdynamic -lm \
-        -ldinput8 -ldxguid -ldxerr8 -limm32 -lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid \
-        -lgdi32 -lopengl32
-    else
-      PLATFORM_LFLAGS += -lSDL2main -lSDL2 -lm
-    endif
-    ifeq ($(IS64BIT),0)
-      PLATFORM_INCLUDES += -DSDL_DISABLE_IMMINTRIN_H -DSDL_DISABLE_MMINTRIN_H -DSDL_DISABLE_XMMINTRIN_H -DSDL_DISABLE_EMMINTRIN_H -DSDL_DISABLE_PMMINTRIN_H
-    endif
+  ifeq ($(TARGET_OS),WINDOWS)
+    PLATFORM_LFLAGS += -lSDL2main -Wl,-Bstatic -lSDL2 -Wl,-Bdynamic -lm \
+      -ldinput8 -ldxguid -ldxerr8 -limm32 -lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid \
+      -lgdi32 -lopengl32
+  else
+    PLATFORM_LFLAGS += -lSDL2main -lSDL2 -lm
   endif
-
-  ifeq ($(TARGET_PLATFORM), PLATFORM_WIN32)
-    ifeq ($(NO_STD_LIB),1)
-      PLATFORM_LFLAGS += -Wl,-e__main -nostdlib
-      CPPFLAGS += -D NO_STD_LIB_ENABLED
-    endif
-    PLATFORM_LFLAGS += -lkernel32 -luser32 -lgdi32
-    PLATFORM_INCLUDES += -D SOUND_DISABLED
+  ifeq ($(IS64BIT),0)
+    PLATFORM_INCLUDES += -DSDL_DISABLE_IMMINTRIN_H -DSDL_DISABLE_MMINTRIN_H -DSDL_DISABLE_XMMINTRIN_H -DSDL_DISABLE_EMMINTRIN_H -DSDL_DISABLE_PMMINTRIN_H
   endif
 else
   ASM_PSEUDO_OP_CONV := cat
@@ -228,12 +210,12 @@ ifeq ($(MODERN),0)
   CC1 := tools/agbcc/bin/agbcc$(EXE)
   override CFLAGS += -mthumb-interwork -Wimplicit -Wparentheses -Werror -O$(O_LEVEL) -fhex-asm -g
 else ifeq ($(PORTABLE),1)
-  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D $(TARGET_PLATFORM) -D $(TILE_RENDERER) -D UBFIX $(CPPFLAGS64) $(PLATFORM_INCLUDES) -I$(SDL_DIR)/include -L$(SDL_DIR)/lib
+  CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D PLATFORM_SDL2 -D $(TILE_RENDERER) -D UBFIX $(CPPFLAGS64) $(PLATFORM_INCLUDES) -I$(SDL_DIR)/include -L$(SDL_DIR)/lib
   MODERNCC := $(PREFIX)gcc
   PATH_MODERNCC := PATH="$(PATH)" $(MODERNCC)
   CPP := $(PREFIX)cpp -m$(BIT_WIDTH)
   CC1 	:= $(shell $(PREFIX)gcc --print-prog-name=cc1) -quiet
-  override CFLAGS += $(OS_CFLAGS) $(PLATFORM_CFLAGS) -Werror=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-trigraphs -Wimplicit -Wparentheses -Wunused -m$(BIT_WIDTH) -std=gnu99 $(LEADING_UNDERSCORE_FLAG) -fno-dce -fno-builtin -Wno-unused-function -DPORTABLE -DNONMATCHING -D UBFIX -DMODERN=$(MODERN)
+  override CFLAGS += -Werror=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-trigraphs -Wimplicit -Wparentheses -Wunused -m$(BIT_WIDTH) -std=gnu99 $(LEADING_UNDERSCORE_FLAG) -fno-dce -fno-builtin -Wno-unused-function -DPORTABLE -DNONMATCHING -D UBFIX -DMODERN=$(MODERN)
 else
   # Note: The makefile must be set up to not call these if modern == 0
   MODERNCC := $(PREFIX)gcc

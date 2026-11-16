@@ -5,7 +5,7 @@
 #include <string.h>
 #include <limits.h>
 
-#if !defined NO_STD_LIB_ENABLED && defined PORTABLE
+#if defined PORTABLE
     #define DBGPRINTF(...) printf(__VA_ARGS__)
 #else
     #define DBGPRINTF(...)
