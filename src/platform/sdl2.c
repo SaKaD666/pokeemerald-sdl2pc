@@ -11,6 +11,9 @@
 #endif
 
 #include <SDL2/SDL.h>
+#ifdef PLATFORM_VULKAN
+#include "platform/vulkan_video.h"
+#endif
 
 #include "global.h"
 #include "platform.h"
@@ -27,13 +30,18 @@ extern void (*const gIntrTable[])(void);
 
 SDL_Thread *mainLoopThread;
 SDL_Window *sdlWindow;
+#ifndef PLATFORM_VULKAN
 SDL_Renderer *sdlRenderer;
 SDL_Texture *sdlTexture;
+#endif
+static uint16_t videoFrame[DISPLAY_WIDTH * DISPLAY_HEIGHT];
 SDL_sem *vBlankSemaphore;
 SDL_atomic_t isFrameAvailable;
 bool speedUp = false;
 unsigned int videoScale = 1;
+#ifndef PLATFORM_VULKAN
 bool videoScaleChanged = false;
+#endif
 bool isRunning = true;
 bool paused = false;
 double simTime = 0;
@@ -51,7 +59,7 @@ extern void DoSoftReset(void);
 
 int DoMain(void *param);
 void ProcessEvents(void);
-void VDraw(SDL_Texture *texture);
+void VDraw(void);
 
 static void ReadSaveFile(char *path);
 static void StoreSaveFile(void);
@@ -76,20 +84,31 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    sdlWindow = SDL_CreateWindow("pokeemerald", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    Uint32 windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+#ifdef PLATFORM_VULKAN
+    windowFlags |= SDL_WINDOW_VULKAN;
+#endif
+    sdlWindow = SDL_CreateWindow("pokeemerald", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale, windowFlags);
     if (sdlWindow == NULL)
     {
         DBGPRINTF("Window could not be created! SDL_Error: %s\n", SDL_GetError());
         return 1;
     }
 
+#ifdef PLATFORM_VULKAN
+    if (!PlatformVulkan_Init(sdlWindow))
+    {
+        SDL_DestroyWindow(sdlWindow);
+        SDL_Quit();
+        return 1;
+    }
+#else
     sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
     if (sdlRenderer == NULL)
     {
         DBGPRINTF("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
         return 1;
     }
-
     SDL_SetRenderDrawColor(sdlRenderer, 255, 255, 255, 255);
     SDL_RenderClear(sdlRenderer);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
@@ -104,6 +123,7 @@ int main(int argc, char **argv)
         DBGPRINTF("Texture could not be created! SDL_Error: %s\n", SDL_GetError());
         return 1;
     }
+#endif
 
     simTime = curGameTime = lastGameTime = SDL_GetPerformanceCounter();
 
@@ -161,8 +181,7 @@ int main(int argc, char **argv)
                 MainLoop();
                 if (!isGameStepDrawn)
                 {
-                    VDraw(sdlTexture);
-                    //SDL_RenderClear(sdlRenderer);
+                    VDraw();
                     isGameStepDrawn = true;
                 }
                 RunDMAsAndVBlank();
@@ -178,21 +197,31 @@ int main(int argc, char **argv)
                 AudioUpdate();
             }
 
+#ifndef PLATFORM_VULKAN
             if (videoScaleChanged)
             {
                 SDL_SetWindowSize(sdlWindow, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale);
                 videoScaleChanged = false;
             }
+#endif
         }
 
         lastGameTime = curGameTime;
 
+#ifdef PLATFORM_VULKAN
+        if (!PlatformVulkan_RenderFrame(videoFrame))
+            isRunning = false;
+#else
         SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, NULL);
         SDL_RenderPresent(sdlRenderer);
+#endif
     }
 
     CloseSaveFile();
 
+#ifdef PLATFORM_VULKAN
+    PlatformVulkan_Shutdown();
+#endif
     SDL_DestroyWindow(sdlWindow);
     SDL_Quit();
     return 0;
@@ -365,6 +394,7 @@ void ProcessEvents(void)
             }
             break;
         case SDL_WINDOWEVENT:
+#ifndef PLATFORM_VULKAN
             if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
             {
                 unsigned int w = event.window.data1;
@@ -380,6 +410,7 @@ void ProcessEvents(void)
 
                 videoScaleChanged = true;
             }
+#endif
             break;
         }
     }
@@ -452,13 +483,13 @@ u16 Platform_GetKeyInput(void)
     return keys;
 }
 
-void VDraw(SDL_Texture *texture)
+void VDraw(void)
 {
-    static uint16_t image[DISPLAY_WIDTH * DISPLAY_HEIGHT];
-
-    memset(image, 0, sizeof(image));
-    DrawFrame(image);
-    SDL_UpdateTexture(texture, NULL, image, DISPLAY_WIDTH * sizeof (Uint16));
+    memset(videoFrame, 0, sizeof(videoFrame));
+    DrawFrame(videoFrame);
+#ifndef PLATFORM_VULKAN
+    SDL_UpdateTexture(sdlTexture, NULL, videoFrame, DISPLAY_WIDTH * sizeof (Uint16));
+#endif
     REG_VCOUNT = 161; // prep for being in VBlank period
 }
 

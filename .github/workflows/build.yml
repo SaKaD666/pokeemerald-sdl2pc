@@ -17,27 +17,9 @@ jobs:
         run: |
           sudo dpkg --add-architecture i386
           sudo apt update
-          sudo apt install --no-install-recommends build-essential curl libpng-dev libsdl2-dev gcc-multilib g++-multilib libsdl2-dev:i386 gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64-i686 gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+          sudo apt install --no-install-recommends build-essential curl zstd libpng-dev libsdl2-dev libvulkan-dev libvulkan-dev:i386 gcc-multilib g++-multilib libsdl2-dev:i386 gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64-i686 gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64
           curl -L https://archive.org/download/sdl-2-2.0.16/SDL2-devel-2.0.16-mingw.tar.gz -o /tmp/SDL2-devel-mingw.tar.gz
           tar -xzf /tmp/SDL2-devel-mingw.tar.gz -C /tmp
           mv /tmp/SDL2-2.0.16 SDL2
-
-      - name: Windows (64-bit)
-        env:
-          IS64BIT: 1
-        run: make -j${nproc} winwsl
-
-      - name: Windows (32-bit)
-        env:
-          IS64BIT: 0
-        run: make -j${nproc} winwsl
-
-      - name: Linux (64-bit)
-        env:
-          IS64BIT: 1
-        run: make -j${nproc} linux
-
-      - name: Linux (32-bit)
-        env:
-          IS64BIT: 0
-        run: make -j${nproc} linux
+      - name: Build Linux and Windows (32/64-bit)
+        run: JOBS=$(nproc) ./build-all.sh

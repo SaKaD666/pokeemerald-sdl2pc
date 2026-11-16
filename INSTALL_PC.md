@@ -8,7 +8,7 @@ On Debian or Ubuntu, install the required tools and libraries:
 
 ```sh
 sudo apt update
-sudo apt install build-essential git make libpng-dev libsdl2-dev
+sudo apt install build-essential git make libpng-dev libsdl2-dev libvulkan-dev
 ```
 
 Build and run the 64-bit Linux version:
@@ -23,10 +23,12 @@ The equivalent explicit target is `make linux`. For 32-bit Linux, also install m
 ```sh
 sudo dpkg --add-architecture i386
 sudo apt update
-sudo apt install gcc-multilib g++-multilib libsdl2-dev:i386
+sudo apt install gcc-multilib g++-multilib libsdl2-dev:i386 libvulkan-dev:i386
 make linux IS64BIT=0 -j"$(nproc)"
 ./pokeemerald32
 ```
+
+Linux 32-bit requires the matching 32-bit Vulkan loader and a 32-bit Vulkan driver/ICD for the installed GPU. Linux 32-bit and 64-bit both use Vulkan for presentation.
 
 ## Windows with WSL and MinGW
 
@@ -34,12 +36,14 @@ In a Debian or Ubuntu distribution under WSL, install MinGW tools for both archi
 
 ```sh
 sudo apt update
-sudo apt install build-essential git make libpng-dev \
+sudo apt install build-essential git make curl zstd libpng-dev \
   gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64-i686 \
   gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64
 ```
 
 Download the MinGW development libraries from [SDL2 2.0.16](https://archive.org/download/sdl-2-2.0.16/SDL2-devel-2.0.16-mingw.tar.gz). Extract the archive at the repository root and name the extracted directory `SDL2`. It should contain `i686-w64-mingw32/` and `x86_64-w64-mingw32/`.
+
+`./build-all.sh` downloads the pinned MSYS2 Vulkan-Headers and Vulkan-Loader packages when the local `Vulkan/` dependencies are missing, verifies their SHA-256 checksums, and extracts only the headers and MinGW import libraries. The same command prepares these dependencies in CI after CI downloads SDL2. It requires `curl`, `sha256sum`, `zstd`, and `tar`. The Vulkan loader DLL is not bundled with the game; Windows provides it with a Vulkan-capable graphics driver. Direct `make winwsl` builds use the already prepared files in `Vulkan/`.
 
 Build the 64-bit Windows executable:
 
@@ -57,7 +61,7 @@ The output executables are `pokeemerald64.exe` and `pokeemerald32.exe`. SDL2 is 
 
 ## Build all supported targets
 
-After installing the Linux 32/64-bit and Windows MinGW prerequisites above, build all four executables from the repository root with:
+After installing the Linux and MinGW tools and preparing the SDL2 SDK above, build all four executables from the repository root with:
 
 ```sh
 ./build-all.sh

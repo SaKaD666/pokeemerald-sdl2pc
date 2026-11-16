@@ -113,14 +113,24 @@ ifeq ($(PORTABLE),1)
 
   PLATFORM_LFLAGS :=
   PLATFORM_INCLUDES :=
+  VULKAN_MINGW_ARCH :=
   BUILD_FEXTENSION :=
   OS_LFLAGS :=
 
   ifeq ($(TARGET_OS),WINDOWS)
     OS_LFLAGS := -lwinmm -lxinput
     BUILD_FEXTENSION := .exe
+    ifeq ($(IS64BIT),1)
+      VULKAN_MINGW_ARCH := x86_64-w64-mingw32
+    else
+      VULKAN_MINGW_ARCH := i686-w64-mingw32
+    endif
+    PLATFORM_INCLUDES += -D PLATFORM_VULKAN -I./Vulkan/include
+    PLATFORM_LFLAGS += -L./Vulkan/$(VULKAN_MINGW_ARCH)/lib -lvulkan-1
   else
     OS_LFLAGS := -no-pie
+    PLATFORM_INCLUDES += -D PLATFORM_VULKAN
+    PLATFORM_LFLAGS += -lvulkan
   endif
 
   # Required by SDL2's MinGW entry point.
