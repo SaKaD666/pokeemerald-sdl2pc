@@ -9,51 +9,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GAME_VERSION: EMERALD
-      GAME_REVISION: 0
-      GAME_LANGUAGE: ENGLISH
-      MODERN: 0
-      COMPARE: 1
     steps:
       - name: Checkout
         uses: actions/checkout@master
 
-      - name: Checkout syms
-        if: ${{ github.event_name == 'push' }}
-        uses: actions/checkout@master
-        with:
-          path: symbols
-          ref: symbols
-
-      - name: Checkout agbcc
-        uses: actions/checkout@master
-        with:
-          path: agbcc
-          repository: pret/agbcc
-
-      - name: Install binutils
+      - name: Install portable build dependencies
         run: |
+          sudo dpkg --add-architecture i386
           sudo apt update
-          sudo apt install gcc-arm-none-eabi binutils-arm-none-eabi libpng-dev
-        # build-essential and git are already installed
-        # gcc-arm-none-eabi is only needed for the modern build
-        # as an alternative to dkP
-
-      - name: Install agbcc
-        run: |
-          ./build.sh
-          ./install.sh ../
-        working-directory: agbcc
-
-      - name: Compare
-        run: make -j${nproc} all syms
-
-      - name: Modern
-        env:
-          MODERN: 1
-          COMPARE: 0
-        run: make -j${nproc} all
+          sudo apt install --no-install-recommends build-essential curl libpng-dev libsdl2-dev gcc-multilib g++-multilib libsdl2-dev:i386 gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64-i686 gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+          curl -L https://archive.org/download/sdl-2-2.0.16/SDL2-devel-2.0.16-mingw.tar.gz -o /tmp/SDL2-devel-mingw.tar.gz
+          tar -xzf /tmp/SDL2-devel-mingw.tar.gz -C /tmp
+          mv /tmp/SDL2-2.0.16 SDL2
 
       - name: Windows (64-bit)
         env:

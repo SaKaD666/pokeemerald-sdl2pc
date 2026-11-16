@@ -1,8 +1,3 @@
-# GBA rom header
-TITLE       := POKEMON EMER
-GAME_CODE   := BPEE
-MAKER_CODE  := 01
-REVISION    := 0
 MODERN      ?= 0
 KEEP_TEMPS  ?= 0
 PORTABLE    ?= 0
@@ -11,20 +6,16 @@ TARGET_PLATFORM ?= PLATFORM_SDL2
 TARGET_OS       ?= NONE
 TILE_RENDERER   ?= RENDERER_EASY_DRAW
 
-# `File name`.gba ('_modern' will be appended to the modern builds)
+# Executable base name
 FILE_NAME := pokeemerald
 BUILD_DIR := build
 
-# Builds the ROM using a modern compiler
-MODERN      ?= 0
-# Compares the ROM to a checksum of the original - only makes sense using when non-modern
-COMPARE     ?= 0
-
-ifeq (modern,$(MAKECMDGOALS))
-  MODERN := 1
-endif
-ifeq (compare,$(MAKECMDGOALS))
-  COMPARE := 1
+# Default to the maintained Linux 64-bit portable build.
+.DEFAULT_GOAL := linux
+ifeq ($(strip $(MAKECMDGOALS)),)
+  PORTABLE := 1
+  TARGET_OS := LINUX
+  IS64BIT := 1
 endif
 ifeq (winwsl,$(MAKECMDGOALS))
   PORTABLE := 1
@@ -40,8 +31,12 @@ ifeq ($(PORTABLE), 1)
   MODERN := 1
 endif
 
-# Default make rule
-all: rom
+# `make all` is an alias for the default Linux build.
+ifeq ($(MAKECMDGOALS),all)
+  PORTABLE := 1
+  TARGET_OS := LINUX
+  IS64BIT := 1
+endif
 
 # Toolchain selection
 TOOLCHAIN := $(DEVKITARM)
@@ -85,10 +80,8 @@ else
 endif
 
 OBJCOPY := $(PREFIX)objcopy
-OBJDUMP := $(PREFIX)objdump
 WINDRES := $(PREFIX)windres
 AS := $(PREFIX)as
-LD := $(PREFIX)ld
 
 EXE :=
 ifeq ($(OS),Windows_NT)
@@ -96,6 +89,7 @@ ifeq ($(OS),Windows_NT)
 endif
 
 ifeq ($(PORTABLE),1)
+  SDL_DIR :=
   ifeq ($(IS64BIT),1)
     ifeq ($(TARGET_OS),WINDOWS)
       SDL_DIR := ./SDL2/x86_64-w64-mingw32
@@ -104,7 +98,9 @@ ifeq ($(PORTABLE),1)
     FIX_UNDERSCORE := $(OBJCOPY)
     LEADING_UNDERSCORE_FLAG :=
   else
-    SDL_DIR := ./SDL2/i686-w64-mingw32
+    ifeq ($(TARGET_OS),WINDOWS)
+      SDL_DIR := ./SDL2/i686-w64-mingw32
+    endif
     ASM_PSEUDO_OP_CONV := sed -e 's/\.4byte/\.int/g;s/\.2byte/\.short/g'
     #FIX_UNDERSCORE is required for 32 bit windows
     ifeq ($(TARGET_OS),WINDOWS)
@@ -181,31 +177,26 @@ ROM_NAME := $(FILE_NAME).gba
 OBJ_DIR_NAME := $(BUILD_DIR)/emerald
 MODERN_ROM_NAME := $(FILE_NAME)_modern.gba
 MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern
-PORTABLE_ROM_NAME := $(FILE_NAME)$(BIT_WIDTH)$(BUILD_FEXTENSION)
+PORTABLE_EXECUTABLE_NAME := $(FILE_NAME)$(BIT_WIDTH)$(BUILD_FEXTENSION)
 PORTABLE_OBJ_DIR_NAME := $(BUILD_DIR)/pc$(BIT_WIDTH)
-PORTABLE_ROM_NAME_OTHER := $(FILE_NAME)$(OTHER_BIT_WIDTH)$(BUILD_FEXTENSION)
+PORTABLE_EXECUTABLE_NAME_OTHER := $(FILE_NAME)$(OTHER_BIT_WIDTH)$(BUILD_FEXTENSION)
 PORTABLE_OBJ_DIR_NAME_OTHER := $(BUILD_DIR)/pc$(OTHER_BIT_WIDTH)
 ASSETS_DIR_NAME := $(BUILD_DIR)/assets
+PORTABLE_EXECUTABLE := $(PORTABLE_EXECUTABLE_NAME)
 
 ELF_NAME := $(ROM_NAME:.gba=.elf)
 MAP_NAME := $(ROM_NAME:.gba=.map)
 MODERN_ELF_NAME := $(MODERN_ROM_NAME:.gba=.elf)
 MODERN_MAP_NAME := $(MODERN_ROM_NAME:.gba=.map)
 
-# Pick our active variables
+# Pick the portable executable and object directory.
 ifeq ($(MODERN),0)
-  ROM := $(ROM_NAME)
   OBJ_DIR := $(OBJ_DIR_NAME)
 else ifeq ($(PORTABLE),1)
-  ROM := $(PORTABLE_ROM_NAME)
   OBJ_DIR := $(PORTABLE_OBJ_DIR_NAME)
 else
-  ROM := $(MODERN_ROM_NAME)
   OBJ_DIR := $(MODERN_OBJ_DIR_NAME)
 endif
-ELF := $(ROM:.gba=.elf)
-MAP := $(ROM:.gba=.map)
-SYM := $(ROM:.gba=.sym)
 
 # Commonly used directories
 C_SUBDIR = src
@@ -238,8 +229,6 @@ ifeq ($(MODERN),0)
   CPPFLAGS += -std=gnu99 -I tools/agbcc/include -I tools/agbcc -nostdinc -undef -std=gnu89
   CC1 := tools/agbcc/bin/agbcc$(EXE)
   override CFLAGS += -mthumb-interwork -Wimplicit -Wparentheses -Werror -O$(O_LEVEL) -fhex-asm -g
-  LIBPATH := -L ../../tools/agbcc/lib
-  LIB := $(LIBPATH) -lgcc -lc -L../../libagbsyscall -lagbsyscall
 else ifeq ($(PORTABLE),1)
   CPPFLAGS += -std=gnu99 -D NONMATCHING -D PORTABLE -D $(TARGET_PLATFORM) -D $(TILE_RENDERER) -D UBFIX $(CPPFLAGS64) $(PLATFORM_INCLUDES) -I$(SDL_DIR)/include -L$(SDL_DIR)/lib
   MODERNCC := $(PREFIX)gcc
@@ -247,15 +236,12 @@ else ifeq ($(PORTABLE),1)
   CPP := $(PREFIX)cpp -m$(BIT_WIDTH)
   CC1 	:= $(shell $(PREFIX)gcc --print-prog-name=cc1) -quiet
   override CFLAGS += $(OS_CFLAGS) $(PLATFORM_CFLAGS) -Werror=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-trigraphs -Wimplicit -Wparentheses -Wunused -m$(BIT_WIDTH) -std=gnu99 $(LEADING_UNDERSCORE_FLAG) -fno-dce -fno-builtin -Wno-unused-function -DPORTABLE -DNONMATCHING -D UBFIX -DMODERN=$(MODERN)
-  LIB := $(LIBPATH) -lgcc -lc
 else
   # Note: The makefile must be set up to not call these if modern == 0
   MODERNCC := $(PREFIX)gcc
   PATH_MODERNCC := PATH="$(PATH)" $(MODERNCC)
   CC1 := $(shell $(PATH_MODERNCC) --print-prog-name=cc1) -quiet
   override CFLAGS += -mthumb -mthumb-interwork -O$(O_LEVEL) -mabi=apcs-gnu -mtune=arm7tdmi -march=armv4t -fno-toplevel-reorder -Wno-pointer-to-int-cast
-  LIBPATH := -L "$(dir $(shell $(PATH_MODERNCC) -mthumb -print-file-name=libgcc.a))" -L "$(dir $(shell $(PATH_MODERNCC) -mthumb -print-file-name=libnosys.a))" -L "$(dir $(shell $(PATH_MODERNCC) -mthumb -print-file-name=libc.a))"
-  LIB := $(LIBPATH) -lc -lnosys -lgcc -L../../libagbsyscall -lagbsyscall
 endif
 
 # Enable debug info if set
@@ -280,13 +266,8 @@ WAV2AGB   := $(TOOLS_DIR)/wav2agb/wav2agb$(EXE)
 MID       := $(TOOLS_DIR)/mid2agb/mid2agb$(EXE)
 SCANINC   := $(TOOLS_DIR)/scaninc/scaninc$(EXE)
 PREPROC   := $(TOOLS_DIR)/preproc/preproc$(EXE)
-RAMSCRGEN := $(TOOLS_DIR)/ramscrgen/ramscrgen$(EXE)
-FIX       := $(TOOLS_DIR)/gbafix/gbafix$(EXE)
 MAPJSON   := $(TOOLS_DIR)/mapjson/mapjson$(EXE)
 JSONPROC  := $(TOOLS_DIR)/jsonproc/jsonproc$(EXE)
-
-PERL := perl
-SHA1 := $(shell { command -v sha1sum || command -v shasum; } 2>/dev/null) -c
 
 MAKEFLAGS += --no-print-directory
 
@@ -297,8 +278,8 @@ MAKEFLAGS += --no-print-directory
 # Delete files that weren't built properly
 .DELETE_ON_ERROR:
 
-RULES_NO_SCAN += libagbsyscall clean clean-assets tidy tidymodern tidynonmodern generated clean-generated
-.PHONY: all rom modern compare winwsl linux
+RULES_NO_SCAN += clean clean-assets tidy tidyportable tidynonmodern tidymodern clean-platform generated clean-generated
+.PHONY: all winwsl linux
 .PHONY: $(RULES_NO_SCAN)
 
 infoshell = $(foreach line, $(shell $1 | sed "s/ /__SPACE__/g"), $(info $(subst __SPACE__, ,$(line))))
@@ -320,7 +301,7 @@ endif
 ifeq ($(SETUP_PREREQS),1)
   # If set on: Default target or a rule requiring a scan
   # Forcibly execute `make tools` since we need them for what we are doing.
-  $(foreach line, $(shell $(MAKE) -f make_tools.mk | sed "s/ /__SPACE__/g"), $(info $(subst __SPACE__, ,$(line))))
+  $(foreach line, $(shell $(MAKE) -f make_tools.mk PORTABLE=$(PORTABLE) | sed "s/ /__SPACE__/g"), $(info $(subst __SPACE__, ,$(line))))
   ifneq ($(.SHELLSTATUS),0)
     $(error Errors occurred while building tools. See error messages above for more details)
   endif
@@ -363,20 +344,12 @@ OBJS_REL := $(patsubst $(OBJ_DIR)/%,%,$(OBJS))
 SUBDIRS  := $(sort $(dir $(OBJS)))
 $(shell mkdir -p $(SUBDIRS))
 
-# Pretend rules that are actually flags defer to `make all`
-modern: all
-compare: all
-winwsl: all
-linux: all
+# Platform targets build their executable directly.
+all: linux
+winwsl: $(PORTABLE_EXECUTABLE)
+linux: $(PORTABLE_EXECUTABLE)
 
 # Other rules
-rom: $(ROM)
-ifeq ($(COMPARE),1)
-	@$(SHA1) rom.sha1
-endif
-
-syms: $(SYM)
-
 clean: tidy clean-tools clean-generated clean-assets
 	@$(MAKE) clean -C libagbsyscall
 
@@ -400,15 +373,15 @@ tidymodern:
 	rm -rf $(MODERN_OBJ_DIR_NAME)
 
 tidyportable:
-	rm -f $(PORTABLE_ROM_NAME)
-	rm -f $(PORTABLE_ROM_NAME).exe
+	rm -f $(PORTABLE_EXECUTABLE_NAME)
+	rm -f $(PORTABLE_EXECUTABLE_NAME).exe
 	rm -rf $(PORTABLE_OBJ_DIR_NAME)
-	rm -f $(PORTABLE_ROM_NAME_OTHER)
-	rm -f $(PORTABLE_ROM_NAME_OTHER).exe
+	rm -f $(PORTABLE_EXECUTABLE_NAME_OTHER)
+	rm -f $(PORTABLE_EXECUTABLE_NAME_OTHER).exe
 	rm -rf $(PORTABLE_OBJ_DIR_NAME_OTHER)
 
 clean-platform:
-	rm -f $(PORTABLE_ROM_NAME)
+	rm -f $(PORTABLE_EXECUTABLE_NAME)
 	rm -rf $(PORTABLE_OBJ_DIR_NAME)/src/platform
 
 # Other rules
@@ -512,49 +485,9 @@ ifneq ($(NODEP),1)
 -include $(addprefix $(OBJ_DIR)/,$(DATA_ASM_SRCS:.s=.d))
 endif
 
-$(OBJ_DIR)/sym_bss.ld: sym_bss.txt
-	$(RAMSCRGEN) .bss $< ENGLISH > $@
-
-$(OBJ_DIR)/sym_common.ld: sym_common.txt $(C_OBJS) $(wildcard common_syms/*.txt)
-	$(RAMSCRGEN) COMMON $< ENGLISH -c $(C_BUILDDIR),common_syms > $@
-
-$(OBJ_DIR)/sym_ewram.ld: sym_ewram.txt
-	$(RAMSCRGEN) ewram_data $< ENGLISH > $@
-
 $(OBJ_DIR)/res.o: $(C_SUBDIR)/platform/win32res/res.rc $(C_SUBDIR)/platform/win32res/icon.ico
 	$(WINDRES) $< -o $@
 
-# Linker script
-ifeq ($(MODERN),0)
-LD_SCRIPT := ld_script.ld
-LD_SCRIPT_DEPS := $(OBJ_DIR)/sym_bss.ld $(OBJ_DIR)/sym_common.ld $(OBJ_DIR)/sym_ewram.ld
-else
-LD_SCRIPT := ld_script_modern.ld
-LD_SCRIPT_DEPS :=
-endif
-
-# Final rules
-
-libagbsyscall:
-	@$(MAKE) -C libagbsyscall TOOLCHAIN=$(TOOLCHAIN) MODERN=$(MODERN)
-
-ifneq ($(PORTABLE),1)
-# Elf from object files
-LDFLAGS = -Map ../../$(MAP)
-$(ELF): $(LD_SCRIPT) $(LD_SCRIPT_DEPS) $(OBJS) libagbsyscall
-	@cd $(OBJ_DIR) && $(LD) $(LDFLAGS) -T ../../$< --print-memory-usage -o ../../$@ $(OBJS_REL) $(LIB) | cat
-	@echo "cd $(OBJ_DIR) && $(LD) $(LDFLAGS) -T ../../$< --print-memory-usage -o ../../$@ <objs> <libs> | cat"
-	$(FIX) $@ -t"$(TITLE)" -c$(GAME_CODE) -m$(MAKER_CODE) -r$(REVISION) --silent
-
-# Builds the rom from the elf file
-$(ROM): $(ELF)
-	$(OBJCOPY) -O binary $< $@
-	$(FIX) $@ -p --silent
-
-# Symbol file (`make syms`)
-$(SYM): $(ELF)
-	$(OBJDUMP) -t $< | sort -u | grep -E "^0[2389]" | $(PERL) -p -e 's/^(\w{8}) (\w).{6} \S+\t(\w{8}) (\S+)$$/\1 \2 \3 \4/g' > $@
-else
-$(ROM): $(OBJS)
+# Link the portable executable directly from the selected objects.
+$(PORTABLE_EXECUTABLE): $(OBJS)
 	$(MODERNCC) $(CFLAGS) -Wl,--demangle $^ -static-libgcc -L$(SDL_DIR)/lib $(PLATFORM_LFLAGS) $(OS_LFLAGS) -o $@
-endif

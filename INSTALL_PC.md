@@ -1,54 +1,72 @@
-# Instructions
+# PC Installation
 
-These instructions explain how to set up the tools required to build **pokeemerald**, which assembles the source files into a binary.
+This repository builds executables for Linux and Windows. The Windows build uses MinGW from Linux or WSL. Running `make` without arguments builds Linux 64-bit.
 
-If you run into trouble, ask for help on Discord (see [README.md](README.md)).
+## Linux
 
-## Windows 10/11 (WSL1)
-Follow pret instructions on how to install WSL1 [here](INSTALL.md)
+On Debian or Ubuntu, install the required tools and libraries:
 
-Install the following libraries
-
-```
-sudo apt install build-essential git make g++-mingw-w64-i686 g++-mingw-w64-x86-64 libpng-dev
-```
-Download SDL2 mingw libraries from [here](https://archive.org/download/sdl-2-2.0.16/SDL2-devel-2.0.16-mingw.tar.gz)
-
-Extract the tar to the root of the project and rename the SDL2-2.0.16 folder to SDL2
-
-Get the number of threads in your pc using the command `nproc`
-
-Build the Windows version using the following command (replace the parentheses with the number you got from nproc)
-
-```
-make winwsl -j(nproc number here)
-```
-
-To build 32 bit version add `IS64BIT=0` to the end of the command above
-
-You should get an executable named `pokeemerald(64 or 32).exe`
-
-Download SDL2.dll [32 bit version](https://archive.org/download/sdl-2-2.0.16/SDL2-2.0.16-win32-x86.zip), [64 bit version](https://archive.org/download/sdl-2-2.0.16/SDL2-2.0.16-win32-x64.zip) and put it in the same place as the executable and you should be good to go
-
-## Linux (Ubuntu)
-
-Run the following command to install the required libraries
-```
+```sh
+sudo apt update
 sudo apt install build-essential git make libpng-dev libsdl2-dev
 ```
 
-Get the number of threads in your pc using the command `nproc`
+Build and run the 64-bit Linux version:
 
-Build the Linux version using the following command (replace the parentheses with the number you got from nproc)
-
+```sh
+make -j"$(nproc)"
+./pokeemerald64
 ```
-make linux -j(nproc number here)
+
+The equivalent explicit target is `make linux`. For 32-bit Linux, also install multilib support and SDL2 for i386:
+
+```sh
+sudo dpkg --add-architecture i386
+sudo apt update
+sudo apt install gcc-multilib g++-multilib libsdl2-dev:i386
+make linux IS64BIT=0 -j"$(nproc)"
+./pokeemerald32
 ```
 
-To build 32 bit version add `IS64BIT=0` to the end of the command above (32 bit version does not build on Ubuntu 25 and above)
+## Windows with WSL and MinGW
 
-You should get an executable named `pokeemerald(64 or 32)`
+In a Debian or Ubuntu distribution under WSL, install MinGW tools for both architectures:
 
-## GBA
+```sh
+sudo apt update
+sudo apt install build-essential git make libpng-dev \
+  gcc-mingw-w64-i686 g++-mingw-w64-i686 binutils-mingw-w64-i686 \
+  gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+```
 
-Follow instructions in [INSTALL.md](INSTALL.md)
+Download the MinGW development libraries from [SDL2 2.0.16](https://archive.org/download/sdl-2-2.0.16/SDL2-devel-2.0.16-mingw.tar.gz). Extract the archive at the repository root and name the extracted directory `SDL2`. It should contain `i686-w64-mingw32/` and `x86_64-w64-mingw32/`.
+
+Build the 64-bit Windows executable:
+
+```sh
+make winwsl -j"$(nproc)"
+```
+
+For 32-bit Windows:
+
+```sh
+make winwsl IS64BIT=0 -j"$(nproc)"
+```
+
+The output executables are `pokeemerald64.exe` and `pokeemerald32.exe`. To run them on Windows, place the matching `SDL2.dll` beside the executable. MinGW SDL2 DLLs are available in the [32-bit](https://archive.org/download/sdl-2-2.0.16/SDL2-2.0.16-win32-x86.zip) and [64-bit](https://archive.org/download/sdl-2-2.0.16/SDL2-2.0.16-win32-x64.zip) archives.
+
+## Build all supported targets
+
+After installing the Linux 32/64-bit and Windows MinGW prerequisites above, build all four executables from the repository root with:
+
+```sh
+./build-all.sh
+```
+
+The script uses all available CPU cores by default. Set `JOBS` to choose a different parallel build count, for example `JOBS=8 ./build-all.sh`.
+
+## Cleaning
+
+`make tidy` removes build executables and objects, including older ROM artifacts. `make clean` also removes tools and generated resources; check `git status` before using it.
+
+For help, see the [README](README.md) and the project Discord server.

@@ -3,20 +3,29 @@
 
 MAKEFLAGS += --no-print-directory
 
-# Inclusive list. If you don't want a tool to be built, don't add it here.
+# Keep all tools in the cleanup list so stale binaries are removed.
 TOOLS_DIR := tools
 TOOL_NAMES := bin2c gbafix gbagfx jsonproc mapjson mid2agb preproc ramscrgen rsfont scaninc wav2agb
+ROM_ONLY_TOOL_NAMES := gbafix ramscrgen
+PORTABLE_TOOL_NAMES := $(filter-out $(ROM_ONLY_TOOL_NAMES),$(TOOL_NAMES))
 
-TOOLDIRS := $(TOOL_NAMES:%=$(TOOLS_DIR)/%)
+ifeq ($(PORTABLE),1)
+  BUILD_TOOL_NAMES := $(PORTABLE_TOOL_NAMES)
+else
+  BUILD_TOOL_NAMES := $(TOOL_NAMES)
+endif
+
+BUILD_TOOLDIRS := $(BUILD_TOOL_NAMES:%=$(TOOLS_DIR)/%)
+CLEAN_TOOLDIRS := $(TOOL_NAMES:%=$(TOOLS_DIR)/%)
 
 # Tool making doesnt require a pokeemerald dependency scan.
-RULES_NO_SCAN += tools check-tools clean-tools $(TOOLDIRS)
+RULES_NO_SCAN += tools check-tools clean-tools $(BUILD_TOOLDIRS) $(CLEAN_TOOLDIRS)
 .PHONY: $(RULES_NO_SCAN)
 
-tools: $(TOOLDIRS)
+tools: $(BUILD_TOOLDIRS)
 
-$(TOOLDIRS):
+$(BUILD_TOOLDIRS):
 	@$(MAKE) -C $@
 
 clean-tools:
-	@$(foreach tooldir,$(TOOLDIRS),$(MAKE) clean -C $(tooldir);)
+	@$(foreach tooldir,$(CLEAN_TOOLDIRS),$(MAKE) clean -C $(tooldir);)
