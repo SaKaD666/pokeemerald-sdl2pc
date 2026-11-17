@@ -874,14 +874,27 @@ static u32 GetOpponentMonData(u8 monId, u8 *dst)
 static void OpponentHandleGetRawMonData(void)
 {
     struct BattlePokemon battleMon;
-    u8 *src = (u8 *)&gEnemyParty[gBattlerPartyIndexes[gActiveBattler]] + gBattleBufferA[gActiveBattler][1];
-    u8 *dst = (u8 *)&battleMon + gBattleBufferA[gActiveBattler][1];
+    u16 offset = gBattleBufferA[gActiveBattler][1];
+    u16 bytes = gBattleBufferA[gActiveBattler][2];
+    u8 *src;
+    u8 *dst;
     u8 i;
 
-    for (i = 0; i < gBattleBufferA[gActiveBattler][2]; i++)
+    if (offset >= sizeof(battleMon)
+     || offset >= sizeof(gEnemyParty[0])
+     || bytes > sizeof(battleMon) - offset
+     || bytes > sizeof(gEnemyParty[0]) - offset)
+    {
+        OpponentBufferExecCompleted();
+        return;
+    }
+
+    src = (u8 *)&gEnemyParty[gBattlerPartyIndexes[gActiveBattler]] + offset;
+    dst = (u8 *)&battleMon + offset;
+    for (i = 0; i < bytes; i++)
         dst[i] = src[i];
 
-    BtlController_EmitDataTransfer(B_COMM_TO_ENGINE, gBattleBufferA[gActiveBattler][2], dst);
+    BtlController_EmitDataTransfer(B_COMM_TO_ENGINE, bytes, dst);
     OpponentBufferExecCompleted();
 }
 

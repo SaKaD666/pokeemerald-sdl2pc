@@ -889,7 +889,7 @@ static void SetSelectedPartyOrder(void)
     s32 i;
 
     ClearSelectedPartyOrder();
-    for (i = 0; i < gSpecialVar_0x8005; i++)
+    for (i = 0; i < MAX_FRONTIER_PARTY_SIZE && i < gSpecialVar_0x8005; i++)
         gSelectedOrderFromParty[i] = gSaveBlock2Ptr->frontier.selectedPartyMons[i];
     ReducePlayerPartyToSelectedMons();
 }
