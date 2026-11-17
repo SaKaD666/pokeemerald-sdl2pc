@@ -43,7 +43,7 @@ sudo apt install build-essential git make curl zstd libpng-dev \
 
 Download the MinGW development libraries from [SDL2 2.0.16](https://archive.org/download/sdl-2-2.0.16/SDL2-devel-2.0.16-mingw.tar.gz). Extract the archive at the repository root and name the extracted directory `SDL2`. It should contain `i686-w64-mingw32/` and `x86_64-w64-mingw32/`.
 
-`./build-all.sh` downloads the pinned MSYS2 Vulkan-Headers and Vulkan-Loader packages when the local `Vulkan/` dependencies are missing, verifies their SHA-256 checksums, and extracts only the headers and MinGW import libraries. The same command prepares these dependencies in CI after CI downloads SDL2. It requires `curl`, `sha256sum`, `zstd`, and `tar`. The Vulkan loader DLL is not bundled with the game; Windows provides it with a Vulkan-capable graphics driver. Direct `make winwsl` builds use the already prepared files in `Vulkan/`.
+`./build-all.sh` downloads the pinned MSYS2 Vulkan-Headers and Vulkan-Loader packages when the local dependencies are missing, verifies their SHA-256 checksums, and extracts only the headers and MinGW import libraries under `build/deps/Vulkan/`. The same command prepares these dependencies in CI after CI downloads SDL2. It requires `curl`, `sha256sum`, `zstd`, and `tar`. The Vulkan loader DLL is not bundled with the game; Windows provides it with a Vulkan-capable graphics driver. Direct `make winwsl` builds use the already prepared files under `build/deps/Vulkan/`.
 
 Build the 64-bit Windows executable:
 
@@ -73,6 +73,6 @@ By default, `build-all.sh` keeps separate object caches for Linux and Windows, e
 
 ## Cleaning
 
-`make tidy` removes build executables and all portable object caches, including older ROM artifacts. `make clean` also removes tools and generated resources; check `git status` before using it.
+`make tidy` removes build executables and all portable object caches, including older ROM artifacts, while preserving the downloaded Vulkan development files. `make clean-vulkan` removes only those files; `make clean` also removes them along with tools and generated resources. Check `git status` before using `make clean`.
 
 For help, see the [README](README.md) and the project Discord server.

@@ -31,7 +31,6 @@ tools/compresSmol/
 Thumbs.db
 build/
 SDL2/
-/Vulkan/
 /pokeemerald32
 /pokeemerald64
 .DS_Store

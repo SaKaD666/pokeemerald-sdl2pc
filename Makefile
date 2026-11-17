@@ -8,6 +8,7 @@ TILE_RENDERER   ?= RENDERER_EASY_DRAW
 # Executable base name
 FILE_NAME := pokeemerald
 BUILD_DIR := build
+VULKAN_DIR ?= build/deps/Vulkan
 
 # Default to the maintained Linux 64-bit portable build.
 .DEFAULT_GOAL := linux
@@ -125,8 +126,8 @@ ifeq ($(PORTABLE),1)
     else
       VULKAN_MINGW_ARCH := i686-w64-mingw32
     endif
-    PLATFORM_INCLUDES += -D PLATFORM_VULKAN -I./Vulkan/include
-    PLATFORM_LFLAGS += -L./Vulkan/$(VULKAN_MINGW_ARCH)/lib -lvulkan-1
+    PLATFORM_INCLUDES += -D PLATFORM_VULKAN -I$(VULKAN_DIR)/include
+    PLATFORM_LFLAGS += -L$(VULKAN_DIR)/$(VULKAN_MINGW_ARCH)/lib -lvulkan-1
   else
     OS_LFLAGS := -no-pie
     PLATFORM_INCLUDES += -D PLATFORM_VULKAN
@@ -273,7 +274,7 @@ MAKEFLAGS += --no-print-directory
 # Delete files that weren't built properly
 .DELETE_ON_ERROR:
 
-RULES_NO_SCAN += clean clean-assets tidy tidyportable clean-platform generated clean-generated
+RULES_NO_SCAN += clean clean-assets clean-vulkan tidy tidyportable clean-platform generated clean-generated
 .PHONY: all winwsl linux
 .PHONY: $(RULES_NO_SCAN)
 
@@ -345,7 +346,10 @@ winwsl: $(PORTABLE_EXECUTABLE)
 linux: $(PORTABLE_EXECUTABLE)
 
 # Other rules
-clean: tidy clean-tools clean-generated clean-assets
+clean: tidy clean-tools clean-generated clean-assets clean-vulkan
+
+clean-vulkan:
+	rm -rf $(VULKAN_DIR)
 
 clean-assets:
 	rm -rf $(ASSETS_DIR_NAME)

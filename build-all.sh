@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
+VULKAN_DIR="${VULKAN_DIR:-$ROOT_DIR/build/deps/Vulkan}"
 VULKAN_DOWNLOAD_TMP=""
 LINUX32_CHECK_TMP=""
 cleanup() {
@@ -68,9 +69,9 @@ if ((${#missing[@]} > 0)); then
 fi
 
 ensure_mingw_vulkan() {
-    local headers_path="$ROOT_DIR/Vulkan/include/vulkan/vulkan.h"
-    local i686_library="$ROOT_DIR/Vulkan/i686-w64-mingw32/lib/libvulkan-1.dll.a"
-    local x86_64_library="$ROOT_DIR/Vulkan/x86_64-w64-mingw32/lib/libvulkan-1.dll.a"
+    local headers_path="$VULKAN_DIR/include/vulkan/vulkan.h"
+    local i686_library="$VULKAN_DIR/i686-w64-mingw32/lib/libvulkan-1.dll.a"
+    local x86_64_library="$VULKAN_DIR/x86_64-w64-mingw32/lib/libvulkan-1.dll.a"
 
     if [[ -f "$headers_path" && -f "$i686_library" && -f "$x86_64_library" ]]; then
         return
@@ -115,11 +116,11 @@ ensure_mingw_vulkan() {
     tar --zstd -xf "$i686_archive" -C "$VULKAN_DOWNLOAD_TMP/i686" mingw32/lib/libvulkan-1.dll.a
     tar --zstd -xf "$x86_64_archive" -C "$VULKAN_DOWNLOAD_TMP/x86_64" mingw64/lib/libvulkan-1.dll.a
 
-    mkdir -p "$ROOT_DIR/Vulkan/include/vulkan" "$ROOT_DIR/Vulkan/include/vk_video" \
-        "$ROOT_DIR/Vulkan/i686-w64-mingw32/lib" \
-        "$ROOT_DIR/Vulkan/x86_64-w64-mingw32/lib"
-    cp -a "$VULKAN_DOWNLOAD_TMP/headers/mingw64/include/vulkan/." "$ROOT_DIR/Vulkan/include/vulkan/"
-    cp -a "$VULKAN_DOWNLOAD_TMP/headers/mingw64/include/vk_video/." "$ROOT_DIR/Vulkan/include/vk_video/"
+    mkdir -p "$VULKAN_DIR/include/vulkan" "$VULKAN_DIR/include/vk_video" \
+        "$VULKAN_DIR/i686-w64-mingw32/lib" \
+        "$VULKAN_DIR/x86_64-w64-mingw32/lib"
+    cp -a "$VULKAN_DOWNLOAD_TMP/headers/mingw64/include/vulkan/." "$VULKAN_DIR/include/vulkan/"
+    cp -a "$VULKAN_DOWNLOAD_TMP/headers/mingw64/include/vk_video/." "$VULKAN_DIR/include/vk_video/"
     install -m 0644 "$VULKAN_DOWNLOAD_TMP/i686/mingw32/lib/libvulkan-1.dll.a" "$i686_library"
     install -m 0644 "$VULKAN_DOWNLOAD_TMP/x86_64/mingw64/lib/libvulkan-1.dll.a" "$x86_64_library"
     rm -rf -- "$VULKAN_DOWNLOAD_TMP"
@@ -177,13 +178,13 @@ fi
 ensure_mingw_vulkan
 
 for arch in i686-w64-mingw32 x86_64-w64-mingw32; do
-    if [[ ! -f "$ROOT_DIR/Vulkan/$arch/lib/libvulkan-1.dll.a" ]]; then
+    if [[ ! -f "$VULKAN_DIR/$arch/lib/libvulkan-1.dll.a" ]]; then
         printf 'The MinGW Vulkan import library is missing for %s.\n' "$arch" >&2
         printf 'The automatic Vulkan dependency setup did not create the expected file.\n' >&2
         exit 1
     fi
 done
-if [[ ! -f "$ROOT_DIR/Vulkan/include/vulkan/vulkan.h" ]]; then
+if [[ ! -f "$VULKAN_DIR/include/vulkan/vulkan.h" ]]; then
     printf 'The MinGW Vulkan headers are missing.\n' >&2
     printf 'The automatic Vulkan dependency setup did not create the expected headers.\n' >&2
     exit 1
@@ -225,8 +226,8 @@ cache_fingerprint() {
         if [[ "$target" == winwsl ]]; then
             local sdk="$ROOT_DIR/SDL2/$target_arch"
             sha256sum "$sdk/lib/libSDL2.a" "$sdk/lib/libSDL2main.a" \
-                "$ROOT_DIR/Vulkan/$target_arch/lib/libvulkan-1.dll.a"
-            find "$sdk/include" "$ROOT_DIR/Vulkan/include" -type f -print0 \
+                "$VULKAN_DIR/$target_arch/lib/libvulkan-1.dll.a"
+            find "$sdk/include" "$VULKAN_DIR/include" -type f -print0 \
                 | sort -z | xargs -0 sha256sum
         else
             pkg-config --modversion sdl2 libpng vulkan
