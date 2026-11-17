@@ -2594,7 +2594,7 @@ static void RemoveLevelUpStatsWindow(void)
 
 static void SetPartyMonSelectionActions(struct Pokemon *mons, u8 slotId, u8 action)
 {
-    u8 i;
+    u8 i, numActions;
 
     if (action == ACTIONS_NONE)
     {
@@ -2602,8 +2602,14 @@ static void SetPartyMonSelectionActions(struct Pokemon *mons, u8 slotId, u8 acti
     }
     else
     {
-        sPartyMenuInternal->numActions = sPartyMenuActionCounts[action];
-        for (i = 0; i < sPartyMenuInternal->numActions; i++)
+        if (action >= ARRAY_COUNT(sPartyMenuActions)
+         || sPartyMenuActions[action] == NULL
+         || sPartyMenuActionCounts[action] > ARRAY_COUNT(sPartyMenuInternal->actions))
+            action = ACTIONS_SUMMARY_ONLY;
+
+        numActions = sPartyMenuActionCounts[action];
+        sPartyMenuInternal->numActions = numActions;
+        for (i = 0; i < numActions; i++)
             sPartyMenuInternal->actions[i] = sPartyMenuActions[action][i];
     }
 }

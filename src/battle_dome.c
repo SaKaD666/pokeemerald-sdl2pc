@@ -3120,8 +3120,7 @@ static void Task_ShowTourneyInfoCard(u8 taskId)
     case 3:
         SetVBlankCallback(VblankCb_TourneyInfoCard);
         sInfoCard = AllocZeroed(sizeof(*sInfoCard));
-        for (i = 0; i < NUM_INFOCARD_SPRITES; i++)
-            sInfoCard->spriteIds[i] = SPRITE_NONE;
+        memset(sInfoCard->spriteIds, SPRITE_NONE, sizeof(sInfoCard->spriteIds));
         LoadMonIconPalettes();
         i = CreateTask(Task_HandleInfoCardInput, 0);
         gTasks[i].data[0] = 0;
