@@ -23,7 +23,7 @@ The equivalent explicit target is `make linux`. For 32-bit Linux, also install m
 ```sh
 sudo dpkg --add-architecture i386
 sudo apt update
-sudo apt install gcc-multilib g++-multilib libsdl2-dev:i386 libvulkan-dev:i386
+sudo apt install gcc-multilib g++-multilib libsdl2-dev:i386 libpng-dev:i386 libvulkan-dev:i386
 make linux IS64BIT=0 -j"$(nproc)"
 ./pokeemerald32
 ```
@@ -61,16 +61,18 @@ The output executables are `pokeemerald64.exe` and `pokeemerald32.exe`. SDL2 is 
 
 ## Build all supported targets
 
-After installing the Linux and 64-bit MinGW tools and preparing the SDL2 SDK above, build Linux and Windows 64-bit from the repository root with:
+After installing the Linux 32/64-bit dependencies and MinGW tools for both architectures, and preparing the SDL2 SDK above, build all four Linux and Windows targets from the repository root with:
 
 ```sh
 ./build-all.sh
 ```
 
-The script uses all available CPU cores by default. Set `JOBS` to choose a different parallel build count, for example `JOBS=8 ./build-all.sh`. The 32-bit Linux and Windows targets remain available through the individual `make` commands above, but are not run by `build-all.sh` or CI.
+The script uses all available CPU cores by default. Set `JOBS` to choose a different parallel build count, for example `JOBS=8 ./build-all.sh`. It checks that the Linux i386 libraries can be linked and that the i686 MinGW tools and SDL2 SDK are present before starting.
+
+By default, `build-all.sh` keeps separate object caches for Linux and Windows, each architecture, renderer, and debug/release mode. Make recompiles changed sources and their dependents; the script invalidates a target's cache if its compiler, build options, SDK libraries, or Makefile rules change. Use `./build-all.sh --clean` to clear all four caches and executables and force a full rebuild. `make tidy` also clears all portable caches. CI continues to build Linux and Windows 64-bit only.
 
 ## Cleaning
 
-`make tidy` removes build executables and objects, including older ROM artifacts. `make clean` also removes tools and generated resources; check `git status` before using it.
+`make tidy` removes build executables and all portable object caches, including older ROM artifacts. `make clean` also removes tools and generated resources; check `git status` before using it.
 
 For help, see the [README](README.md) and the project Discord server.
