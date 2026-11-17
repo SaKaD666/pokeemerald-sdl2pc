@@ -30,7 +30,6 @@ tools/compresSmol/
 *.sa*
 Thumbs.db
 build/
-SDL2/
 /pokeemerald32
 /pokeemerald64
 .DS_Store

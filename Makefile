@@ -8,6 +8,7 @@ TILE_RENDERER   ?= RENDERER_EASY_DRAW
 # Executable base name
 FILE_NAME := pokeemerald
 BUILD_DIR := build
+SDL2_DIR ?= build/deps/SDL2
 VULKAN_DIR ?= build/deps/Vulkan
 
 # Default to the maintained Linux 64-bit portable build.
@@ -92,14 +93,14 @@ ifeq ($(PORTABLE),1)
   SDL_DIR :=
   ifeq ($(IS64BIT),1)
     ifeq ($(TARGET_OS),WINDOWS)
-      SDL_DIR := ./SDL2/x86_64-w64-mingw32
+      SDL_DIR := $(SDL2_DIR)/x86_64-w64-mingw32
     endif
     ASM_PSEUDO_OP_CONV := sed -e 's/\.4byte/\.int/g;s/\.2byte/\.short/g'
     FIX_UNDERSCORE := $(OBJCOPY)
     LEADING_UNDERSCORE_FLAG :=
   else
     ifeq ($(TARGET_OS),WINDOWS)
-      SDL_DIR := ./SDL2/i686-w64-mingw32
+      SDL_DIR := $(SDL2_DIR)/i686-w64-mingw32
     endif
     ASM_PSEUDO_OP_CONV := sed -e 's/\.4byte/\.int/g;s/\.2byte/\.short/g'
     #FIX_UNDERSCORE is required for 32 bit windows
@@ -274,7 +275,7 @@ MAKEFLAGS += --no-print-directory
 # Delete files that weren't built properly
 .DELETE_ON_ERROR:
 
-RULES_NO_SCAN += clean clean-assets clean-vulkan tidy tidyportable clean-platform generated clean-generated
+RULES_NO_SCAN += clean clean-assets clean-sdl2 clean-vulkan tidy tidyportable clean-platform generated clean-generated
 .PHONY: all winwsl linux
 .PHONY: $(RULES_NO_SCAN)
 
@@ -346,7 +347,10 @@ winwsl: $(PORTABLE_EXECUTABLE)
 linux: $(PORTABLE_EXECUTABLE)
 
 # Other rules
-clean: tidy clean-tools clean-generated clean-assets clean-vulkan
+clean: tidy clean-tools clean-generated clean-assets clean-sdl2 clean-vulkan
+
+clean-sdl2:
+	rm -rf $(SDL2_DIR)
 
 clean-vulkan:
 	rm -rf $(VULKAN_DIR)

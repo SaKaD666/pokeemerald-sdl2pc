@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
+SDL2_DIR="${SDL2_DIR:-$ROOT_DIR/build/deps/SDL2}"
 VULKAN_DIR="${VULKAN_DIR:-$ROOT_DIR/build/deps/Vulkan}"
 VULKAN_DOWNLOAD_TMP=""
 LINUX32_CHECK_TMP=""
@@ -161,14 +162,14 @@ check_linux32_link_dependencies() {
 
 check_linux32_link_dependencies
 
-sdk="$ROOT_DIR/SDL2/x86_64-w64-mingw32"
+sdk="$SDL2_DIR/x86_64-w64-mingw32"
 if [[ ! -f "$sdk/include/SDL2/SDL.h" || ! -f "$sdk/lib/libSDL2.a" || ! -f "$sdk/lib/libSDL2main.a" ]]; then
     printf 'The 64-bit SDL2 MinGW SDK is missing or incomplete: %s\n' "$sdk" >&2
     printf 'Install it as described in INSTALL_PC.md.\n' >&2
     exit 1
 fi
 
-sdk="$ROOT_DIR/SDL2/i686-w64-mingw32"
+sdk="$SDL2_DIR/i686-w64-mingw32"
 if [[ ! -f "$sdk/include/SDL2/SDL.h" || ! -f "$sdk/lib/libSDL2.a" || ! -f "$sdk/lib/libSDL2main.a" ]]; then
     printf 'The 32-bit SDL2 MinGW SDK is missing or incomplete: %s\n' "$sdk" >&2
     printf 'Install it as described in INSTALL_PC.md.\n' >&2
@@ -224,7 +225,7 @@ cache_fingerprint() {
         done
 
         if [[ "$target" == winwsl ]]; then
-            local sdk="$ROOT_DIR/SDL2/$target_arch"
+            local sdk="$SDL2_DIR/$target_arch"
             sha256sum "$sdk/lib/libSDL2.a" "$sdk/lib/libSDL2main.a" \
                 "$VULKAN_DIR/$target_arch/lib/libvulkan-1.dll.a"
             find "$sdk/include" "$VULKAN_DIR/include" -type f -print0 \
@@ -278,7 +279,8 @@ build_one() {
     mkdir -p "$object_dir"
     printf '%s\n' "$fingerprint" > "$config_stamp"
 
-    if ! make -j"$JOBS" "IS64BIT=$is64bit" "TILE_RENDERER=$renderer" "DINFO=$dinfo" "$target"; then
+    if ! make -j"$JOBS" "IS64BIT=$is64bit" "TILE_RENDERER=$renderer" "DINFO=$dinfo" \
+        "SDL2_DIR=$SDL2_DIR" "VULKAN_DIR=$VULKAN_DIR" "$target"; then
         rm -f -- "$executable"
         return 1
     fi
