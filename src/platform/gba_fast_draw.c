@@ -1734,9 +1734,6 @@ static void DrawSpritesWinMask(struct scanlineData* scanline, uint16_t vcount)
             continue; // prohibited, do not draw
         }
 
-        int rect_width = width;
-        int rect_height = height;
-
         int half_width = width / 2;
         int half_height = height / 2;
 
@@ -1765,8 +1762,6 @@ static void DrawSpritesWinMask(struct scanlineData* scanline, uint16_t vcount)
 
             if (doubleSizeOrDisabled) // double size for affine
             {
-                rect_width *= 2;
-                rect_height *= 2;
                 half_width *= 2;
                 half_height *= 2;
             }
@@ -1899,9 +1894,6 @@ static void DrawAffineSprite(int SpriteIndex, struct scanlineData* scanline, uin
         return; // prohibited, do not draw
     }
 
-    int rect_width = width;
-    int rect_height = height;
-
     int half_width = width / 2;
     int half_height = height / 2;
 
@@ -1932,8 +1924,6 @@ static void DrawAffineSprite(int SpriteIndex, struct scanlineData* scanline, uin
 
         if (doubleSizeOrDisabled) // double size for affine
         {
-            rect_width *= 2;
-            rect_height *= 2;
             half_width *= 2;
             half_height *= 2;
         }

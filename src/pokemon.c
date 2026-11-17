@@ -3112,7 +3112,9 @@ s32 CalculateBaseDamage(struct BattlePokemon *attacker, struct BattlePokemon *de
     u16 attack, defense;
     u16 spAttack, spDefense;
     u8 defenderHoldEffect;
+#ifndef PORTABLE
     u8 defenderHoldEffectParam;
+#endif
     u8 attackerHoldEffect;
     u8 attackerHoldEffectParam;
 
@@ -3147,12 +3149,16 @@ s32 CalculateBaseDamage(struct BattlePokemon *attacker, struct BattlePokemon *de
     if (defender->item == ITEM_ENIGMA_BERRY)
     {
         defenderHoldEffect = gEnigmaBerries[battlerIdDef].holdEffect;
+#ifndef PORTABLE
         defenderHoldEffectParam = gEnigmaBerries[battlerIdDef].holdEffectParam;
+#endif
     }
     else
     {
         defenderHoldEffect = GetItemHoldEffect(defender->item);
+#ifndef PORTABLE
         defenderHoldEffectParam = GetItemHoldEffectParam(defender->item);
+#endif
     }
 
     if (attacker->ability == ABILITY_HUGE_POWER || attacker->ability == ABILITY_PURE_POWER)
@@ -3732,6 +3738,9 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
         break;
     case MON_DATA_NICKNAME:
     {
+        if (data == NULL)
+            break;
+
         if (boxMon->isBadEgg)
         {
             for (retVal = 0;
@@ -3782,6 +3791,9 @@ u32 GetBoxMonData3(struct BoxPokemon *boxMon, s32 field, u8 *data)
         break;
     case MON_DATA_OT_NAME:
     {
+        if (data == NULL)
+            break;
+
         retVal = 0;
 
         while (retVal < PLAYER_NAME_LENGTH)
@@ -4220,10 +4232,16 @@ void SetBoxMonData(struct BoxPokemon *boxMon, s32 field, const void *dataArg)
         SET16(substruct1->moves[field - MON_DATA_MOVE1]);
         break;
     case MON_DATA_PP1:
+        SET8(substruct1->pp[0]);
+        break;
     case MON_DATA_PP2:
+        SET8(substruct1->pp[1]);
+        break;
     case MON_DATA_PP3:
+        SET8(substruct1->pp[2]);
+        break;
     case MON_DATA_PP4:
-        SET8(substruct1->pp[field - MON_DATA_PP1]);
+        SET8(substruct1->pp[3]);
         break;
     case MON_DATA_HP_EV:
         SET8(substruct2->hpEV);

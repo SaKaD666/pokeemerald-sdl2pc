@@ -504,9 +504,6 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
             continue; // prohibited, do not draw
         }
 
-        int rect_width = width;
-        int rect_height = height;
-
         int half_width = width / 2;
         int half_height = height / 2;
 
@@ -537,8 +534,6 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
 
             if (doubleSizeOrDisabled) // double size for affine
             {
-                rect_width *= 2;
-                rect_height *= 2;
                 half_width *= 2;
                 half_height *= 2;
             }
