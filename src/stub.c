@@ -10,7 +10,7 @@
 #define STUB_FUNC_QUIET_BLOCK(func, block) func { block }
 
 STUB_FUNC_QUIET_BLOCK(bool8 HandleLinkConnection(), return 0;)
-STUB_FUNC_QUIET(void Task_InitUnionRoom())
+STUB_FUNC_QUIET(void Task_InitUnionRoom(u8 taskId))
 STUB_FUNC(int MultiBoot(struct MultiBootParam *mp))
 STUB_FUNC(void RegisterRamReset(u32 resetFlags))
 STUB_FUNC(void IntrMain())

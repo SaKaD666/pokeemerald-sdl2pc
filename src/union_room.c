@@ -274,7 +274,11 @@ static void UR_ClearBg0(void);
 static s32 IsRequestedTradeInPlayerParty(u32, u32);
 static bool32 UR_PrintFieldMessage(const u8 *);
 static s32 GetChatLeaderActionRequestMessage(u8 *, u32, u16 *, struct WirelessLink_URoom *);
+#ifdef PORTABLE
+void Task_InitUnionRoom(u8 taskId);
+#else
 static void Task_InitUnionRoom(u8 taskId);
+#endif
 static bool8 ArePlayersDifferent(struct RfuPlayerData *, const struct RfuPlayerData *);
 static void ItemPrintFunc_PossibleGroupMembers(u8, u32, u8);
 static void ListMenuItemPrintFunc_UnionRoomGroups(u8, u32, u8);

@@ -1910,8 +1910,9 @@ void ResetBgPositions(void)
 void BgDmaFill(u32 bg, u8 value, int offset, int size)
 {
     int temp = (!GetBgAttribute(bg, BG_ATTR_PALETTEMODE)) ? 32 : 64;
-    void *addr = (void *)((GetBgAttribute(bg, BG_ATTR_CHARBASEINDEX) * 0x4000) + (GetBgAttribute(bg, BG_ATTR_BASETILE) + offset) * temp);
-    RequestDma3Fill(value << 24 | value << 16 | value << 8 | value, VRAM + addr, size * temp, 1);
+    uintptr_t offsetBytes = (GetBgAttribute(bg, BG_ATTR_CHARBASEINDEX) * 0x4000) + (GetBgAttribute(bg, BG_ATTR_BASETILE) + offset) * temp;
+    uintptr_t address = (uintptr_t)VRAM + offsetBytes;
+    RequestDma3Fill(value << 24 | value << 16 | value << 8 | value, (void *)address, size * temp, 1);
 }
 
 void AddTextPrinterParameterized3(u8 windowId, u8 fontId, u8 left, u8 top, const u8 *color, s8 speed, const u8 *str)

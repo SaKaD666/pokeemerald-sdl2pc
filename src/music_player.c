@@ -9,7 +9,7 @@
 // #define POKEMON_EXTENSIONS
 #define MIXED_AUDIO_BUFFER_SIZE 4907
 
-static u32 MidiKeyToFreq(struct WaveData2 *wav, u8 key, u8 pitch);
+u32 MidiKeyToFreq(struct WaveData *wav, u8 key, u8 fineAdjust);
 void ChnVolSetAsm(struct MixerSource *chan, struct MP2KTrack *track);
 float *cgb_get_buffer();
 extern void * const gMPlayJumpTableTemplate[];
