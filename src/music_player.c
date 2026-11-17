@@ -200,7 +200,6 @@ void MPlayJumpTableCopy(void **mplayJumpTable) {
 
 // Ends the current track. (Fine as in the Italian musical word, not English)
 void MP2K_event_fine(struct MP2KPlayerState *unused, struct MP2KTrack *track) {
-    struct MP2KTrack *r5 = track;
     for (struct MixerSource *chan = track->chan; chan != NULL; chan = chan->next) {
         if (chan->status & 0xC7) {
             chan->status |= 0x40;

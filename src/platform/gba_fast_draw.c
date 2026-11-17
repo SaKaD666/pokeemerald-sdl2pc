@@ -1149,8 +1149,6 @@ static void RenderRotScaleBGScanlineWinBlend(int bgNum, uint16_t control, uint16
     vBgCnt *bgcnt = (vBgCnt *)&control;
     unsigned int charBaseBlock = bgcnt->charBaseBlock;
     unsigned int screenBaseBlock = bgcnt->screenBaseBlock;
-    unsigned int mapWidth = 1 << (4 + (bgcnt->screenSize)); // number of tiles
-
     uint8_t *bgtiles = (uint8_t *)(VRAM_ + charBaseBlock * 0x4000);
     uint8_t *bgmap = (uint8_t *)(VRAM_ + screenBaseBlock * 0x800);
     uint16_t *pal = (uint16_t *)PLTT;
@@ -1292,8 +1290,6 @@ static void RenderRotScaleBGScanlineWin(int bgNum, uint16_t control, uint16_t x,
     vBgCnt *bgcnt = (vBgCnt *)&control;
     unsigned int charBaseBlock = bgcnt->charBaseBlock;
     unsigned int screenBaseBlock = bgcnt->screenBaseBlock;
-    unsigned int mapWidth = 1 << (4 + (bgcnt->screenSize)); // number of tiles
-
     uint8_t *bgtiles = (uint8_t *)(VRAM_ + charBaseBlock * 0x4000);
     uint8_t *bgmap = (uint8_t *)(VRAM_ + screenBaseBlock * 0x800);
     uint16_t *pal = (uint16_t *)PLTT;
@@ -1418,8 +1414,6 @@ static void RenderRotScaleBGScanlineBlend(int bgNum, uint16_t control, uint16_t 
     vBgCnt *bgcnt = (vBgCnt *)&control;
     unsigned int charBaseBlock = bgcnt->charBaseBlock;
     unsigned int screenBaseBlock = bgcnt->screenBaseBlock;
-    unsigned int mapWidth = 1 << (4 + (bgcnt->screenSize)); // number of tiles
-
     uint8_t *bgtiles = (uint8_t *)(VRAM_ + charBaseBlock * 0x4000);
     uint8_t *bgmap = (uint8_t *)(VRAM_ + screenBaseBlock * 0x800);
     uint16_t *pal = (uint16_t *)PLTT;
@@ -1561,8 +1555,6 @@ static void RenderRotScaleBGScanlineNoEffect(int bgNum, uint16_t control, uint16
     vBgCnt *bgcnt = (vBgCnt *)&control;
     unsigned int charBaseBlock = bgcnt->charBaseBlock;
     unsigned int screenBaseBlock = bgcnt->screenBaseBlock;
-    unsigned int mapWidth = 1 << (4 + (bgcnt->screenSize)); // number of tiles
-
     uint8_t *bgtiles = (uint8_t *)(VRAM_ + charBaseBlock * 0x4000);
     uint8_t *bgmap = (uint8_t *)(VRAM_ + screenBaseBlock * 0x800);
     uint16_t *pal = (uint16_t *)PLTT;
@@ -2654,7 +2646,6 @@ unsigned int frameskipcounter = 0;
 void DrawFrame(uint16_t *pixels)
 {
     int i;
-    int j;
     
     //memsetu16(pixels, *(uint16_t *)PLTT, DISPLAY_WIDTH * DISPLAY_HEIGHT);
 
