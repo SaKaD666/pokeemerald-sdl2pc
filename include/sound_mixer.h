@@ -108,6 +108,8 @@ struct SoundMixerState {
     //s8 outBuffer[MIXED_AUDIO_BUFFER_SIZE * 2];
 };
 
+#define SOUND_MIXER_INFO_PTR ((struct SoundMixerState *)SOUND_INFO_PTR)
+
 typedef void (*MixerRamFunc)(struct SoundMixerState *, u32, u16, s8 *, u16);
 
 #ifndef NOT_GBA

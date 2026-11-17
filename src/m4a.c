@@ -4,6 +4,11 @@
 #ifdef PORTABLE
 #include "cgb_audio.h"
 void RunMixerFrame(void);
+
+static inline void M4ATrackStop(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
+{
+    TrackStop((struct MP2KPlayerState *)mplayInfo, (struct MP2KTrack *)track);
+}
 #endif
 
 extern const u8 gCgb3Vol[];
@@ -724,7 +729,7 @@ void MPlayStart(struct MusicPlayerInfo *mplayInfo, struct SongHeader *songHeader
 
         while (i < songHeader->trackCount && i < mplayInfo->trackCount)
         {
-            TrackStop(mplayInfo, track);
+            M4ATrackStop(mplayInfo, track);
             track->flags = MPT_FLG_EXIST | MPT_FLG_START;
             track->chan = 0;
             track->cmdPtr = songHeader->part[i];
@@ -734,7 +739,7 @@ void MPlayStart(struct MusicPlayerInfo *mplayInfo, struct SongHeader *songHeader
 
         while (i < mplayInfo->trackCount)
         {
-            TrackStop(mplayInfo, track);
+            M4ATrackStop(mplayInfo, track);
             track->flags = 0;
             i++;
             track++;
@@ -766,7 +771,7 @@ void m4aMPlayStop(struct MusicPlayerInfo *mplayInfo)
 
     while (i > 0)
     {
-        TrackStop(mplayInfo, track);
+        M4ATrackStop(mplayInfo, track);
         i--;
         track++;
     }
@@ -806,7 +811,7 @@ void FadeOutBody(struct MusicPlayerInfo *mplayInfo)
             {
                 u32 val;
 
-                TrackStop(mplayInfo, track);
+                M4ATrackStop(mplayInfo, track);
 
                 val = TEMPORARY_FADE;
                 fadeOV = mplayInfo->fadeOV;

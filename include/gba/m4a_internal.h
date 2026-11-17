@@ -475,11 +475,7 @@ void CgbOscOff(u8);
 void CgbModVol(struct CgbChannel *chan);
 u32 MidiKeyToCgbFreq(u8, u8, u8);
 void DummyFunc(void);
-#ifndef PORTABLE
 void MPlayJumpTableCopy(MPlayFunc *mplayJumpTable);
-#else
-void MPlayJumpTableCopy(void **mplayJumpTable);
-#endif
 void SampleFreqSet(u32 freq);
 void m4aSoundVSyncOn(void);
 void m4aSoundVSyncOff(void);

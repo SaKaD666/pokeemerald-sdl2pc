@@ -18,6 +18,18 @@ extern const u32 gFreqTable[];
 extern const u8 gClockTable[];
 float audioBuffer [MIXED_AUDIO_BUFFER_SIZE];
 
+// The M4A helper only uses the shared track prefix; its player argument is unused.
+static inline void MP2KTrackVolPitSet(struct MP2KTrack *track)
+{
+    TrkVolPitSet(NULL, (struct MusicPlayerTrack *)track);
+}
+
+// ClearModM only accesses fields in the shared M4A/MP2K track prefix.
+static inline void MP2KTrackClearModM(struct MP2KTrack *track)
+{
+    ClearModM((struct MusicPlayerTrack *)track);
+}
+
 u32 umul3232H32(u32 a, u32 b) {
     u64 result = a;
     result *= b;
@@ -192,9 +204,9 @@ u8 ConsumeTrackByte(struct MP2KTrack *track) {
     return SafeDereferenceU8(ptr);
 }
 
-void MPlayJumpTableCopy(void **mplayJumpTable) {
+void MPlayJumpTableCopy(MPlayFunc *mplayJumpTable) {
     for (uf8 i = 0; i < 36; i++) {
-        mplayJumpTable[i] = SafeDereferenceVoidPtr(&gMPlayJumpTableTemplate[i]);
+        mplayJumpTable[i] = (MPlayFunc)SafeDereferenceVoidPtr(&gMPlayJumpTableTemplate[i]);
     }
 }
 
@@ -346,7 +358,7 @@ void MP2K_event_port(struct MP2KPlayerState *unused, struct MP2KTrack *track) {
 
 void MP2KPlayerMain(void *voidPtrPlayer) {
     struct MP2KPlayerState *player = (struct MP2KPlayerState *)voidPtrPlayer;
-    struct SoundMixerState *mixer = SOUND_INFO_PTR;
+    struct SoundMixerState *mixer = SOUND_MIXER_INFO_PTR;
 
     player->hasBeenRanOnce = TRUE;
 
@@ -477,7 +489,7 @@ void MP2KPlayerMain(void *voidPtrPlayer) {
         if ((track->status & MPT_FLG_EXIST) == 0 || (track->status & 0xF) == 0) {
             continue;
         }
-        TrkVolPitSet(player, track);
+        MP2KTrackVolPitSet(track);
         for (struct MixerSource *chan = track->chan; chan != NULL; chan = chan->next) {
             if ((chan->status & 0xC7) == 0) {
                 ClearChain(chan);
@@ -516,7 +528,7 @@ void TrackStop(struct MP2KPlayerState *player, struct MP2KTrack *track) {
             if (chan->status != 0) {
                 u8 cgbType = chan->type & 0x7;
                 if (cgbType != 0) {
-                    struct SoundMixerState *mixer = SOUND_INFO_PTR;
+                    struct SoundMixerState *mixer = SOUND_MIXER_INFO_PTR;
                     mixer->cgbNoteOffFunc(cgbType);
                 }
                 chan->status = 0;
@@ -543,7 +555,7 @@ void ChnVolSetAsm(struct MixerSource *chan, struct MP2KTrack *track) {
 }
 
 void MP2K_event_nxx(u8 clock, struct MP2KPlayerState *player, struct MP2KTrack *track) { // ply_note
-    struct SoundMixerState *mixer = SOUND_INFO_PTR;
+    struct SoundMixerState *mixer = SOUND_MIXER_INFO_PTR;
     
     // A note can be anywhere from 1 to 4 bytes long. First is always the note length...
     track->gateTime = gClockTable[clock];
@@ -667,9 +679,9 @@ void MP2K_event_nxx(u8 clock, struct MP2KPlayerState *player, struct MP2KTrack *
     
     track->lfoDelayCounter = track->lfoDelay;
     if (track->lfoDelay != 0) {
-        ClearModM(track);
+        MP2KTrackClearModM(track);
     }
-    TrkVolPitSet(player, track);
+    MP2KTrackVolPitSet(track);
     
     chan->gateTime = track->gateTime;
     chan->untransposedKey = track->key;
@@ -737,20 +749,20 @@ void MP2K_event_endtie(struct MP2KPlayerState *unused, struct MP2KTrack *track) 
 void MP2K_event_lfos(struct MP2KPlayerState *unused, struct MP2KTrack *track) {
     track->lfoSpeed = *(track->cmdPtr++);
     if (track->lfoSpeed == 0) {
-        ClearModM(track);
+        MP2KTrackClearModM(track);
     }
 }
 
 void MP2K_event_mod(struct MP2KPlayerState *unused, struct MP2KTrack *track) {
     track->modDepth = *(track->cmdPtr++);
     if (track->modDepth == 0) {
-        ClearModM(track);
+        MP2KTrackClearModM(track);
     }
 }
 
 void m4aSoundVSync(void)
 {
-    struct SoundMixerState *mixer = SOUND_INFO_PTR;
+    struct SoundMixerState *mixer = SOUND_MIXER_INFO_PTR;
 #ifdef PORTABLE
     if(mixer->lockStatus-PLAYER_UNLOCKED <= 1)
     {
