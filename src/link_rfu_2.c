@@ -108,7 +108,7 @@ static u8 GetPartnerIndexByNameAndTrainerID(const u8 *, u16);
 static void UpdateChildStatuses(void);
 static s32 GetJoinGroupStatus(void);
 static void ClearSelectedLinkPlayerIds(u16);
-static void ValidateAndReceivePokemonSioInfo(void *);
+static bool8 ValidateAndReceivePokemonSioInfo(void *);
 static void ParentResetChildRecvMetadata(s32);
 static void CB2_RfuIdle(void);
 static void RfuReqDisconnectSlot(u32);
@@ -1005,6 +1005,9 @@ static void HandleSendFailure(u8 unused, u32 flags)
 
 void Rfu_SetBlockReceivedFlag(u8 linkPlayerId)
 {
+    if (linkPlayerId >= MAX_RFU_PLAYERS)
+        return;
+
     if (gRfu.parentChild == MODE_PARENT && linkPlayerId)
         gRfu.numBlocksReceived[linkPlayerId] = 1;
     else
@@ -1013,6 +1016,9 @@ void Rfu_SetBlockReceivedFlag(u8 linkPlayerId)
 
 void Rfu_ResetBlockReceivedFlag(u8 linkPlayerId)
 {
+    if (linkPlayerId >= MAX_RFU_PLAYERS)
+        return;
+
     gRfu.blockReceived[linkPlayerId] = FALSE;
     gRfu.recvBlock[linkPlayerId].receiving = RECV_STATE_READY;
 }
@@ -1074,6 +1080,17 @@ void Rfu_SetBerryBlenderLinkCallback(void)
         gRfu.callback = Rfu_BerryBlenderSendHeldKeys;
 }
 
+static bool8 ValidateRfuPlayerCount(u8 playerCount)
+{
+    if (playerCount > MAX_RFU_PLAYERS)
+    {
+        LinkRfu_FatalError();
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 static void RfuHandleReceiveCommand(u8 unused)
 {
     u16 i;
@@ -1090,6 +1107,8 @@ static void RfuHandleReceiveCommand(u8 unused)
         case RFUCMD_SEND_PLAYER_IDS:
             if (gRfuLinkStatus->parentChild == MODE_CHILD)
             {
+                if (!ValidateRfuPlayerCount(gRecvCmds[i][1]))
+                    return;
                 gRfu.playerCount = gRecvCmds[i][1];
                 gRfu.multiplayerId = LoadLinkPlayerIds((u8 *)(gRecvCmds[i] + 2));
             }
@@ -1117,7 +1136,10 @@ static void RfuHandleReceiveCommand(u8 unused)
                     gRfu.recvBlock[i].receiving = RECV_STATE_FINISHED;
                     Rfu_SetBlockReceivedFlag(i);
                     if (GetHostRfuGameData()->activity == (ACTIVITY_CHAT | IN_UNION_ROOM) && gReceivedRemoteLinkPlayers && gRfu.parentChild == MODE_CHILD)
-                        ValidateAndReceivePokemonSioInfo(gBlockRecvBuffer);
+                    {
+                        if (!ValidateAndReceivePokemonSioInfo(gBlockRecvBuffer))
+                            return;
+                    }
                 }
             }
             break;
@@ -1137,6 +1159,9 @@ static void RfuHandleReceiveCommand(u8 unused)
                 // Disconnect child
                 if (gReceivedRemoteLinkPlayers)
                 {
+                    if (!ValidateRfuPlayerCount(gRecvCmds[i][3]))
+                        return;
+
                     if (gRecvCmds[i][1] & gRfuLinkStatus->connSlotFlag)
                     {
                         gReceivedRemoteLinkPlayers = 0;
@@ -1852,9 +1877,13 @@ static void ClearSelectedLinkPlayerIds(u16 selected)
     }
 }
 
-static void ReceiveRfuLinkPlayers(const struct SioInfo *sioInfo)
+static bool8 ReceiveRfuLinkPlayers(const struct SioInfo *sioInfo)
 {
     s32 i;
+
+    if (!ValidateRfuPlayerCount(sioInfo->playerCount))
+        return FALSE;
+
     gRfu.playerCount = sioInfo->playerCount;
     for (i = 0; i < RFU_CHILD_MAX; i++)
         gRfu.linkPlayerIdx[i] = sioInfo->linkPlayerIdx[i];
@@ -1863,16 +1892,22 @@ static void ReceiveRfuLinkPlayers(const struct SioInfo *sioInfo)
         gLinkPlayers[i] = sioInfo->linkPlayers[i];
         ConvertLinkPlayerName(gLinkPlayers + i);
     }
+
+    return TRUE;
 }
 
-static void ValidateAndReceivePokemonSioInfo(void *recvBuffer)
+static bool8 ValidateAndReceivePokemonSioInfo(void *recvBuffer)
 {
     if (strcmp(sASCII_PokemonSioInfo, recvBuffer) == 0)
     {
-        ReceiveRfuLinkPlayers(recvBuffer);
+        if (!ReceiveRfuLinkPlayers(recvBuffer))
+            return FALSE;
+
         CpuFill16(0, recvBuffer, sizeof(struct SioInfo));
         ResetBlockReceivedFlag(0);
     }
+
+    return TRUE;
 }
 
 // Equivalent to Task_PlayerExchange, but for when new children arrive after the first exchange
@@ -1977,7 +2012,9 @@ static void Task_PlayerExchangeChat(u8 taskId)
     case 2:
         if (GetBlockReceivedStatus() & 1)
         {
-            ReceiveRfuLinkPlayers((const struct SioInfo *)gBlockRecvBuffer);
+            if (!ReceiveRfuLinkPlayers((const struct SioInfo *)gBlockRecvBuffer))
+                break;
+
             ResetBlockReceivedFlag(0);
             gReceivedRemoteLinkPlayers = 1;
             DestroyTask(taskId);
