@@ -1,4 +1,4 @@
-#ifdef RENDERER_EASY_DRAW
+#ifdef RENDERER_LARGE_DRAW
 #include "global.h"
 #include <stdbool.h>
 #include "platform/dma.h"

@@ -37,6 +37,13 @@ if (($# > 1)); then
     exit 2
 fi
 
+TILE_RENDERER="${TILE_RENDERER:-RENDERER_LARGE_DRAW}"
+if [[ "$TILE_RENDERER" != RENDERER_LARGE_DRAW ]]; then
+    printf 'Unsupported TILE_RENDERER: %s. Only RENDERER_LARGE_DRAW is supported.\n' \
+        "$TILE_RENDERER" >&2
+    exit 2
+fi
+
 JOBS="${JOBS:-}"
 if [[ -z "$JOBS" ]]; then
     if command -v nproc >/dev/null 2>&1; then
@@ -214,7 +221,7 @@ cache_fingerprint() {
     {
         printf 'target=%s\nwidth=%s\ntarget_os=%s\n' "$target" "$width" "$target_os"
         printf 'renderer=%s\nDINFO=%s\nO_LEVEL=%s\n' \
-            "${TILE_RENDERER:-RENDERER_EASY_DRAW}" "${DINFO:-0}" "${O_LEVEL:-2}"
+            "$TILE_RENDERER" "${DINFO:-0}" "${O_LEVEL:-2}"
         printf 'CFLAGS=%s\nCPPFLAGS=%s\nASFLAGS=%s\nLDFLAGS=%s\n' \
             "${CFLAGS:-}" "${CPPFLAGS:-}" "${ASFLAGS:-}" "${LDFLAGS:-}"
 
@@ -248,7 +255,7 @@ build_one() {
     local is64bit="$2"
     local width="$3"
     local target_os=LINUX
-    local renderer="${TILE_RENDERER:-RENDERER_EASY_DRAW}"
+    local renderer="$TILE_RENDERER"
     local dinfo="${DINFO:-0}"
     local mode=release
     local executable="$ROOT_DIR/pokeemerald$width"

@@ -3,7 +3,7 @@ KEEP_TEMPS  ?= 0
 PORTABLE    ?= 0
 IS64BIT     ?= 1
 TARGET_OS       ?= NONE
-TILE_RENDERER   ?= RENDERER_EASY_DRAW
+TILE_RENDERER   ?= RENDERER_LARGE_DRAW
 
 # Executable base name
 FILE_NAME := pokeemerald
@@ -37,6 +37,12 @@ ifeq ($(MAKECMDGOALS),all)
   PORTABLE := 1
   TARGET_OS := LINUX
   IS64BIT := 1
+endif
+
+ifeq ($(PORTABLE),1)
+  ifneq ($(TILE_RENDERER),RENDERER_LARGE_DRAW)
+    $(error Unsupported TILE_RENDERER '$(TILE_RENDERER)'; only RENDERER_LARGE_DRAW is supported)
+  endif
 endif
 
 # Toolchain selection
