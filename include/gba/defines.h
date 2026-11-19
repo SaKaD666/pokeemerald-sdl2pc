@@ -29,6 +29,11 @@
 #define OBJ_PLTT      (PLTT + BG_PLTT_SIZE)
 #define OBJ_PLTT_SIZE 0x200
 #define PLTT_SIZE     (BG_PLTT_SIZE + OBJ_PLTT_SIZE)
+#ifdef PORTABLE
+#define PLTT_STORAGE_SIZE 0x800
+#else
+#define PLTT_STORAGE_SIZE PLTT_SIZE
+#endif
 
 #ifndef PORTABLE
 #define SOUND_INFO_PTR (*(struct SoundInfo **)0x3007FF0)
@@ -46,16 +51,21 @@ extern struct SoundInfo * SOUND_INFO_PTR;
 extern unsigned short INTR_CHECK;
 extern void * INTR_VECTOR;
 
-extern unsigned char PLTT[PLTT_SIZE] __attribute__ ((aligned (4)));
+extern unsigned char PLTT[PLTT_STORAGE_SIZE] __attribute__ ((aligned (4)));
 #endif
 
 #define BG_PLTT       PLTT
 
 #define VRAM_SIZE 0x18000
+#ifdef PORTABLE
+#define VRAM_STORAGE_SIZE 0x30000
+#else
+#define VRAM_STORAGE_SIZE VRAM_SIZE
+#endif
 #ifndef PORTABLE
 #define VRAM      0x6000000
 #else
-extern unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
+extern unsigned char VRAM_[VRAM_STORAGE_SIZE] __attribute__ ((aligned (4)));
 #define VRAM (uintptr_t)VRAM_
 #endif //PORTABLE
 
@@ -80,10 +90,15 @@ extern unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
 #define OBJ_VRAM1_SIZE 0x4000
 
 #define OAM_SIZE 0x400
+#ifdef PORTABLE
+#define OAM_STORAGE_SIZE 0x800
+#else
+#define OAM_STORAGE_SIZE OAM_SIZE
+#endif
 #ifndef PORTABLE
 #define OAM      0x7000000
 #else
-extern unsigned char OAM[OAM_SIZE] __attribute__ ((aligned (4)));
+extern unsigned char OAM[OAM_STORAGE_SIZE] __attribute__ ((aligned (4)));
 #endif
 
 #define ROM_HEADER_SIZE   0xC0
