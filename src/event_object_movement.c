@@ -1800,6 +1800,22 @@ static void TrySpawnConnectedObjects(s16 cameraX, s16 cameraY)
 }
 #endif
 
+static void GetLocalObjectViewHorizontalBounds(s16 *left, s16 *right)
+{
+    *left = gSaveBlock1Ptr->pos.x - 2;
+    *right = gSaveBlock1Ptr->pos.x + MAP_OFFSET_W + 2;
+
+#ifdef PLATFORM_SDL2
+    if (IsOverworldTilemapWide())
+    {
+        s16 center = gSaveBlock1Ptr->pos.x + MAP_OFFSET;
+
+        *left = center - 11;
+        *right = center + 11;
+    }
+#endif
+}
+
 void TrySpawnObjectEvents(s16 cameraX, s16 cameraY)
 {
     u8 i;
@@ -1810,10 +1826,11 @@ void TrySpawnObjectEvents(s16 cameraX, s16 cameraY)
 
     if (gMapHeader.events != NULL)
     {
-        s16 left = gSaveBlock1Ptr->pos.x - 2;
-        s16 right = gSaveBlock1Ptr->pos.x + MAP_OFFSET_W + 2;
+        s16 left, right;
         s16 top = gSaveBlock1Ptr->pos.y;
         s16 bottom = gSaveBlock1Ptr->pos.y + MAP_OFFSET_H + 2;
+
+        GetLocalObjectViewHorizontalBounds(&left, &right);
 
         if (CurrentBattlePyramidLocation() != PYRAMID_LOCATION_NONE)
             objectCount = GetNumBattlePyramidObjectEvents();
@@ -1880,10 +1897,11 @@ static void RemoveObjectEventIfOutsideView(struct ObjectEvent *objectEvent)
     }
 #endif
 
-    s16 left =   gSaveBlock1Ptr->pos.x - 2;
-    s16 right =  gSaveBlock1Ptr->pos.x + 17;
+    s16 left, right;
     s16 top =    gSaveBlock1Ptr->pos.y;
     s16 bottom = gSaveBlock1Ptr->pos.y + 16;
+
+    GetLocalObjectViewHorizontalBounds(&left, &right);
 
     if (objectEvent->currentCoords.x >= left && objectEvent->currentCoords.x <= right
      && objectEvent->currentCoords.y >= top && objectEvent->currentCoords.y <= bottom)

@@ -20,6 +20,9 @@
 #include "window.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 static void CB2_WallClock(void);
 static void Task_SetClock_WaitFadeIn(u8 taskId);
@@ -27,11 +30,10 @@ static void Task_SetClock_HandleInput(u8 taskId);
 static void Task_SetClock_AskConfirm(u8 taskId);
 static void Task_SetClock_HandleConfirmInput(u8 taskId);
 static void Task_SetClock_Confirmed(u8 taskId);
-static void Task_SetClock_Exit(u8 taskId);
+static void Task_WallClock_Exit(u8 taskId);
 static void Task_ViewClock_WaitFadeIn(u8 taskId);
 static void Task_ViewClock_HandleInput(u8 taskId);
 static void Task_ViewClock_FadeOut(u8 taskId);
-static void Task_ViewClock_Exit(u8 taskId);
 static u16 CalcNewMinHandAngle(u16 angle, u8 direction, u8 speed);
 static bool32 AdvanceClock(u8 taskId, u8 direction);
 static void UpdateClockPeriod(u8 taskId, u8 direction);
@@ -152,7 +154,7 @@ static const struct SpritePalette sSpritePalettes_Clock[] =
 
 static const struct OamData sOam_ClockHand =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .shape = SPRITE_SHAPE(64x64),
     .size = SPRITE_SIZE(64x64),
     .priority = 1,
@@ -204,7 +206,7 @@ static const struct SpriteTemplate sSpriteTemplate_HourHand =
 
 static const struct OamData sOam_PeriodIndicator =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .shape = SPRITE_SHAPE(16x16),
     .size = SPRITE_SIZE(16x16),
     .priority = 3,
@@ -628,6 +630,9 @@ static void VBlankCB_WallClock(void)
 static void LoadWallClockGraphics(void)
 {
     SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
     SetGpuReg(REG_OFFSET_BG3CNT, 0);
     SetGpuReg(REG_OFFSET_BG2CNT, 0);
@@ -776,6 +781,8 @@ void CB2_ViewWallClock(void)
 static void CB2_WallClock(void)
 {
     RunTasks();
+    if (gMain.callback2 != CB2_WallClock)
+        return;
     AnimateSprites();
     BuildOamBuffer();
     DoScheduledBgTilemapCopiesToVram();
@@ -862,14 +869,25 @@ static void Task_SetClock_Confirmed(u8 taskId)
 {
     RtcInitLocalTimeOffset(gTasks[taskId].tHours, gTasks[taskId].tMinutes);
     BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
-    gTasks[taskId].func = Task_SetClock_Exit;
+    gTasks[taskId].func = Task_WallClock_Exit;
 }
 
-static void Task_SetClock_Exit(u8 taskId)
+static void Task_WallClock_Exit(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
+        SetVBlankCallback(NULL);
+#ifdef PORTABLE
+        IsDma3ManagerBusyWithBgCopy();
+        ClearScheduledBgCopiesToVram();
+#endif
         FreeAllWindowBuffers();
+        UnsetBgTilemapBuffer(0);
+        UnsetBgTilemapBuffer(2);
+        DestroyTask(taskId);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(gMain.savedCallback);
     }
 }
@@ -890,13 +908,7 @@ static void Task_ViewClock_HandleInput(u8 taskId)
 static void Task_ViewClock_FadeOut(u8 taskId)
 {
     BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
-    gTasks[taskId].func = Task_ViewClock_Exit;
-}
-
-static void Task_ViewClock_Exit(u8 taskId)
-{
-    if (!gPaletteFade.active)
-        SetMainCallback2(gMain.savedCallback);
+    gTasks[taskId].func = Task_WallClock_Exit;
 }
 
 static u8 CalcMinHandDelta(u16 speed)

@@ -929,6 +929,8 @@ static void CB2_GiveStarter(void)
     ScriptGiveMon(starterMon, 5, ITEM_NONE, 0, 0, 0);
     ResetTasks();
     PlayBattleBGM();
+    // The starter screen removes its VBlank callback, but Blur still fades the palette.
+    SetVBlankCallback(TransferPlttBuffer);
     SetMainCallback2(CB2_StartFirstBattle);
     BattleTransition_Start(B_TRANSITION_BLUR);
 }

@@ -79,7 +79,7 @@ int main(int argc, char **argv)
     freopen( "CON", "w", stdout ) ;
 #endif
 
-    ReadSaveFile("pokeemerald-v3.sav");
+    ReadSaveFile("pokeemerald-v4.sav");
 
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
     {

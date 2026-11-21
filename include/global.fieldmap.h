@@ -82,9 +82,9 @@ struct MapLayout
     /*0x14*/ const struct Tileset *secondaryTileset;
 };
 
-#define MAP_VIEW_WIDTH 22
+#define MAP_VIEW_WIDTH 23
 #define MAP_VIEW_HEIGHT 14
-#define MAP_VIEW_LEFT_MARGIN 10
+#define MAP_VIEW_LEFT_MARGIN 11
 #define MAP_VIEW_TOP_MARGIN 6
 
 struct BackupMapLayout

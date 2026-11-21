@@ -13,7 +13,7 @@
 
 // If the sector's signature field is not this value then the sector is either invalid or empty.
 #if defined(PLATFORM_SDL2)
-#define SECTOR_SIGNATURE 0x8012027
+#define SECTOR_SIGNATURE 0x8012028
 #elif defined(PORTABLE)
 #define SECTOR_SIGNATURE 0x8012026
 #else
