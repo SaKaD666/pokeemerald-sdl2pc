@@ -101,6 +101,8 @@ EWRAM_DATA u16 gTrainerBattleOpponent_A = 0;
 EWRAM_DATA u16 gTrainerBattleOpponent_B = 0;
 EWRAM_DATA u16 gPartnerTrainerId = 0;
 EWRAM_DATA static u16 sTrainerObjectEventLocalId = 0;
+EWRAM_DATA static u16 sTrainerScriptMaps[2] = {0};
+EWRAM_DATA static u16 sTrainerScriptLocalIds[2] = {0};
 EWRAM_DATA static u8 *sTrainerAIntroSpeech = NULL;
 EWRAM_DATA static u8 *sTrainerBIntroSpeech = NULL;
 EWRAM_DATA static u8 *sTrainerADefeatSpeech = NULL;
@@ -1127,16 +1129,23 @@ static void TrainerBattleLoadArgs(const struct TrainerBattleParameter *specs, co
     }
 }
 
-void SetMapVarsToTrainer(void)
+static void SetMapVarsToTrainer(u16 localId, u16 map)
 {
-    if (sTrainerObjectEventLocalId != LOCALID_NONE)
+    if (localId != LOCALID_NONE)
     {
-        gSpecialVar_LastTalked = sTrainerObjectEventLocalId;
-        gSelectedObjectEvent = GetObjectEventIdByLocalIdAndMap(sTrainerObjectEventLocalId, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup);
+        gSpecialVar_LastTalked = localId;
+        gSelectedObjectEvent = GetObjectEventIdByLocalIdAndMap(localId, MAP_NUM(map), MAP_GROUP(map));
     }
 }
 
 const u8 *BattleSetup_ConfigureTrainerBattle(const u8 *data)
+{
+    u16 map = ((u8)gSaveBlock1Ptr->location.mapGroup << 8) | (u8)gSaveBlock1Ptr->location.mapNum;
+
+    return BattleSetup_ConfigureTrainerBattleInMap(data, map, LOCALID_NONE);
+}
+
+static const u8 *ConfigureTrainerBattle(const u8 *data, u16 map)
 {
     InitTrainerBattleVariables();
     sTrainerBattleMode = TrainerBattleLoadArg8(data);
@@ -1148,13 +1157,13 @@ const u8 *BattleSetup_ConfigureTrainerBattle(const u8 *data)
         return EventScript_DoNoIntroTrainerBattle;
     case TRAINER_BATTLE_DOUBLE:
         TrainerBattleLoadArgs(sDoubleBattleParams, data);
-        SetMapVarsToTrainer();
+        SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
         return EventScript_TryDoDoubleTrainerBattle;
     case TRAINER_BATTLE_CONTINUE_SCRIPT:
         if (gApproachingTrainerId == 0)
         {
             TrainerBattleLoadArgs(sContinueScriptBattleParams, data);
-            SetMapVarsToTrainer();
+            SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
         }
         else
         {
@@ -1163,28 +1172,28 @@ const u8 *BattleSetup_ConfigureTrainerBattle(const u8 *data)
         return EventScript_TryDoNormalTrainerBattle;
     case TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC:
         TrainerBattleLoadArgs(sContinueScriptBattleParams, data);
-        SetMapVarsToTrainer();
+        SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
         return EventScript_TryDoNormalTrainerBattle;
     case TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE:
     case TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE_NO_MUSIC:
         TrainerBattleLoadArgs(sContinueScriptDoubleBattleParams, data);
-        SetMapVarsToTrainer();
+        SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
         return EventScript_TryDoDoubleTrainerBattle;
     case TRAINER_BATTLE_REMATCH_DOUBLE:
         TrainerBattleLoadArgs(sDoubleBattleParams, data);
-        SetMapVarsToTrainer();
+        SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
         gTrainerBattleOpponent_A = GetRematchTrainerId(gTrainerBattleOpponent_A);
         return EventScript_TryDoDoubleRematchBattle;
     case TRAINER_BATTLE_REMATCH:
         TrainerBattleLoadArgs(sOrdinaryBattleParams, data);
-        SetMapVarsToTrainer();
+        SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
         gTrainerBattleOpponent_A = GetRematchTrainerId(gTrainerBattleOpponent_A);
         return EventScript_TryDoRematchBattle;
     case TRAINER_BATTLE_PYRAMID:
         if (gApproachingTrainerId == 0)
         {
             TrainerBattleLoadArgs(sOrdinaryBattleParams, data);
-            SetMapVarsToTrainer();
+            SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
             gTrainerBattleOpponent_A = LocalIdToPyramidTrainerId(gSpecialVar_LastTalked);
         }
         else
@@ -1203,7 +1212,7 @@ const u8 *BattleSetup_ConfigureTrainerBattle(const u8 *data)
         if (gApproachingTrainerId == 0)
         {
             TrainerBattleLoadArgs(sOrdinaryBattleParams, data);
-            SetMapVarsToTrainer();
+            SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
             gTrainerBattleOpponent_A = LocalIdToHillTrainerId(gSpecialVar_LastTalked);
         }
         else
@@ -1216,7 +1225,7 @@ const u8 *BattleSetup_ConfigureTrainerBattle(const u8 *data)
         if (gApproachingTrainerId == 0)
         {
             TrainerBattleLoadArgs(sOrdinaryBattleParams, data);
-            SetMapVarsToTrainer();
+            SetMapVarsToTrainer(sTrainerObjectEventLocalId, map);
         }
         else
         {
@@ -1226,25 +1235,39 @@ const u8 *BattleSetup_ConfigureTrainerBattle(const u8 *data)
     }
 }
 
+const u8 *BattleSetup_ConfigureTrainerBattleInMap(const u8 *data, u16 map, u16 localId)
+{
+    const u8 *script = ConfigureTrainerBattle(data, map);
+    u8 trainer = gApproachingTrainerId != 0;
+
+    sTrainerScriptMaps[trainer] = map;
+    sTrainerScriptLocalIds[trainer] = sTrainerObjectEventLocalId == LOCALID_NONE ? localId : sTrainerObjectEventLocalId;
+    return script;
+}
+
 void ConfigureAndSetUpOneTrainerBattle(u8 trainerObjEventId, const u8 *trainerScript)
 {
-    gSelectedObjectEvent = trainerObjEventId;
-    gSpecialVar_LastTalked = gObjectEvents[trainerObjEventId].localId;
-    BattleSetup_ConfigureTrainerBattle(trainerScript + 1);
-    ScriptContext_SetupScript(EventScript_StartTrainerApproach);
+    const struct ObjectEvent *trainer = &gObjectEvents[trainerObjEventId];
+
+    ConfigureApproachingTrainerBattle(trainerObjEventId, trainerScript);
+    ScriptContext_SetupObjectScript(EventScript_StartTrainerApproach, trainer->mapGroup, trainer->mapNum);
     LockPlayerFieldControls();
 }
 
-void ConfigureTwoTrainersBattle(u8 trainerObjEventId, const u8 *trainerScript)
+void ConfigureApproachingTrainerBattle(u8 trainerObjEventId, const u8 *trainerScript)
 {
+    const struct ObjectEvent *trainer = &gObjectEvents[trainerObjEventId];
+
     gSelectedObjectEvent = trainerObjEventId;
-    gSpecialVar_LastTalked = gObjectEvents[trainerObjEventId].localId;
-    BattleSetup_ConfigureTrainerBattle(trainerScript + 1);
+    gSpecialVar_LastTalked = trainer->localId;
+    BattleSetup_ConfigureTrainerBattleInMap(trainerScript + 1, (trainer->mapGroup << 8) | trainer->mapNum, trainer->localId);
 }
 
 void SetUpTwoTrainersBattle(void)
 {
-    ScriptContext_SetupScript(EventScript_StartTrainerApproach);
+    const struct ObjectEvent *trainer = &gObjectEvents[GetChosenApproachingTrainerObjectEventId(0)];
+
+    ScriptContext_SetupObjectScript(EventScript_StartTrainerApproach, trainer->mapGroup, trainer->mapNum);
     LockPlayerFieldControls();
 }
 
@@ -1445,14 +1468,17 @@ const u8 *BattleSetup_GetScriptAddrAfterBattle(void)
         return EventScript_TestSignpostMsg;
 }
 
-const u8 *BattleSetup_GetTrainerPostBattleScript(void)
+const u8 *BattleSetup_GetTrainerPostBattleScript(u16 *map)
 {
+    *map = MAP_UNDEFINED;
     if (sShouldCheckTrainerBScript)
     {
         sShouldCheckTrainerBScript = FALSE;
         if (sTrainerBBattleScriptRetAddr != NULL)
         {
             gWhichTrainerToFaceAfterBattle = 1;
+            *map = sTrainerScriptMaps[1];
+            SetMapVarsToTrainer(sTrainerScriptLocalIds[1], *map);
             return sTrainerBBattleScriptRetAddr;
         }
     }
@@ -1461,6 +1487,8 @@ const u8 *BattleSetup_GetTrainerPostBattleScript(void)
         if (sTrainerABattleScriptRetAddr != NULL)
         {
             gWhichTrainerToFaceAfterBattle = 0;
+            *map = sTrainerScriptMaps[0];
+            SetMapVarsToTrainer(sTrainerScriptLocalIds[0], *map);
             return sTrainerABattleScriptRetAddr;
         }
     }

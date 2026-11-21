@@ -5,6 +5,7 @@
 #include "malloc.h"
 #include "gpu_regs.h"
 #include "palette.h"
+#include "platform/framedraw.h"
 #include "party_menu.h"
 #include "trig.h"
 #include "overworld.h"
@@ -1522,7 +1523,7 @@ static void SpriteCB_PlayerIconMapZoomed(struct Sprite *sprite)
     sprite->y2 = -2 * sRegionMap->scrollY;
     sprite->sY = sprite->y + sprite->y2 + sprite->centerToCornerVecY;
     sprite->sX = sprite->x + sprite->x2 + sprite->centerToCornerVecX;
-    if (sprite->sY < -8 || sprite->sY > DISPLAY_HEIGHT + 8 || sprite->sX < -8 || sprite->sX > DISPLAY_WIDTH + 8)
+    if (sprite->sY < -8 || sprite->sY > GBA_DISPLAY_HEIGHT + 8 || sprite->sX < -8 || sprite->sX > GBA_DISPLAY_WIDTH + 8)
         sprite->sVisible = FALSE;
     else
         sprite->sVisible = TRUE;
@@ -1666,6 +1667,9 @@ void CB2_OpenFlyMap(void)
         }
         else
         {
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(TRUE);
+#endif
             ResetPaletteFade();
             ResetSpriteData();
             FreeSpriteTileRanges();
@@ -1994,6 +1998,9 @@ static void CB_ExitFlyMap(void)
     case 1:
         if (!UpdatePaletteFade())
         {
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             FreeRegionMapIconResources();
             if (sFlyMap->choseFlyLocation)
             {

@@ -961,7 +961,7 @@ void AnimTask_CurseStretchingBlackBg(u8 taskId)
     else
         startX = 200;
 
-    gBattle_WIN0H = WIN_RANGE(startX, startX);
+    gBattle_WIN0H = GPU_WINDOW_H_RANGE(startX, startX);
     startY = 40;
     gBattle_WIN0V = WIN_RANGE(startY, startY);
 
@@ -1013,7 +1013,7 @@ static void AnimTask_CurseStretchingBlackBg_Step1(u8 taskId)
         gTasks[taskId].func = AnimTask_CurseStretchingBlackBg_Step2;
     }
 
-    gBattle_WIN0H = WIN_RANGE(left, right);
+    gBattle_WIN0H = GPU_WINDOW_H_RANGE(left, right);
     gBattle_WIN0V = WIN_RANGE(top, bottom);
 }
 

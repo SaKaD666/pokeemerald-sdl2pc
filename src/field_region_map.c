@@ -6,6 +6,7 @@
 #include "malloc.h"
 #include "menu.h"
 #include "palette.h"
+#include "platform/framedraw.h"
 #include "region_map.h"
 #include "strings.h"
 #include "text.h"
@@ -91,8 +92,17 @@ static const struct WindowTemplate sFieldRegionMapWindowTemplates[] =
 
 void FieldInitRegionMap(MainCallback callback)
 {
-    SetVBlankCallback(NULL);
     sFieldRegionMapHandler = Alloc(sizeof(*sFieldRegionMapHandler));
+    if (sFieldRegionMapHandler == NULL)
+    {
+        SetMainCallback2(callback);
+        return;
+    }
+
+    SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     sFieldRegionMapHandler->state = 0;
     sFieldRegionMapHandler->callback = callback;
     SetMainCallback2(MCB2_InitRegionMapRegisters);
@@ -191,6 +201,9 @@ static void FieldUpdateRegionMap(void)
             if (!gPaletteFade.active)
             {
                 FreeRegionMapIconResources();
+#ifdef PLATFORM_SDL2
+                SetFrameViewToGbaSize(FALSE);
+#endif
                 SetMainCallback2(sFieldRegionMapHandler->callback);
                 TRY_FREE_AND_SET_NULL(sFieldRegionMapHandler);
                 FreeAllWindowBuffers();

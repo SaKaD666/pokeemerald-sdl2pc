@@ -1,4 +1,5 @@
 #include "global.h"
+#include "bg.h"
 #include "cable_club.h"
 #include "event_data.h"
 #include "fieldmap.h"
@@ -53,22 +54,61 @@ static void Task_EnableScriptAfterMusicFade(u8 taskId);
 static const u16 sFlashLevelToRadius[] = { 200, 72, 64, 56, 48, 40, 32, 24, 0 };
 const s32 gMaxFlashLevel = ARRAY_COUNT(sFlashLevelToRadius) - 1;
 
+#ifdef PLATFORM_SDL2
+typedef u32 FieldCircleScanlineValue;
+// Allow the last HBlank and the current extra portable DMA tick to read a defined value.
+static FieldCircleScanlineValue sFieldCircleScanlineBuffers[2][DISPLAY_HEIGHT + 2];
+#else
+typedef u16 FieldCircleScanlineValue;
 static const struct ScanlineEffectParams sFlashEffectParams =
 {
     &REG_WIN0H,
-    ((DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_DEST_RELOAD) << 16) | 1,
-    1
+    SCANLINE_EFFECT_DMACNT_16BIT,
+    1,
 };
+#endif
+
+static FieldCircleScanlineValue *GetFieldCircleScanlineBuffer(u8 buffer)
+{
+#ifdef PLATFORM_SDL2
+    return sFieldCircleScanlineBuffers[buffer];
+#else
+    return gScanlineEffectRegBuffers[buffer];
+#endif
+}
+
+void StartFieldCircleScanlineEffect(void)
+{
+#ifdef PLATFORM_SDL2
+    ScanlineEffect_SetWindow0HorizontalBuffers(sFieldCircleScanlineBuffers[0], sFieldCircleScanlineBuffers[1]);
+#else
+    ScanlineEffect_SetParams(sFlashEffectParams);
+#endif
+}
+
+static void FinishFieldCircleScanlineEffect(void)
+{
+#ifdef PLATFORM_SDL2
+    if (DISPLAY_WIDTH > 255)
+    {
+        // Keep the finished window open while the terrain still uses WIN0.
+        SetGpuWindowHorizontalBounds(GPU_WINDOW_0, 0, DISPLAY_WIDTH);
+        return;
+    }
+#endif
+    ScanlineEffect_Clear();
+    SetGpuReg(REG_OFFSET_WIN0H, 255);
+}
 
 // code
 static void FillPalBufferWhite(void)
 {
-    CpuFastFill16(RGB_WHITE, gPlttBufferFaded, PLTT_SIZE);
+    FillFadedPalette(RGB_WHITE);
 }
 
 static void FillPalBufferBlack(void)
 {
-    CpuFastFill16(RGB_BLACK, gPlttBufferFaded, PLTT_SIZE);
+    FillFadedPalette(RGB_BLACK);
 }
 
 void WarpFadeInScreen(void)
@@ -763,78 +803,57 @@ void DoContestHallWarp(void)
     CreateTask(Task_DoContestHallWarp, 10);
 }
 
-static void SetFlashScanlineEffectWindowBoundary(u16 *dest, u32 y, s32 left, s32 right)
+static void SetFieldCircleScanlineBoundary(FieldCircleScanlineValue *dest, u32 y, s32 left, s32 right, s32 maxX)
 {
-    if (y <= 160)
+#ifdef PLATFORM_SDL2
+    if (y < DISPLAY_HEIGHT)
     {
-        if (left < 0)
-            left = 0;
-        if (left > 255)
-            left = 255;
-        if (right < 0)
-            right = 0;
-        if (right > 255)
-            right = 255;
-        dest[y] = (left << 8) | right;
+        left = min(max(left, 0), DISPLAY_WIDTH);
+        right = min(max(right, 0), DISPLAY_WIDTH);
+        dest[y] = GPU_WINDOW_H_RANGE(left, right);
     }
+#else
+    if (y <= DISPLAY_HEIGHT)
+    {
+        left = min(max(left, 0), maxX);
+        right = min(max(right, 0), maxX);
+        dest[y] = WIN_RANGE(left, right);
+    }
+#endif
 }
 
-static void SetFlashScanlineEffectWindowBoundaries(u16 *dest, s32 centerX, s32 centerY, s32 radius)
+static void WriteFieldCircleScanlineBuffer(u8 buffer, s32 centerX, s32 centerY, s32 radius, s32 maxX)
 {
+    FieldCircleScanlineValue *dest = GetFieldCircleScanlineBuffer(buffer);
     s32 r = radius;
-    s32 v2 = radius;
-    s32 v3 = 0;
-    while (r >= v3)
+    s32 error = radius;
+    s32 y = 0;
+
+#ifdef PLATFORM_SDL2
+    memset(dest, 0, sizeof(sFieldCircleScanlineBuffers[0]));
+#endif
+    while (r >= y)
     {
-        SetFlashScanlineEffectWindowBoundary(dest, centerY - v3, centerX - r, centerX + r);
-        SetFlashScanlineEffectWindowBoundary(dest, centerY + v3, centerX - r, centerX + r);
-        SetFlashScanlineEffectWindowBoundary(dest, centerY - r, centerX - v3, centerX + v3);
-        SetFlashScanlineEffectWindowBoundary(dest, centerY + r, centerX - v3, centerX + v3);
-        v2 -= (v3 * 2) - 1;
-        v3++;
-        if (v2 < 0)
+        SetFieldCircleScanlineBoundary(dest, centerY - y, centerX - r, centerX + r, maxX);
+        SetFieldCircleScanlineBoundary(dest, centerY + y, centerX - r, centerX + r, maxX);
+        SetFieldCircleScanlineBoundary(dest, centerY - r, centerX - y, centerX + y, maxX);
+        SetFieldCircleScanlineBoundary(dest, centerY + r, centerX - y, centerX + y, maxX);
+        error -= (++y * 2) - 1;
+        if (error < 0)
         {
-            v2 += 2 * (r - 1);
+            error += (r - 1) * 2;
             r--;
         }
     }
 }
 
-static void SetOrbFlashScanlineEffectWindowBoundary(u16 *dest, u32 y, s32 left, s32 right)
+static void CopyFieldCircleScanlineBuffer(void)
 {
-    if (y <= 160)
-    {
-        if (left < 0)
-            left = 0;
-        if (left > 240)
-            left = 240;
-        if (right < 0)
-            right = 0;
-        if (right > 240)
-            right = 240;
-        dest[y] = (left << 8) | right;
-    }
-}
-
-static void SetOrbFlashScanlineEffectWindowBoundaries(u16 *dest, s32 centerX, s32 centerY, s32 radius)
-{
-    s32 r = radius;
-    s32 v2 = radius;
-    s32 v3 = 0;
-    while (r >= v3)
-    {
-        SetOrbFlashScanlineEffectWindowBoundary(dest, centerY - v3, centerX - r, centerX + r);
-        SetOrbFlashScanlineEffectWindowBoundary(dest, centerY + v3, centerX - r, centerX + r);
-        SetOrbFlashScanlineEffectWindowBoundary(dest, centerY - r, centerX - v3, centerX + v3);
-        SetOrbFlashScanlineEffectWindowBoundary(dest, centerY + r, centerX - v3, centerX + v3);
-        v2 -= (v3 * 2) - 1;
-        v3++;
-        if (v2 < 0)
-        {
-            v2 += 2 * (r - 1);
-            r--;
-        }
-    }
+#ifdef PLATFORM_SDL2
+    memcpy(sFieldCircleScanlineBuffers[1], sFieldCircleScanlineBuffers[0], sizeof(sFieldCircleScanlineBuffers[0]));
+#else
+    CpuFastSet(&gScanlineEffectRegBuffers[0], &gScanlineEffectRegBuffers[1], 480);
+#endif
 }
 
 #define tFlashCenterX        data[1]
@@ -851,11 +870,11 @@ static void UpdateFlashLevelEffect(u8 taskId)
     switch (tState)
     {
     case 0:
-        SetFlashScanlineEffectWindowBoundaries(gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer], tFlashCenterX, tFlashCenterY, tCurFlashRadius);
+        WriteFieldCircleScanlineBuffer(gScanlineEffect.srcBuffer, tFlashCenterX, tFlashCenterY, tCurFlashRadius, 255);
         tState = 1;
         break;
     case 1:
-        SetFlashScanlineEffectWindowBoundaries(gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer], tFlashCenterX, tFlashCenterY, tCurFlashRadius);
+        WriteFieldCircleScanlineBuffer(gScanlineEffect.srcBuffer, tFlashCenterX, tFlashCenterY, tCurFlashRadius, 255);
         tState = 0;
         tCurFlashRadius += tFlashRadiusDelta;
         if (tCurFlashRadius > tDestFlashRadius)
@@ -863,6 +882,7 @@ static void UpdateFlashLevelEffect(u8 taskId)
             if (tClearScanlineEffect == 1)
             {
                 ScanlineEffect_Stop();
+                FinishFieldCircleScanlineEffect();
                 tState = 2;
             }
             else
@@ -872,7 +892,6 @@ static void UpdateFlashLevelEffect(u8 taskId)
         }
         break;
     case 2:
-        ScanlineEffect_Clear();
         DestroyTask(taskId);
         break;
     }
@@ -885,11 +904,11 @@ static void UpdateOrbFlashEffect(u8 taskId)
     switch (tState)
     {
     case 0:
-        SetOrbFlashScanlineEffectWindowBoundaries(gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer], tFlashCenterX, tFlashCenterY, tCurFlashRadius);
+        WriteFieldCircleScanlineBuffer(gScanlineEffect.srcBuffer, tFlashCenterX, tFlashCenterY, tCurFlashRadius, 240);
         tState = 1;
         break;
     case 1:
-        SetOrbFlashScanlineEffectWindowBoundaries(gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer], tFlashCenterX, tFlashCenterY, tCurFlashRadius);
+        WriteFieldCircleScanlineBuffer(gScanlineEffect.srcBuffer, tFlashCenterX, tFlashCenterY, tCurFlashRadius, 240);
         tState = 0;
         tCurFlashRadius += tFlashRadiusDelta;
         if (tCurFlashRadius > tDestFlashRadius)
@@ -897,6 +916,7 @@ static void UpdateOrbFlashEffect(u8 taskId)
             if (tClearScanlineEffect == 1)
             {
                 ScanlineEffect_Stop();
+                FinishFieldCircleScanlineEffect();
                 tState = 2;
             }
             else
@@ -906,7 +926,6 @@ static void UpdateOrbFlashEffect(u8 taskId)
         }
         break;
     case 2:
-        ScanlineEffect_Clear();
         DestroyTask(taskId);
         break;
     }
@@ -986,15 +1005,15 @@ void WriteFlashScanlineEffectBuffer(u8 flashLevel)
 {
     if (flashLevel)
     {
-        SetFlashScanlineEffectWindowBoundaries(&gScanlineEffectRegBuffers[0][0], DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, sFlashLevelToRadius[flashLevel]);
-        CpuFastSet(&gScanlineEffectRegBuffers[0], &gScanlineEffectRegBuffers[1], 480);
+        WriteFieldCircleScanlineBuffer(0, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, sFlashLevelToRadius[flashLevel], 255);
+        CopyFieldCircleScanlineBuffer();
     }
 }
 
 void WriteBattlePyramidViewScanlineEffectBuffer(void)
 {
-    SetFlashScanlineEffectWindowBoundaries(&gScanlineEffectRegBuffers[0][0], DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, gSaveBlock2Ptr->frontier.pyramidLightRadius);
-    CpuFastSet(&gScanlineEffectRegBuffers[0], &gScanlineEffectRegBuffers[1], 480);
+    WriteFieldCircleScanlineBuffer(0, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, gSaveBlock2Ptr->frontier.pyramidLightRadius, 255);
+    CopyFieldCircleScanlineBuffer();
 }
 
 static void Task_SpinEnterWarp(u8 taskId)
@@ -1134,17 +1153,34 @@ static void Task_OrbEffect(u8 taskId)
         SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(12, 7));
         SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR);
         SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG1 | WINOUT_WIN01_BG2 | WINOUT_WIN01_BG3 | WINOUT_WIN01_OBJ);
-        SetBgTilemapPalette(0, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 0xF);
+#ifdef PLATFORM_SDL2
+        if (IsWideFieldUi())
+        {
+            u16 *tilemap = GetBgTilemapBuffer(0);
+            u16 x, y;
+
+            for (y = 0; y < (DISPLAY_HEIGHT + TILE_HEIGHT - 1) / TILE_HEIGHT; y++)
+            {
+                for (x = 0; x < DISPLAY_WIDTH / TILE_WIDTH; x++)
+                {
+                    u32 index = GetTileMapIndexFromCoords(x, y, FIELD_UI_SCREEN_SIZE, 64, 32);
+                    tilemap[index] = (tilemap[index] & 0xFFF) | 0xF000;
+                }
+            }
+        }
+        else
+#endif
+            SetBgTilemapPalette(0, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 0xF);
         ScheduleBgCopyTilemapToVram(0);
-        SetOrbFlashScanlineEffectWindowBoundaries(&gScanlineEffectRegBuffers[0][0], tCenterX, tCenterY, 1);
-        CpuFastSet(&gScanlineEffectRegBuffers[0], &gScanlineEffectRegBuffers[1], 480);
-        ScanlineEffect_SetParams(sFlashEffectParams);
+        WriteFieldCircleScanlineBuffer(0, tCenterX, tCenterY, 1, 240);
+        CopyFieldCircleScanlineBuffer();
+        StartFieldCircleScanlineEffect();
         tState = 1;
         break;
     case 1:
         BgDmaFill(0, PIXEL_FILL(1), 0, 1);
         LoadOrbEffectPalette(tBlueOrb);
-        StartUpdateOrbFlashEffect(tCenterX, tCenterY, 1, 160, 1, 2);
+        StartUpdateOrbFlashEffect(tCenterX, tCenterY, 1, 160 + (DISPLAY_WIDTH - 240) / 2 + (DISPLAY_HEIGHT - 160) / 2, 1, 2);
         tState = 2;
         break;
     case 2:
@@ -1192,7 +1228,11 @@ static void Task_OrbEffect(u8 taskId)
         }
         break;
     case 5:
+#ifdef PLATFORM_SDL2
+        SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, DISPLAY_WIDTH);
+#else
         SetGpuReg(REG_OFFSET_WIN0H, 255);
+#endif
         SetGpuReg(REG_OFFSET_DISPCNT, tDispCnt);
         SetGpuReg(REG_OFFSET_BLDCNT, tBldCnt);
         SetGpuReg(REG_OFFSET_BLDALPHA, tBldAlpha);
@@ -1230,7 +1270,8 @@ void DoOrbEffect(void)
         tCenterX = 120;
     }
 
-    tCenterY = 80;
+    tCenterX += (DISPLAY_WIDTH - 240) / 2;
+    tCenterY = DISPLAY_HEIGHT / 2;
 }
 
 void FadeOutOrbEffect(void)

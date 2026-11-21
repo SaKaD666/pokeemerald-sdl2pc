@@ -1231,14 +1231,12 @@ static u8 GetPostBattleDirectionHintTextIndex(int *hintType, u8 minDistanceForEx
 {
     int x, y;
     u8 textIndex = 0;
-    u16 *map = gBackupMapLayout.map;
-    map += gBackupMapLayout.width * MAP_OFFSET + MAP_OFFSET;
 
     for (y = 0; y < 32; y++)
     {
         for (x = 0; x < 32; x++)
         {
-            if ((map[x] & MAPGRID_METATILE_ID_MASK) == METATILE_BattlePyramid_Exit)
+            if (MapGridGetMetatileIdAt(x + MAP_OFFSET, y + MAP_OFFSET) == METATILE_BattlePyramid_Exit)
             {
                 x -= gObjectEvents[gSelectedObjectEvent].initialCoords.x - MAP_OFFSET;
                 y -= gObjectEvents[gSelectedObjectEvent].initialCoords.y - MAP_OFFSET;
@@ -1299,7 +1297,6 @@ static u8 GetPostBattleDirectionHintTextIndex(int *hintType, u8 minDistanceForEx
                 return textIndex;
             }
         }
-        map += MAP_OFFSET_W + 32; // HINT: x == 32.
     }
 
     return textIndex;
@@ -1520,34 +1517,39 @@ static u16 GetUniqueTrainerId(u8 objectEventId)
     return trainerId;
 }
 
-void GenerateBattlePyramidFloorLayout(u16 *backupMapData, bool8 setPlayerPosition)
+void GenerateBattlePyramidFloorLayout(bool8 setPlayerPosition)
 {
     int y, x;
     int i;
+    const struct MapLayout *firstSquare;
     u8 entranceSquareId, exitSquareId;
     u8 *floorLayoutOffsets = AllocZeroed(NUM_PYRAMID_FLOOR_SQUARES);
 
     GetPyramidFloorLayoutOffsets(floorLayoutOffsets);
     GetPyramidEntranceAndExitSquareIds(&entranceSquareId, &exitSquareId);
+    firstSquare = gMapLayouts[floorLayoutOffsets[0] + LAYOUT_BATTLE_FRONTIER_BATTLE_PYRAMID_FLOOR];
+    if (!InitMapGrid(firstSquare->width * PYRAMID_FLOOR_SQUARES_WIDE,
+                     firstSquare->height * PYRAMID_FLOOR_SQUARES_HIGH))
+    {
+        Free(floorLayoutOffsets);
+        return;
+    }
+
     for (i = 0; i < NUM_PYRAMID_FLOOR_SQUARES; i++)
     {
-        u16 *map;
         const struct MapLayout *mapLayout = gMapLayouts[floorLayoutOffsets[i] + LAYOUT_BATTLE_FRONTIER_BATTLE_PYRAMID_FLOOR];
         const u16 *layoutMap = mapLayout->map;
 
-        gBackupMapLayout.map = backupMapData;
-        gBackupMapLayout.width = mapLayout->width * PYRAMID_FLOOR_SQUARES_WIDE + MAP_OFFSET_W;
-        gBackupMapLayout.height = mapLayout->height * PYRAMID_FLOOR_SQUARES_HIGH + MAP_OFFSET_H;
-        map = gBackupMapLayout.map;
-        map += gBackupMapLayout.width * (MAP_OFFSET + (i / PYRAMID_FLOOR_SQUARES_WIDE * mapLayout->height))
-            +  MAP_OFFSET + (i % PYRAMID_FLOOR_SQUARES_WIDE * mapLayout->width);
+        s32 squareX = (i % PYRAMID_FLOOR_SQUARES_WIDE) * mapLayout->width;
+        s32 squareY = (i / PYRAMID_FLOOR_SQUARES_WIDE) * mapLayout->height;
+
         for (y = 0; y < mapLayout->height; y++)
         {
             for (x = 0; x < mapLayout->width; x++)
             {
                 if ((layoutMap[x] & MAPGRID_METATILE_ID_MASK) != METATILE_BattlePyramid_Exit)
                 {
-                    map[x] = layoutMap[x];
+                    MapGridSetMetatileEntryAt(MAP_OFFSET + squareX + x, MAP_OFFSET + squareY + y, layoutMap[x]);
                 }
                 else if (i != exitSquareId)
                 {
@@ -1557,14 +1559,14 @@ void GenerateBattlePyramidFloorLayout(u16 *backupMapData, bool8 setPlayerPositio
                         gSaveBlock1Ptr->pos.y = (mapLayout->height * (i / PYRAMID_FLOOR_SQUARES_WIDE)) + y;
                     }
                     // Copy the elevation and collision, but overwrite the metatile ID
-                    map[x] = (layoutMap[x] & (MAPGRID_ELEVATION_MASK | MAPGRID_COLLISION_MASK)) | METATILE_BattlePyramid_Floor;
+                    MapGridSetMetatileEntryAt(MAP_OFFSET + squareX + x, MAP_OFFSET + squareY + y,
+                                             (layoutMap[x] & (MAPGRID_ELEVATION_MASK | MAPGRID_COLLISION_MASK)) | METATILE_BattlePyramid_Floor);
                 }
                 else
                 {
-                    map[x] = layoutMap[x];
+                    MapGridSetMetatileEntryAt(MAP_OFFSET + squareX + x, MAP_OFFSET + squareY + y, layoutMap[x]);
                 }
             }
-            map += MAP_OFFSET_W + (mapLayout->width * PYRAMID_FLOOR_SQUARES_WIDE);
             layoutMap += mapLayout->width;
         }
     }
@@ -1932,7 +1934,7 @@ u8 GetNumBattlePyramidObjectEvents(void)
     u8 i;
     struct ObjectEventTemplate *events = gSaveBlock1Ptr->objectEventTemplates;
 
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+    for (i = 0; i < ARRAY_COUNT(gSaveBlock1Ptr->objectEventTemplates); i++)
     {
         if (events[i].localId == LOCALID_NONE)
             break;

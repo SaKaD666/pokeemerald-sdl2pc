@@ -1,6 +1,7 @@
 #include "global.h"
 #include "braille_puzzles.h"
 #include "event_data.h"
+#include "event_object_lock.h"
 #include "event_object_movement.h"
 #include "event_scripts.h"
 #include "field_effect.h"
@@ -47,8 +48,19 @@ bool8 CheckObjectGraphicsInFrontOfPlayer(u8 graphicsId)
 
 u8 CreateFieldMoveTask(void)
 {
+    bool8 firstSlotInUse = gTasks[0].isActive;
+    u8 taskId = CreateTask(Task_DoFieldMove_Init, 8);
+
+    if (taskId == 0 && firstSlotInUse)
+        return TASK_NONE;
     GetXYCoordsOneStepInFrontOfPlayer(&gPlayerFacingPosition.x, &gPlayerFacingPosition.y);
-    return CreateTask(Task_DoFieldMove_Init, 8);
+    return taskId;
+}
+
+void RestoreFieldControlsAfterFailedMove(void)
+{
+    ScriptUnfreezeObjectEvents();
+    UnlockPlayerFieldControls();
 }
 
 static void Task_DoFieldMove_Init(u8 taskId)
@@ -147,6 +159,13 @@ static void FieldCallback_RockSmash(void)
 bool8 FldEff_UseRockSmash(void)
 {
     u8 taskId = CreateFieldMoveTask();
+
+    if (taskId == TASK_NONE)
+    {
+        IncrementGameStat(GAME_STAT_USED_ROCK_SMASH);
+        FieldEffectActiveListRemove(FLDEFF_USE_ROCK_SMASH);
+        return FALSE;
+    }
 
     gTasks[taskId].ptr.funcPtr = FieldMove_RockSmash;
     IncrementGameStat(GAME_STAT_USED_ROCK_SMASH);

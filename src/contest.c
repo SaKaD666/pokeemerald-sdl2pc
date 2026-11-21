@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "gpu_regs.h"
 #include "bg.h"
 #include "malloc.h"
@@ -1034,6 +1035,13 @@ void LoadContestBgAfterMoveAnim(void)
     LZDecompressVram(gContestAudienceGfx, (void *)(BG_SCREEN_ADDR(4)));
     CopyToBgTilemapBuffer(3, gContestAudienceTilemap, 0, 0);
     CopyBgTilemapBufferToVram(3);
+#ifdef PLATFORM_SDL2
+    // Move backgrounds can replace the audience graphics and BG3 configuration.
+    SetGpuReg(REG_OFFSET_BG3CNT, BGCNT_PRIORITY(3) | BGCNT_CHARBASE(0)
+                                | BGCNT_SCREENBASE(26) | BGCNT_TXT256x256 | BGCNT_WRAP);
+    gBattle_BG3_X = 0;
+    gBattle_BG3_Y = 0;
+#endif
     LoadCompressedPalette(gContestInterfaceAudiencePalette, BG_PLTT_OFFSET, BG_PLTT_SIZE);
     LoadContestPalettes();
     for (i = 0; i < CONTESTANT_COUNT; i++)
@@ -1171,6 +1179,9 @@ void CB2_StartContest(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         sContestBgCopyFlags = 0;
         AllocContestResources();
         AllocateMonSpritesGfx();
@@ -1399,7 +1410,7 @@ static void Task_RaiseCurtainAtStart(u8 taskId)
         break;
     case 1:
         *(s16 *)&gBattle_BG1_Y += 7;
-        if ((s16)gBattle_BG1_Y <= DISPLAY_HEIGHT)
+        if ((s16)gBattle_BG1_Y <= GBA_DISPLAY_HEIGHT)
             break;
         gTasks[taskId].data[0]++;
         break;
@@ -1457,9 +1468,9 @@ static void VBlankCB_Contest(void)
     SetGpuReg(REG_OFFSET_BG2VOFS, gBattle_BG2_Y);
     SetGpuReg(REG_OFFSET_BG3HOFS, gBattle_BG3_X);
     SetGpuReg(REG_OFFSET_BG3VOFS, gBattle_BG3_Y);
-    SetGpuReg(REG_OFFSET_WIN0H, gBattle_WIN0H);
+    SetBattleWindowHorizontal(REG_OFFSET_WIN0H, gBattle_WIN0H);
     SetGpuReg(REG_OFFSET_WIN0V, gBattle_WIN0V);
-    SetGpuReg(REG_OFFSET_WIN1H, gBattle_WIN1H);
+    SetBattleWindowHorizontal(REG_OFFSET_WIN1H, gBattle_WIN1H);
     SetGpuReg(REG_OFFSET_WIN1V, gBattle_WIN1V);
     TransferPlttBuffer();
     LoadOam();
@@ -1519,8 +1530,8 @@ static void Task_ShowMoveSelectScreen(u8 taskId)
     u8 i;
     u8 moveName[32];
 
-    gBattle_BG0_Y = DISPLAY_HEIGHT;
-    gBattle_BG2_Y = DISPLAY_HEIGHT;
+    gBattle_BG0_Y = GBA_DISPLAY_HEIGHT;
+    gBattle_BG2_Y = GBA_DISPLAY_HEIGHT;
 
     for (i = 0; i < MAX_MON_MOVES; i++)
     {
@@ -2689,7 +2700,7 @@ static void Task_WaitForOutOfTimeMsg(u8 taskId)
     {
         SetBgForCurtainDrop();
         gBattle_BG1_X = 0;
-        gBattle_BG1_Y = DISPLAY_HEIGHT;
+        gBattle_BG1_Y = GBA_DISPLAY_HEIGHT;
         PlaySE12WithPanning(SE_CONTEST_CURTAIN_FALL, 0);
         gTasks[taskId].data[0] = 0;
         gTasks[taskId].func = Task_DropCurtainAtAppealsEnd;
@@ -2751,6 +2762,9 @@ static void Task_ContestReturnToField(u8 taskId)
         FreeAllWindowBuffers();
         FreeContestResources();
         FreeMonSpritesGfx();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_ReturnToField);
     }
 }
@@ -5086,8 +5100,8 @@ static void SetBgForCurtainDrop(void)
     SetGpuReg(REG_OFFSET_BG0CNT, bg0Cnt);
     SetGpuReg(REG_OFFSET_BG2CNT, bg2Cnt);
 
-    gBattle_BG1_X = DISPLAY_WIDTH;
-    gBattle_BG1_Y = DISPLAY_HEIGHT;
+    gBattle_BG1_X = GBA_DISPLAY_WIDTH;
+    gBattle_BG1_Y = GBA_DISPLAY_HEIGHT;
     SetGpuReg(REG_OFFSET_BG1HOFS, gBattle_BG1_X);
     SetGpuReg(REG_OFFSET_BG1VOFS, gBattle_BG1_Y);
 
@@ -5132,7 +5146,7 @@ static void UpdateContestantBoxOrder(void)
 static void Task_StartDropCurtainAtRoundEnd(u8 taskId)
 {
     gBattle_BG1_X = 0;
-    gBattle_BG1_Y = DISPLAY_HEIGHT;
+    gBattle_BG1_Y = GBA_DISPLAY_HEIGHT;
     PlaySE12WithPanning(SE_CONTEST_CURTAIN_FALL, 0);
     gTasks[taskId].func = Task_UpdateCurtainDropAtRoundEnd;
 }
@@ -5201,7 +5215,7 @@ static void Task_ResetForNextRound(u8 taskId)
 
 static void Task_UpdateRaiseCurtainAtRoundEnd(u8 taskId)
 {
-    if ((s16)(gBattle_BG1_Y += 7) > DISPLAY_HEIGHT)
+    if ((s16)(gBattle_BG1_Y += 7) > GBA_DISPLAY_HEIGHT)
         gTasks[taskId].func = Task_UpdateContestantBoxOrder;
 }
 

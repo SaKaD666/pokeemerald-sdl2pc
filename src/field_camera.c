@@ -1,6 +1,9 @@
+#include <stdlib.h>
 #include "global.h"
 #include "berry.h"
 #include "bike.h"
+#include "bg.h"
+#include "decompress.h"
 #include "field_camera.h"
 #include "field_player_avatar.h"
 #include "fieldmap.h"
@@ -11,25 +14,25 @@
 #include "rotating_gate.h"
 #include "sprite.h"
 #include "text.h"
+#include "tileset_anims.h"
 
 EWRAM_DATA bool8 gUnusedBikeCameraAheadPanback = FALSE;
 
 struct FieldCameraOffset
 {
-    u8 xPixelOffset;
+    u16 xPixelOffset;
     u8 yPixelOffset;
     u8 xTileOffset;
     u8 yTileOffset;
     bool8 copyBGToVRAM;
+#ifdef PLATFORM_SDL2
+    s16 viewPanX;
+    s16 viewPanY;
+#endif
 };
 
-static void RedrawMapSliceNorth(struct FieldCameraOffset *, const struct MapLayout *);
-static void RedrawMapSliceSouth(struct FieldCameraOffset *, const struct MapLayout *);
-static void RedrawMapSliceEast(struct FieldCameraOffset *, const struct MapLayout *);
-static void RedrawMapSliceWest(struct FieldCameraOffset *, const struct MapLayout *);
 static s32 MapPosToBgTilemapOffset(struct FieldCameraOffset *, s32, s32);
-static void DrawWholeMapViewInternal(int, int, const struct MapLayout *);
-static void DrawMetatileAt(const struct MapLayout *, u16, int, int);
+static void DrawMetatileAt(u16, int, int);
 static void DrawMetatile(s32, const u16 *, u16);
 static void CameraPanningCB_PanAhead(void);
 
@@ -50,155 +53,398 @@ static void ResetCameraOffset(struct FieldCameraOffset *cameraOffset)
     cameraOffset->xPixelOffset = 0;
     cameraOffset->yPixelOffset = 0;
     cameraOffset->copyBGToVRAM = TRUE;
+#ifdef PLATFORM_SDL2
+    cameraOffset->viewPanX = 0;
+    cameraOffset->viewPanY = 0;
+#endif
+}
+
+static u16 GetFieldTilemapWidth(void)
+{
+    return GetBgMetricTextMode(1, 1) * 32;
+}
+
+enum
+{
+    WIDE_FIELD_TILEMAP_WIDTH = 64,
+    FIELD_VIEW_CENTER_SHIFT_X = (DISPLAY_WIDTH - 240) / 2,
+    FIELD_VIEW_CENTER_SHIFT_Y = (DISPLAY_HEIGHT - 160) / 2,
+    WIDE_FIELD_TILEMAP_SIZE = 2 * BG_SCREEN_SIZE,
+    WIDE_FIELD_METATILE_COUNT = WIDE_FIELD_TILEMAP_WIDTH * 32 / 4,
+    SECONDARY_TILESET_BYTES = (NUM_TILES_TOTAL - NUM_TILES_IN_PRIMARY) * TILE_SIZE_4BPP,
+};
+
+static const struct FieldTileSource *sPendingFieldSources[WIDE_FIELD_METATILE_COUNT];
+static const struct FieldTileSource *sDisplayedFieldSources[WIDE_FIELD_METATILE_COUNT];
+
+struct FieldTileSourceCacheEntry
+{
+    struct FieldTileSource source;
+    struct FieldTileSourceCacheEntry *next;
+    struct TilesetAnimation animation;
+    bool8 animationInitialized;
+    u8 ALIGNED(4) tiles[];
+};
+
+// Displayed tilemaps can still reference a previous neighbor after a map transition.
+static struct FieldTileSourceCacheEntry *sFieldTileSourceCache;
+static const struct FieldTileSourceCacheEntry *sPendingActiveFieldTileset;
+static bool8 sFieldTilemapCopyPending;
+
+static struct FieldTileSourceCacheEntry *FindFieldTileSource(const struct Tileset *tileset)
+{
+    struct FieldTileSourceCacheEntry *entry;
+
+    for (entry = sFieldTileSourceCache; entry != NULL; entry = entry->next)
+    {
+        if (entry->source.tileset == tileset)
+            return entry;
+    }
+
+    return NULL;
+}
+
+static struct FieldTileSourceCacheEntry *GetOrCreateFieldTileSource(const struct Tileset *tileset)
+{
+    struct FieldTileSourceCacheEntry *entry = FindFieldTileSource(tileset);
+
+    if (entry != NULL)
+        return entry;
+
+    if (tileset == NULL || tileset->tiles == NULL
+     || (tileset->isCompressed && GetDecompressedDataSize(tileset->tiles) > SECONDARY_TILESET_BYTES))
+        return NULL;
+
+    entry = calloc(1, sizeof(*entry) + SECONDARY_TILESET_BYTES);
+    if (entry == NULL)
+        return NULL;
+
+    entry->source.tileset = tileset;
+    entry->source.tiles = entry->tiles;
+    if (tileset->isCompressed)
+        LZ77UnCompWram(tileset->tiles, entry->tiles);
+    else
+        memcpy(entry->tiles, tileset->tiles, SECONDARY_TILESET_BYTES);
+
+    entry->next = sFieldTileSourceCache;
+    sFieldTileSourceCache = entry;
+    return entry;
+}
+
+static const struct FieldTileSource *GetFieldTileSource(const struct MapLayout *layout)
+{
+    const struct Tileset *tileset = layout->secondaryTileset;
+    struct FieldTileSourceCacheEntry *entry;
+
+    if (tileset == gMapHeader.mapLayout->secondaryTileset)
+        return NULL;
+
+    entry = GetOrCreateFieldTileSource(tileset);
+    return entry != NULL ? &entry->source : NULL;
+}
+
+void CacheActiveFieldTileset(void)
+{
+    struct FieldTileSourceCacheEntry *entry = GetOrCreateFieldTileSource(gMapHeader.mapLayout->secondaryTileset);
+    const void *vram = (const void *)(BG_VRAM + NUM_TILES_IN_PRIMARY * TILE_SIZE_4BPP);
+
+    if (entry != NULL)
+    {
+        memcpy(entry->tiles, vram, SECONDARY_TILESET_BYTES);
+        entry->animation = GetSecondaryTilesetAnimation();
+        entry->animationInitialized = TRUE;
+    }
+}
+
+bool32 RestoreCachedFieldTileset(void)
+{
+    const struct Tileset *tileset = gMapHeader.mapLayout->secondaryTileset;
+    struct FieldTileSourceCacheEntry *entry = GetOrCreateFieldTileSource(tileset);
+
+    if (entry == NULL)
+        return FALSE;
+
+    if (!entry->animationInitialized)
+    {
+        InitNeighborTilesetAnimation(tileset, &entry->animation);
+        entry->animationInitialized = TRUE;
+    }
+    sPendingActiveFieldTileset = entry;
+    return TRUE;
+}
+
+void TransferNeighborTilesetAnimations(void)
+{
+    struct FieldTileSourceCacheEntry *entry;
+
+    for (entry = sFieldTileSourceCache; entry != NULL; entry = entry->next)
+    {
+        if (entry->source.tileset == gMapHeader.mapLayout->secondaryTileset)
+            continue;
+        if (!entry->animationInitialized)
+        {
+            InitNeighborTilesetAnimation(entry->source.tileset, &entry->animation);
+            entry->animationInitialized = TRUE;
+        }
+        AnimateNeighborTileset(&entry->animation, entry->tiles);
+    }
+}
+
+static u16 GetFieldTileSourceIndex(u16 tileIndex)
+{
+    return (tileIndex / 64) * 16 + (tileIndex % 32) / 2;
+}
+
+static bool32 IsFieldTilemapBuffer(u8 bg, const void *buffer)
+{
+    if (buffer == NULL)
+        return FALSE;
+
+    switch (bg)
+    {
+    case 1: return buffer == gOverworldTilemapBuffer_Bg1;
+    case 2: return buffer == gOverworldTilemapBuffer_Bg2;
+    case 3: return buffer == gOverworldTilemapBuffer_Bg3;
+    default: return FALSE;
+    }
+}
+
+bool32 QueueFieldTilemapCopy(u8 bg, const void *buffer, u16 size)
+{
+    if (size != WIDE_FIELD_TILEMAP_SIZE || !IsFieldTilemapBuffer(bg, buffer))
+        return FALSE;
+
+    sFieldTilemapCopyPending = TRUE;
+    return TRUE;
+}
+
+void TransferFieldTilemaps(void)
+{
+    u8 bg;
+
+    if (!sFieldTilemapCopyPending)
+        return;
+
+    for (bg = 1; bg <= 3; bg++)
+    {
+        if (!IsFieldTilemapBuffer(bg, GetBgTilemapBuffer(bg)) || GetBgAttribute(bg, BG_ATTR_METRIC) != WIDE_FIELD_TILEMAP_SIZE)
+        {
+            sFieldTilemapCopyPending = FALSE;
+            sPendingActiveFieldTileset = NULL;
+            return;
+        }
+    }
+
+    // Publish the wide field as a unit before SDL2 renders the next frame.
+    if (sPendingActiveFieldTileset != NULL)
+    {
+        void *vram = (void *)(BG_VRAM + NUM_TILES_IN_PRIMARY * TILE_SIZE_4BPP);
+
+        memcpy(vram, sPendingActiveFieldTileset->tiles, SECONDARY_TILESET_BYTES);
+        SetSecondaryTilesetAnimation(&sPendingActiveFieldTileset->animation);
+        sPendingActiveFieldTileset = NULL;
+    }
+
+    for (bg = 1; bg <= 3; bg++)
+    {
+        u16 base = GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX);
+        memcpy((void *)BG_SCREEN_ADDR(base), GetBgTilemapBuffer(bg), WIDE_FIELD_TILEMAP_SIZE);
+    }
+
+    memcpy(sDisplayedFieldSources, sPendingFieldSources, sizeof(sDisplayedFieldSources));
+    sFieldTilemapCopyPending = FALSE;
+}
+
+const struct FieldTileSource *const *GetDisplayedFieldTileSources(u8 bg, u8 base)
+{
+    if (!IsFieldTilemapBuffer(bg, GetBgTilemapBuffer(bg))
+     || GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX) != base)
+        return NULL;
+
+    return sDisplayedFieldSources;
+}
+
+const struct FieldTileSource *GetDisplayedFieldTileSource(const struct FieldTileSource *const *sources, u16 tileIndex)
+{
+    return sources[GetFieldTileSourceIndex(tileIndex)];
 }
 
 static void AddCameraTileOffset(struct FieldCameraOffset *cameraOffset, u32 xOffset, u32 yOffset)
 {
-    cameraOffset->xTileOffset += xOffset;
-    cameraOffset->xTileOffset %= 32;
+    cameraOffset->xTileOffset = (cameraOffset->xTileOffset + xOffset) & (GetFieldTilemapWidth() - 1);
     cameraOffset->yTileOffset += yOffset;
     cameraOffset->yTileOffset %= 32;
 }
 
 static void AddCameraPixelOffset(struct FieldCameraOffset *cameraOffset, u32 xOffset, u32 yOffset)
 {
-    cameraOffset->xPixelOffset += xOffset;
+    cameraOffset->xPixelOffset = (cameraOffset->xPixelOffset + xOffset) & (GetFieldTilemapWidth() * 8 - 1);
     cameraOffset->yPixelOffset += yOffset;
 }
 
 void ResetFieldCamera(void)
 {
     ResetCameraOffset(&sFieldCameraOffset);
+    memset(sPendingFieldSources, 0, sizeof(sPendingFieldSources));
+    memset(sDisplayedFieldSources, 0, sizeof(sDisplayedFieldSources));
+    sFieldTilemapCopyPending = FALSE;
+    sPendingActiveFieldTileset = NULL;
 }
 
 void FieldUpdateBgTilemapScroll(void)
 {
-    u32 r4, r5;
-    r5 = sFieldCameraOffset.xPixelOffset + sHorizontalCameraPan;
-    r4 = sVerticalCameraPan + sFieldCameraOffset.yPixelOffset + 8;
+    s16 x;
+    s16 y;
 
-    SetGpuReg(REG_OFFSET_BG1HOFS, r5);
-    SetGpuReg(REG_OFFSET_BG1VOFS, r4);
-    SetGpuReg(REG_OFFSET_BG2HOFS, r5);
-    SetGpuReg(REG_OFFSET_BG2VOFS, r4);
-    SetGpuReg(REG_OFFSET_BG3HOFS, r5);
-    SetGpuReg(REG_OFFSET_BG3VOFS, r4);
+    GetCameraOffsetWithPan(&x, &y);
+    SetGpuReg(REG_OFFSET_BG1HOFS, x);
+    SetGpuReg(REG_OFFSET_BG1VOFS, y);
+    SetGpuReg(REG_OFFSET_BG2HOFS, x);
+    SetGpuReg(REG_OFFSET_BG2VOFS, y);
+    SetGpuReg(REG_OFFSET_BG3HOFS, x);
+    SetGpuReg(REG_OFFSET_BG3VOFS, y);
 }
 
 void GetCameraOffsetWithPan(s16 *x, s16 *y)
 {
     *x = sFieldCameraOffset.xPixelOffset + sHorizontalCameraPan;
     *y = sFieldCameraOffset.yPixelOffset + sVerticalCameraPan + 8;
+    if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
+    {
+        *x -= FIELD_VIEW_CENTER_SHIFT_X;
+        *y -= FIELD_VIEW_CENTER_SHIFT_Y;
+    }
+}
+
+static u16 GetFieldTilemapIndex(const struct FieldCameraOffset *cameraOffset, s32 x, s32 y)
+{
+    u16 width = GetFieldTilemapWidth();
+
+    return GetTileMapIndexFromCoords(cameraOffset->xTileOffset + x,
+                                     cameraOffset->yTileOffset + y, width == WIDE_FIELD_TILEMAP_WIDTH, width, 32);
+}
+
+static void DrawMapViewRect(const struct FieldCameraOffset *cameraOffset, s32 left, s32 top, s32 width, s32 height)
+{
+    s32 originX = gSaveBlock1Ptr->pos.x;
+    s32 originY = gSaveBlock1Ptr->pos.y;
+    s32 x;
+    s32 y;
+
+    for (y = top; y < top + height; y++)
+    {
+        for (x = left; x < left + width; x++)
+            DrawMetatileAt(GetFieldTilemapIndex(cameraOffset, x * 2, y * 2), originX + x, originY + y);
+    }
+}
+
+static void GetWideMapViewOrigin(const struct FieldCameraOffset *cameraOffset, s32 *left, s32 *top)
+{
+    // The map position can advance before the pixel scroll reaches the next metatile.
+    s32 deltaX = cameraOffset->xPixelOffset / 16 - cameraOffset->xTileOffset / 2;
+    s32 deltaY = cameraOffset->yPixelOffset / 16 - cameraOffset->yTileOffset / 2;
+
+    // Recover the nearby signed displacement after the ring wraps.
+    *left = MAP_OFFSET - MAP_VIEW_LEFT_MARGIN + ((deltaX + 16) & 31) - 16;
+    *top = MAP_OFFSET - MAP_VIEW_TOP_MARGIN + ((deltaY + 8) & 15) - 8;
+#ifdef PLATFORM_SDL2
+    *left += cameraOffset->viewPanX;
+    *top += cameraOffset->viewPanY;
+#endif
 }
 
 void DrawWholeMapView(void)
 {
-    DrawWholeMapViewInternal(gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y, gMapHeader.mapLayout);
-    sFieldCameraOffset.copyBGToVRAM = TRUE;
-}
-
-static void DrawWholeMapViewInternal(int x, int y, const struct MapLayout *mapLayout)
-{
-    u8 i;
-    u8 j;
-    u32 r6;
-    u8 temp;
-
-    for (i = 0; i < 32; i += 2)
+    if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
     {
-        temp = sFieldCameraOffset.yTileOffset + i;
-        if (temp >= 32)
-            temp -= 32;
-        r6 = temp * 32;
-        for (j = 0; j < 32; j += 2)
-        {
-            temp = sFieldCameraOffset.xTileOffset + j;
-            if (temp >= 32)
-                temp -= 32;
-            DrawMetatileAt(mapLayout, r6 + temp, x + j / 2, y + i / 2);
-        }
+        s32 left;
+        s32 top;
+        GetWideMapViewOrigin(&sFieldCameraOffset, &left, &top);
+        DrawMapViewRect(&sFieldCameraOffset, left, top, MAP_VIEW_WIDTH, MAP_VIEW_HEIGHT);
     }
+    else
+    {
+        DrawMapViewRect(&sFieldCameraOffset, 0, 0, 16, 16);
+    }
+    sFieldCameraOffset.copyBGToVRAM = TRUE;
 }
 
 static void RedrawMapSlicesForCameraUpdate(struct FieldCameraOffset *cameraOffset, int x, int y)
 {
-    const struct MapLayout *mapLayout = gMapHeader.mapLayout;
-
     if (x > 0)
-        RedrawMapSliceWest(cameraOffset, mapLayout);
+        DrawMapViewRect(cameraOffset, 14, 0, 1, 16);
     if (x < 0)
-        RedrawMapSliceEast(cameraOffset, mapLayout);
+        DrawMapViewRect(cameraOffset, 0, 0, 1, 16);
     if (y > 0)
-        RedrawMapSliceNorth(cameraOffset, mapLayout);
+        DrawMapViewRect(cameraOffset, 0, 14, 16, 1);
     if (y < 0)
-        RedrawMapSliceSouth(cameraOffset, mapLayout);
+        DrawMapViewRect(cameraOffset, 0, 0, 16, 1);
+
     cameraOffset->copyBGToVRAM = TRUE;
 }
 
-static void RedrawMapSliceNorth(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
+static s32 GetMetatileScrollDelta(u16 previousPixel, s32 movement)
 {
-    u8 i;
-    u8 temp;
-    u32 r7;
+    s32 position = previousPixel % 16 + movement;
 
-    temp = cameraOffset->yTileOffset + 28;
-    if (temp >= 32)
-        temp -= 32;
-    r7 = temp * 32;
-    for (i = 0; i < 32; i += 2)
+    // Floor division also counts the first pixel across the west or north edge.
+    return position < 0 ? (position - 15) / 16 : position / 16;
+}
+
+#ifdef PLATFORM_SDL2
+static void UpdateWideMapViewPan(void)
+{
+    // Keep the residual pan in [-8, 7] pixels, within the loaded guard tiles.
+    s32 panX = GetMetatileScrollDelta(0, sHorizontalCameraPan + 8);
+    s32 panY = GetMetatileScrollDelta(0, sVerticalCameraPan - 32 + 8);
+
+    if (panX != sFieldCameraOffset.viewPanX || panY != sFieldCameraOffset.viewPanY)
     {
-        temp = cameraOffset->xTileOffset + i;
-        if (temp >= 32)
-            temp -= 32;
-        DrawMetatileAt(mapLayout, r7 + temp, gSaveBlock1Ptr->pos.x + i / 2, gSaveBlock1Ptr->pos.y + 14);
+        sFieldCameraOffset.viewPanX = panX;
+        sFieldCameraOffset.viewPanY = panY;
+        DrawWholeMapView();
     }
 }
 
-static void RedrawMapSliceSouth(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
+void FillFieldTilemapForBattleTransition(void)
 {
-    u8 i;
-    u8 temp;
-    u32 r7 = cameraOffset->yTileOffset * 32;
+    s32 left;
+    s32 top;
+    const s32 width = WIDE_FIELD_TILEMAP_WIDTH / 2;
+    const s32 height = 32 / 2;
 
-    for (i = 0; i < 32; i += 2)
-    {
-        temp = cameraOffset->xTileOffset + i;
-        if (temp >= 32)
-            temp -= 32;
-        DrawMetatileAt(mapLayout, r7 + temp, gSaveBlock1Ptr->pos.x + i / 2, gSaveBlock1Ptr->pos.y);
-    }
+    if (GetFieldTilemapWidth() != WIDE_FIELD_TILEMAP_WIDTH
+     || !IsFieldTilemapBuffer(1, GetBgTilemapBuffer(1)))
+        return;
+
+    GetWideMapViewOrigin(&sFieldCameraOffset, &left, &top);
+    DrawMapViewRect(&sFieldCameraOffset, left - (width - MAP_VIEW_WIDTH) / 2,
+                    top - (height - MAP_VIEW_HEIGHT) / 2, width, height);
+    sFieldTilemapCopyPending = TRUE;
 }
+#endif
 
-static void RedrawMapSliceEast(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
+static void RedrawWideMapSlices(struct FieldCameraOffset *cameraOffset, s32 deltaX, s32 deltaY)
 {
-    u8 i;
-    u8 temp;
-    u32 r6 = cameraOffset->xTileOffset;
+    s32 left;
+    s32 top;
 
-    for (i = 0; i < 32; i += 2)
+    if (deltaX == 0 && deltaY == 0)
+        return;
+
+    GetWideMapViewOrigin(cameraOffset, &left, &top);
+    if (deltaX != 0)
     {
-        temp = cameraOffset->yTileOffset + i;
-        if (temp >= 32)
-            temp -= 32;
-        DrawMetatileAt(mapLayout, temp * 32 + r6, gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y + i / 2);
+        s32 column = deltaX > 0 ? left + MAP_VIEW_WIDTH - 1 : left;
+        DrawMapViewRect(cameraOffset, column, top, 1, MAP_VIEW_HEIGHT);
     }
-}
-
-static void RedrawMapSliceWest(struct FieldCameraOffset *cameraOffset, const struct MapLayout *mapLayout)
-{
-    u8 i;
-    u8 temp;
-    u8 r5 = cameraOffset->xTileOffset + 28;
-
-    if (r5 >= 32)
-        r5 -= 32;
-    for (i = 0; i < 32; i += 2)
+    if (deltaY != 0)
     {
-        temp = cameraOffset->yTileOffset + i;
-        if (temp >= 32)
-            temp -= 32;
-        DrawMetatileAt(mapLayout, temp * 32 + r5, gSaveBlock1Ptr->pos.x + 14, gSaveBlock1Ptr->pos.y + i / 2);
+        s32 row = deltaY > 0 ? top + MAP_VIEW_HEIGHT - 1 : top;
+        DrawMapViewRect(cameraOffset, left, row, MAP_VIEW_WIDTH, 1);
     }
+
+    cameraOffset->copyBGToVRAM = TRUE;
 }
 
 void CurrentMapDrawMetatileAt(int x, int y)
@@ -207,7 +453,7 @@ void CurrentMapDrawMetatileAt(int x, int y)
 
     if (offset >= 0)
     {
-        DrawMetatileAt(gMapHeader.mapLayout, offset, x, y);
+        DrawMetatileAt(offset, x, y);
         sFieldCameraOffset.copyBGToVRAM = TRUE;
     }
 }
@@ -218,13 +464,16 @@ void DrawDoorMetatileAt(int x, int y, u16 *tiles)
 
     if (offset >= 0)
     {
+        if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
+            sPendingFieldSources[GetFieldTileSourceIndex(offset)] = NULL;
         DrawMetatile(METATILE_LAYER_TYPE_COVERED, tiles, offset);
         sFieldCameraOffset.copyBGToVRAM = TRUE;
     }
 }
 
-static void DrawMetatileAt(const struct MapLayout *mapLayout, u16 offset, int x, int y)
+static void DrawMetatileAt(u16 offset, int x, int y)
 {
+    const struct MapLayout *mapLayout = MapGridGetSourceLayoutAt(x, y);
     u16 metatileId = MapGridGetMetatileIdAt(x, y);
     const u16 *metatiles;
 
@@ -239,6 +488,9 @@ static void DrawMetatileAt(const struct MapLayout *mapLayout, u16 offset, int x,
         metatiles = mapLayout->secondaryTileset->metatiles;
         metatileId -= NUM_METATILES_IN_PRIMARY;
     }
+    if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
+        sPendingFieldSources[GetFieldTileSourceIndex(offset)] = GetFieldTileSource(mapLayout);
+
     DrawMetatile(MapGridGetMetatileLayerTypeAt(x, y), metatiles + metatileId * NUM_TILES_PER_METATILE, offset);
 }
 
@@ -312,21 +564,22 @@ static void DrawMetatile(s32 metatileLayerType, const u16 *tiles, u16 offset)
 static s32 MapPosToBgTilemapOffset(struct FieldCameraOffset *cameraOffset, s32 x, s32 y)
 {
     x -= gSaveBlock1Ptr->pos.x;
-    x *= 2;
-    if (x >= 32 || x < 0)
-        return -1;
-    x = x + cameraOffset->xTileOffset;
-    if (x >= 32)
-        x -= 32;
+    y -= gSaveBlock1Ptr->pos.y;
 
-    y = (y - gSaveBlock1Ptr->pos.y) * 2;
-    if (y >= 32 || y < 0)
+    if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
+    {
+        s32 left;
+        s32 top;
+        GetWideMapViewOrigin(cameraOffset, &left, &top);
+        if (x < left || x >= left + MAP_VIEW_WIDTH || y < top || y >= top + MAP_VIEW_HEIGHT)
+            return -1;
+    }
+    else if (x < 0 || x >= 16 || y < 0 || y >= 16)
+    {
         return -1;
-    y = y + cameraOffset->yTileOffset;
-    if (y >= 32)
-        y -= 32;
+    }
 
-    return y * 32 + x;
+    return GetFieldTilemapIndex(cameraOffset, x * 2, y * 2);
 }
 
 static void CameraUpdateCallback(struct CameraObject *fieldCamera)
@@ -350,10 +603,20 @@ void ResetCameraUpdateInfo(void)
 
 u32 InitCameraUpdateCallback(u8 trackedSpriteId)
 {
-    if (gFieldCamera.spriteId != 0)
+    if (gFieldCamera.spriteId != 0 && gFieldCamera.spriteId < MAX_SPRITES)
         DestroySprite(&gSprites[gFieldCamera.spriteId]);
-    gFieldCamera.spriteId = AddCameraObject(trackedSpriteId);
-    gFieldCamera.callback = CameraUpdateCallback;
+
+    gFieldCamera.spriteId = trackedSpriteId < MAX_SPRITES ? AddCameraObject(trackedSpriteId) : MAX_SPRITES;
+    if (gFieldCamera.spriteId == MAX_SPRITES)
+    {
+        gFieldCamera.movementSpeedX = 0;
+        gFieldCamera.movementSpeedY = 0;
+        gFieldCamera.callback = NULL;
+    }
+    else
+    {
+        gFieldCamera.callback = CameraUpdateCallback;
+    }
     return 0;
 }
 
@@ -365,6 +628,10 @@ void CameraUpdate(void)
     int curMovementOffsetX;
     int movementSpeedX;
     int movementSpeedY;
+    bool8 wideView = GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH;
+    bool8 crossedConnection = FALSE;
+    u16 previousPixelX = sFieldCameraOffset.xPixelOffset;
+    u8 previousPixelY = sFieldCameraOffset.yPixelOffset;
 
     if (gFieldCamera.callback != NULL)
         gFieldCamera.callback(&gFieldCamera);
@@ -400,9 +667,9 @@ void CameraUpdate(void)
     if (curMovementOffsetY != 0 && curMovementOffsetY == -movementSpeedY)
     {
         if (movementSpeedY > 0)
-            deltaX = 1;
+            deltaY = 1;
         else
-            deltaX = -1;
+            deltaY = -1;
     }
 
     gFieldCamera.x += movementSpeedX;
@@ -412,15 +679,27 @@ void CameraUpdate(void)
 
     if (deltaX != 0 || deltaY != 0)
     {
-        CameraMove(deltaX, deltaY);
+        crossedConnection = CameraMove(deltaX, deltaY);
         UpdateObjectEventsForCameraUpdate(deltaX, deltaY);
         RotatingGatePuzzleCameraUpdate(deltaX, deltaY);
         SetBerryTreesSeen();
         AddCameraTileOffset(&sFieldCameraOffset, deltaX * 2, deltaY * 2);
-        RedrawMapSlicesForCameraUpdate(&sFieldCameraOffset, deltaX * 2, deltaY * 2);
+        if (!wideView)
+            RedrawMapSlicesForCameraUpdate(&sFieldCameraOffset, deltaX * 2, deltaY * 2);
     }
 
     AddCameraPixelOffset(&sFieldCameraOffset, movementSpeedX, movementSpeedY);
+    if (wideView)
+    {
+        s32 scrollDeltaX = GetMetatileScrollDelta(previousPixelX, movementSpeedX);
+        s32 scrollDeltaY = GetMetatileScrollDelta(previousPixelY, movementSpeedY);
+
+        if (crossedConnection || scrollDeltaX < -1 || scrollDeltaX > 1 || scrollDeltaY < -1 || scrollDeltaY > 1)
+            DrawWholeMapView();
+        else
+            RedrawWideMapSlices(&sFieldCameraOffset, scrollDeltaX, scrollDeltaY);
+    }
+
     gTotalCameraPixelOffsetX -= movementSpeedX;
     gTotalCameraPixelOffsetY -= movementSpeedY;
 }
@@ -460,6 +739,14 @@ void UpdateCameraPanning(void)
     //Update sprite offset of overworld objects
     gSpriteCoordOffsetX = gTotalCameraPixelOffsetX - sHorizontalCameraPan;
     gSpriteCoordOffsetY = gTotalCameraPixelOffsetY - sVerticalCameraPan - 8;
+    if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
+    {
+#ifdef PLATFORM_SDL2
+        UpdateWideMapViewPan();
+#endif
+        gSpriteCoordOffsetX += FIELD_VIEW_CENTER_SHIFT_X;
+        gSpriteCoordOffsetY += FIELD_VIEW_CENTER_SHIFT_Y;
+    }
 }
 
 static void CameraPanningCB_PanAhead(void)

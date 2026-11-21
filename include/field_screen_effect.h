@@ -40,6 +40,7 @@ void DoSpinExitWarp(void);
 void DoOrbEffect(void);
 void FadeOutOrbEffect(void);
 void WriteFlashScanlineEffectBuffer(u8 flashLevel);
+void StartFieldCircleScanlineEffect(void);
 bool8 IsPlayerStandingStill(void);
 
 #endif // GUARD_FIELD_SCREEN_EFFECT_H

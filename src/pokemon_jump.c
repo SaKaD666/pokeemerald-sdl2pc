@@ -27,6 +27,9 @@
 #include "trig.h"
 #include "pokemon.h"
 #include "pokemon_jump.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 #include "constants/rgb.h"
 #include "constants/songs.h"
 #include "constants/items.h"
@@ -555,10 +558,24 @@ void StartPokemonJump(u16 partyId, MainCallback exitCallback)
     SetMainCallback2(exitCallback);
 }
 
-static void FreePokemonJump(void)
+static void CB2_ExitPokemonJump(void)
 {
+    MainCallback exitCallback = sPokemonJump->exitCallback;
+
+    SetVBlankCallback(NULL);
+#ifdef PORTABLE
+    IsDma3ManagerBusyWithBgCopy();
+    ClearScheduledBgCopiesToVram();
+#endif
     FreeWindowsAndDigitObj();
-    Free(sPokemonJump);
+    UnsetBgTilemapBuffer(BG_INTERFACE);
+    ResetTasks();
+    FREE_AND_SET_NULL(sPokemonJump);
+    sPokemonJumpGfx = NULL;
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
+    SetMainCallback2(exitCallback);
 }
 
 static void InitGame(struct PokemonJump *jump)
@@ -1223,10 +1240,7 @@ static bool32 ExitGame(void)
         break;
     case 2:
         if (!ClosePokeJumpLink())
-        {
-            SetMainCallback2(sPokemonJump->exitCallback);
-            FreePokemonJump();
-        }
+            SetMainCallback2(CB2_ExitPokemonJump);
         break;
     }
 
@@ -3177,6 +3191,9 @@ static void LoadPokeJumpGfx(void)
     switch (sPokemonJumpGfx->mainState)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ResetBgsAndClearDma3BusyFlags(0);
         InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
         InitWindows(sWindowTemplates);

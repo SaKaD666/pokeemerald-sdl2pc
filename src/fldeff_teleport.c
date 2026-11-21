@@ -31,13 +31,22 @@ static void FieldCallback_Teleport(void)
 bool8 FldEff_UseTeleport(void)
 {
     u8 taskId = CreateFieldMoveTask();
+
+    if (taskId == TASK_NONE)
+    {
+        FieldEffectActiveListRemove(FLDEFF_USE_TELEPORT);
+        RestoreFieldControlsAfterFailedMove();
+        return FALSE;
+    }
     gTasks[taskId].ptr.funcPtr = StartTeleportFieldEffect;
-    SetPlayerAvatarTransitionFlags(PLAYER_AVATAR_FLAG_ON_FOOT);
     return FALSE;
 }
 
 static void StartTeleportFieldEffect(void)
 {
     FieldEffectActiveListRemove(FLDEFF_USE_TELEPORT);
-    FldEff_TeleportWarpOut();
+    if (FldEff_TeleportWarpOut())
+        SetPlayerAvatarTransitionFlags(PLAYER_AVATAR_FLAG_ON_FOOT);
+    else
+        RestoreFieldControlsAfterFailedMove();
 }

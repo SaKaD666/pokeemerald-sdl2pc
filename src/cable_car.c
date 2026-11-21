@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "bg.h"
 #include "decompress.h"
 #include "event_data.h"
@@ -249,6 +250,9 @@ static void CB2_LoadCableCar(void)
     {
     case 0:
     default:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetVBlankCallback(NULL);
         SetBgRegs(FALSE);
         ScanlineEffect_Stop();
@@ -265,7 +269,7 @@ static void CB2_LoadCableCar(void)
         ResetPaletteFade();
         ResetTempTileDataBuffers();
         StartWeather();
-        for (i = 0; i < NUM_ASH_SPRITES; i++)
+        for (i = 0; i < NUM_FIELD_ASH_SPRITES; i++)
             gWeatherPtr->sprites.s2.ashSprites[i] = NULL;
 
         InitMapMusic();
@@ -309,9 +313,9 @@ static void CB2_LoadCableCar(void)
         {
             gMain.state++;
         }
-        else if (gWeatherPtr->sprites.s2.ashSprites[0])
+        else if (gWeatherPtr->ashSpritesCreated)
         {
-            for (i = 0; i < NUM_ASH_SPRITES; i++)
+            for (i = 0; i < NUM_FIELD_ASH_SPRITES; i++)
             {
                 if (gWeatherPtr->sprites.s2.ashSprites[i])
                     gWeatherPtr->sprites.s2.ashSprites[i]->oam.priority = 0;
@@ -376,9 +380,9 @@ static void CB2_EndCableCar(void)
     HideBg(2);
     HideBg(3);
     SetBgRegs(FALSE);
-    gSpriteCoordOffsetX = 0;
+    gSpriteCoordOffsetX = gSpriteCoordOffsetY = 0;
     SetCurrentAndNextWeatherNoDelay(WEATHER_NONE);
-    for (i = 0; i < NUM_ASH_SPRITES; i++)
+    for (i = 0; i < NUM_FIELD_ASH_SPRITES; i++)
         gWeatherPtr->sprites.s2.ashSprites[i] = NULL;
 
     ResetTasks();
@@ -400,6 +404,9 @@ static void CB2_EndCableCar(void)
     DmaFill16Defvars(3, 0, (void *)PLTT, PLTT_SIZE);
     WarpIntoMap();
     gFieldCallback = NULL;
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
     SetMainCallback2(CB2_LoadMap);
 }
 
@@ -423,9 +430,9 @@ static void Task_CableCar(u8 taskId)
         switch (sCableCar->weather)
         {
         case WEATHER_VOLCANIC_ASH:
-            if (gWeatherPtr->sprites.s2.ashSprites[0] != NULL && gWeatherPtr->sprites.s2.ashSprites[0]->oam.priority != 0)
+            if (gWeatherPtr->ashSpritesCreated)
             {
-                for (; i < NUM_ASH_SPRITES; i++)
+                for (; i < NUM_FIELD_ASH_SPRITES; i++)
                 {
                     if (gWeatherPtr->sprites.s2.ashSprites[i])
                         gWeatherPtr->sprites.s2.ashSprites[i]->oam.priority = 0;
@@ -441,7 +448,7 @@ static void Task_CableCar(u8 taskId)
             }
             else if (sCableCar->timer >= sCableCar->weatherDelay + 8)
             {
-                for (; i < NUM_ASH_SPRITES; i++)
+                for (; i < NUM_FIELD_ASH_SPRITES; i++)
                 {
                     if (gWeatherPtr->sprites.s2.ashSprites[i])
                         gWeatherPtr->sprites.s2.ashSprites[i]->invisible ^= 1;
@@ -452,7 +459,7 @@ static void Task_CableCar(u8 taskId)
         break;
     case 2:
         // Wait to fade out
-        if (sCableCar->timer == 570)
+        if (sCableCar->timer >= 570)
         {
             sCableCar->state = 3;
             BeginNormalPaletteFade(PALETTES_ALL, 3, 0, 16, RGB_BLACK);
@@ -548,10 +555,18 @@ static void Task_AnimateBgGoingDown(u8 taskId)
     }
 
     AnimateGroundGoingDown();
+#ifdef PLATFORM_SDL2
+    // Keep the ash's 64-pixel tile phase continuous at wraparound.
+    if (sCableCar->timer < sCableCar->weatherDelay)
+        gSpriteCoordOffsetX = (gSpriteCoordOffsetX - 1) & 0xFF;
+    else
+        gWeatherPtr->ashBaseSpritesX = (gWeatherPtr->ashBaseSpritesX - 1) & 0xFF;
+#else
     if (sCableCar->timer < sCableCar->weatherDelay)
         gSpriteCoordOffsetX = (gSpriteCoordOffsetX + 247) % 248;
     else
         gWeatherPtr->ashBaseSpritesX = (gWeatherPtr->ashBaseSpritesX + 247) % 248;
+#endif
 }
 
 static void VBlankCB_CableCar(void)
@@ -671,7 +686,7 @@ static void SpriteCB_HikerGoingUp(struct Sprite *sprite)
             break;
         }
 
-        if (sprite->y > DISPLAY_HEIGHT)
+        if (sprite->y > GBA_DISPLAY_HEIGHT)
             DestroySprite(sprite);
     }
 }

@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "battle_records.h"
 #include "bg.h"
 #include "window.h"
@@ -370,6 +371,10 @@ static void Task_ExitTrainerHillRecords(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
+        SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
         Free(sTilemapBuffer);
         RemoveTrainerHillRecordsWindow(0);
@@ -464,6 +469,9 @@ static void MainCB2_TrainerHillRecords(void)
 
 void ShowTrainerHillRecords(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetVBlankCallback(NULL);
     SetMainCallback2(CB2_ShowTrainerHillRecords);
 }

@@ -34,6 +34,9 @@
 #include "new_game.h"
 #include "save.h"
 #include "strings.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 #include "constants/game_stat.h"
 #include "constants/items.h"
 #include "constants/rgb.h"
@@ -1045,6 +1048,21 @@ static void InitBerryBlenderWindows(void)
     }
 }
 
+static void ReleaseBlenderDisplay(void)
+{
+    SetVBlankCallback(NULL);
+#ifdef PORTABLE
+    IsDma3ManagerBusyWithBgCopy();
+    ClearScheduledBgCopiesToVram();
+#endif
+    FreeAllWindowBuffers();
+    UnsetBgTilemapBuffer(2);
+    UnsetBgTilemapBuffer(1);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
+}
+
 // gSpecialVar_0x8004 is the number of NPC opponents
 // Set to 0 indicates it's a link blender
 void DoBerryBlending(void)
@@ -1072,6 +1090,9 @@ static void CB2_LoadBerryBlender(void)
         ResetSpriteData();
         FreeAllSpritePalettes();
         SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ResetBgsAndClearDma3BusyFlags(0);
         InitBgsFromTemplates(1, sBgTemplates, ARRAY_COUNT(sBgTemplates));
         SetBgTilemapBuffer(1, sBerryBlender->tilemapBuffers[0]);
@@ -1129,13 +1150,10 @@ static void CB2_LoadBerryBlender(void)
         if (!gPaletteFade.active)
         {
             // Go to bag menu to choose berry, set callback to StartBlender
-            FreeAllWindowBuffers();
-            UnsetBgTilemapBuffer(2);
-            UnsetBgTilemapBuffer(1);
-            SetVBlankCallback(NULL);
-            ChooseBerryForMachine(StartBlender);
-
             sBerryBlender->mainState = 0;
+            ReleaseBlenderDisplay();
+            ChooseBerryForMachine(StartBlender);
+            return;
         }
         break;
     }
@@ -1500,6 +1518,9 @@ static void CB2_StartBlenderLink(void)
 
 static void InitBlenderBgs(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
 
     ResetSpriteData();
@@ -2904,11 +2925,10 @@ static void CB2_CheckPlayAgainLink(void)
         {
             if (sBerryBlender->playerContinueResponses[0] == LINKCMD_SEND_LINK_TYPE)
             {
-                FreeAllWindowBuffers();
-                UnsetBgTilemapBuffer(2);
-                UnsetBgTilemapBuffer(1);
+                ReleaseBlenderDisplay();
                 FREE_AND_SET_NULL(sBerryBlender);
                 SetMainCallback2(DoBerryBlending);
+                return;
             }
             else
             {
@@ -2927,8 +2947,10 @@ static void CB2_CheckPlayAgainLink(void)
     case 12:
         if (!gReceivedRemoteLinkPlayers)
         {
+            ReleaseBlenderDisplay();
             FREE_AND_SET_NULL(sBerryBlender);
             SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
+            return;
         }
         break;
     }
@@ -2982,10 +3004,9 @@ static void CB2_CheckPlayAgainLocal(void)
             else
                 SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
 
-            FreeAllWindowBuffers();
-            UnsetBgTilemapBuffer(2);
-            UnsetBgTilemapBuffer(1);
+            ReleaseBlenderDisplay();
             FREE_AND_SET_NULL(sBerryBlender);
+            return;
         }
         break;
     }
@@ -3105,10 +3126,10 @@ static void DrawBlenderCenter(struct BgAffineSrcData *dest)
 {
     struct BgAffineSrcData affineSrc;
 
-    affineSrc.texX = (DISPLAY_WIDTH / 2) << 8;
-    affineSrc.texY = (DISPLAY_HEIGHT / 2) << 8;
-    affineSrc.scrX = DISPLAY_WIDTH / 2 - sBerryBlender->bg_X;
-    affineSrc.scrY = DISPLAY_HEIGHT / 2 - sBerryBlender->bg_Y;
+    affineSrc.texX = (GBA_DISPLAY_WIDTH / 2) << 8;
+    affineSrc.texY = (GBA_DISPLAY_HEIGHT / 2) << 8;
+    affineSrc.scrX = GBA_DISPLAY_WIDTH / 2 - sBerryBlender->bg_X;
+    affineSrc.scrY = GBA_DISPLAY_HEIGHT / 2 - sBerryBlender->bg_Y;
     affineSrc.sx = sBerryBlender->centerScale;
     affineSrc.sy = sBerryBlender->centerScale;
     affineSrc.alpha = sBerryBlender->arrowPos;
@@ -3239,9 +3260,9 @@ static void SpriteCB_CountdownNumber(struct Sprite *sprite)
     {
     case 0:
         sprite->sYPos += 8;
-        if (sprite->sYPos > DISPLAY_HEIGHT / 2 + 8)
+        if (sprite->sYPos > GBA_DISPLAY_HEIGHT / 2 + 8)
         {
-            sprite->sYPos = DISPLAY_HEIGHT / 2 + 8;
+            sprite->sYPos = GBA_DISPLAY_HEIGHT / 2 + 8;
             sprite->sState++;
             PlaySE(SE_BALL_BOUNCE_1);
         }
@@ -3255,7 +3276,7 @@ static void SpriteCB_CountdownNumber(struct Sprite *sprite)
         break;
     case 2:
         sprite->sYPos += 4;
-        if (sprite->sYPos > DISPLAY_HEIGHT + 16)
+        if (sprite->sYPos > GBA_DISPLAY_HEIGHT + 16)
         {
             if (++sprite->sAnimId == 3)
             {
@@ -3300,7 +3321,7 @@ static void SpriteCB_Start(struct Sprite *sprite)
         break;
     case 2:
         sprite->data[1] += 4;
-        if (sprite->data[1] > DISPLAY_HEIGHT + 16)
+        if (sprite->data[1] > GBA_DISPLAY_HEIGHT + 16)
         {
             sBerryBlender->mainState++;
             DestroySprite(sprite);

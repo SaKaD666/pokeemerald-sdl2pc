@@ -3,8 +3,13 @@ static const struct BgTemplate sPartyMenuBgTemplates[] =
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -12,8 +17,13 @@ static const struct BgTemplate sPartyMenuBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
@@ -21,8 +31,13 @@ static const struct BgTemplate sPartyMenuBgTemplates[] =
     {
         .bg = 2,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 26,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 28,
         .screenSize = 1,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0

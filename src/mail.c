@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "mail.h"
 #include "constants/items.h"
 #include "overworld.h"
@@ -56,23 +57,23 @@ struct MailGraphics
 
 struct MailRead
 {
-    /*0x0000*/ u8 message[8][64];
-    /*0x0200*/ u8 playerName[12];
-    /*0x020C*/ MainCallback exitCallback;
-    /*0x0210*/ MainCallback callback;
-    /*0x0214*/ struct Mail *mail;
-    /*0x0218*/ bool8 hasText;
-    /*0x0219*/ u8 signatureWidth;
-    /*0x021a*/ u8 mailType;
-    /*0x021b*/ u8 iconType;
-    /*0x021c*/ u8 monIconSpriteId;
-    /*0x021d*/ u8 language;
-    /*0x021e*/ bool8 international;
-    /*0x0220*/ u8 * (*parserSingle)(u8 *dest, u16 word);
-    /*0x0224*/ u8 * (*parserMultiple)(u8 *dest, const u16 *src, u16 length1, u16 length2);
-    /*0x0228*/ const struct MailLayout *layout;
-    /*0x022c*/ u8 bg1TilemapBuffer[0x1000];
-    /*0x122c*/ u8 bg2TilemapBuffer[0x1000];
+    u8 message[8][64];
+    u8 playerName[12];
+    MainCallback exitCallback;
+    MainCallback callback;
+    struct Mail mail;
+    bool8 hasText;
+    u8 signatureWidth;
+    u8 mailType;
+    u8 iconType;
+    u8 monIconSpriteId;
+    u8 language;
+    bool8 international;
+    u8 * (*parserSingle)(u8 *dest, u16 word);
+    u8 * (*parserMultiple)(u8 *dest, const u16 *src, u16 length1, u16 length2);
+    const struct MailLayout *layout;
+    u8 bg1TilemapBuffer[0x1000];
+    u8 bg2TilemapBuffer[0x1000];
 };
 
 static EWRAM_DATA struct MailRead *sMailRead = NULL;
@@ -492,7 +493,7 @@ void ReadMail(struct Mail *mail, MainCallback exitCallback, bool8 hasText)
     {
         sMailRead->iconType = ICON_TYPE_NONE;
     }
-    sMailRead->mail = mail;
+    sMailRead->mail = *mail;
     sMailRead->exitCallback = exitCallback;
     sMailRead->hasText = hasText;
     SetMainCallback2(CB2_InitMailRead);
@@ -505,6 +506,9 @@ static bool8 MailReadBuildGraphics(void)
     switch (gMain.state)
     {
         case 0:
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(TRUE);
+#endif
             SetVBlankCallback(NULL);
             ScanlineEffect_Stop();
             SetGpuReg(REG_OFFSET_DISPCNT, 0);
@@ -595,7 +599,7 @@ static bool8 MailReadBuildGraphics(void)
             gPaletteFade.bufferTransferDisabled = TRUE;
             break;
         case 17:
-            icon = GetIconSpeciesNoPersonality(sMailRead->mail->species);
+            icon = GetIconSpeciesNoPersonality(sMailRead->mail.species);
             switch (sMailRead->iconType)
             {
             case ICON_TYPE_BEAD:
@@ -646,12 +650,12 @@ static void BufferMailText(void)
     numWords = 0;
     for (i = 0; i < sMailRead->layout->numLines; i ++)
     {
-        ConvertEasyChatWordsToString(sMailRead->message[i], &sMailRead->mail->words[numWords], sMailRead->layout->lines[i].numEasyChatWords, 1);
+        ConvertEasyChatWordsToString(sMailRead->message[i], &sMailRead->mail.words[numWords], sMailRead->layout->lines[i].numEasyChatWords, 1);
         numWords += sMailRead->layout->lines[i].numEasyChatWords;
     }
 
     // Buffer the signature
-    ptr = StringCopy(sMailRead->playerName, sMailRead->mail->playerName);
+    ptr = StringCopy(sMailRead->playerName, sMailRead->mail.playerName);
     if (!sMailRead->international)
     {
         // Never reached
@@ -676,9 +680,7 @@ static void PrintMailText(void)
 
     y = 0;
     PutWindowTilemap(0);
-    PutWindowTilemap(1);
     FillWindowPixelBuffer(0, PIXEL_FILL(0));
-    FillWindowPixelBuffer(1, PIXEL_FILL(0));
     for (i = 0; i < sMailRead->layout->numLines; i ++)
     {
         if (sMailRead->message[i][0] == EOS || sMailRead->message[i][0] == CHAR_SPACE)
@@ -693,7 +695,6 @@ static void PrintMailText(void)
     box_y = sMailRead->layout->signatureYPos + 88;
     AddTextPrinterParameterized3(0, FONT_NORMAL, box_x, box_y, sTextColors, 0, signature);
     CopyWindowToVram(0, COPYWIN_FULL);
-    CopyWindowToVram(1, COPYWIN_FULL);
 }
 
 static void VBlankCB_MailRead(void)
@@ -734,12 +735,14 @@ static void CB2_ExitMailReadFreeVars(void)
 {
     if (!UpdatePaletteFade())
     {
-        SetMainCallback2(sMailRead->exitCallback);
+        MainCallback exitCallback = sMailRead->exitCallback;
+
+        SetVBlankCallback(NULL);
         switch (sMailRead->iconType)
         {
         case ICON_TYPE_BEAD:
         case ICON_TYPE_DREAM:
-            FreeMonIconPalette(GetIconSpeciesNoPersonality(sMailRead->mail->species));
+            FreeMonIconPalette(GetIconSpeciesNoPersonality(sMailRead->mail.species));
             FreeAndDestroyMonIconSprite(&gSprites[sMailRead->monIconSpriteId]);
         }
         memset(sMailRead, 0, sizeof(*sMailRead));
@@ -749,5 +752,9 @@ static void CB2_ExitMailReadFreeVars(void)
         ResetBgsAndClearDma3BusyFlags(0);
         FreeAllWindowBuffers();
         FREE_AND_SET_NULL(sMailRead);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
+        SetMainCallback2(exitCallback);
     }
 }

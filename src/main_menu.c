@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "trainer_pokemon_sprites.h"
 #include "bg.h"
 #include "constants/rgb.h"
@@ -556,6 +557,9 @@ void CB2_ReinitMainMenu(void)
 
 static u32 InitMainMenu(bool8 returningFromOptionsMenu)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetVBlankCallback(NULL);
 
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
@@ -896,8 +900,8 @@ static bool8 HandleMainMenuInput(u8 taskId)
     {
         PlaySE(SE_SELECT);
         BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 0x10, RGB_WHITEALPHA);
-        SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
-        SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT));
+        SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, GBA_DISPLAY_WIDTH);
+        SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, GBA_DISPLAY_HEIGHT));
         gTasks[taskId].func = Task_HandleMainMenuBPressed;
     }
     else if ((JOY_NEW(DPAD_UP)) && tCurrItem > 0)
@@ -1099,6 +1103,10 @@ static void Task_HandleMainMenuAPressed(u8 taskId)
                 return;
         }
         FreeAllWindowBuffers();
+#ifdef PLATFORM_SDL2
+        if (action != ACTION_NEW_GAME && action != ACTION_OPTION)
+            SetFrameViewToGbaSize(FALSE);
+#endif
         if (action != ACTION_OPTION)
             sCurrItemAndOptionMenuCheck = 0;
         else
@@ -1542,7 +1550,7 @@ static void Task_NewGameBirchSpeech_SlideOutOldGenderSprite(u8 taskId)
             spriteId = gTasks[taskId].tMaySpriteId;
         else
             spriteId = gTasks[taskId].tBrendanSpriteId;
-        gSprites[spriteId].x = DISPLAY_WIDTH;
+        gSprites[spriteId].x = GBA_DISPLAY_WIDTH;
         gSprites[spriteId].y = 60;
         gSprites[spriteId].invisible = FALSE;
         gTasks[taskId].tPlayerSpriteId = spriteId;
@@ -1780,6 +1788,9 @@ static void Task_NewGameBirchSpeech_Cleanup(u8 taskId)
         FreeAllWindowBuffers();
         FreeAndDestroyMonPicSprite(gTasks[taskId].tLotadSpriteId);
         ResetAllPicSprites();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_NewGame);
         DestroyTask(taskId);
     }
@@ -1798,6 +1809,9 @@ static void CB2_NewGameBirchSpeech_ReturnFromNamingScreen(void)
     SetVBlankCallback(NULL);
     SetGpuReg(REG_OFFSET_BG2CNT, 0);
     SetGpuReg(REG_OFFSET_BG1CNT, 0);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetGpuReg(REG_OFFSET_BG0CNT, 0);
     SetGpuReg(REG_OFFSET_BG2HOFS, 0);
     SetGpuReg(REG_OFFSET_BG2VOFS, 0);
@@ -2120,8 +2134,8 @@ static void CreateMainMenuErrorWindow(const u8 *str)
     PutWindowTilemap(7);
     CopyWindowToVram(7, COPYWIN_GFX);
     DrawMainMenuWindowBorder(&sWindowTemplates_MainMenu[7], MAIN_MENU_BORDER_TILE);
-    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(9, DISPLAY_WIDTH - 9));
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(113, DISPLAY_HEIGHT - 1));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 9, GBA_DISPLAY_WIDTH - 9);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(113, GBA_DISPLAY_HEIGHT - 1));
 }
 
 static void MainMenu_FormatSavegameText(void)

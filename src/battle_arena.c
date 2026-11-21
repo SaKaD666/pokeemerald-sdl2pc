@@ -391,7 +391,7 @@ u8 BattleArena_ShowJudgmentWindow(u8 *state)
         SetGpuReg(REG_OFFSET_WININ, (WININ_WIN0_ALL & ~WININ_WIN0_BG0) | WININ_WIN1_ALL);
         LoadCompressedSpriteSheet(sBattleArenaJudgmentSymbolsSpriteSheet);
         LoadCompressedPalette(gBattleArenaJudgmentSymbolsPalette, OBJ_PLTT_ID(15), PLTT_SIZE_4BPP);
-        gBattle_WIN0H = 0xFF;
+        gBattle_WIN0H = GPU_WINDOW_H_RANGE(0, DISPLAY_WIDTH);
         gBattle_WIN0V = 0x70;
         (*state)++;
         break;

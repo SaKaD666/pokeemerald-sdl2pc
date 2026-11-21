@@ -12,7 +12,7 @@ EventScript_CutTree::
 	msgbox Text_MonUsedFieldMove, MSGBOX_DEFAULT
 	closemessage
 	dofieldeffect FLDEFF_USE_CUT_ON_TREE
-	waitstate
+	waitfieldeffect FLDEFF_USE_CUT_ON_TREE
 	goto EventScript_CutTreeDown
 	end
 
@@ -20,7 +20,7 @@ EventScript_CutTree::
 EventScript_UseCut::
 	lockall
 	dofieldeffect FLDEFF_USE_CUT_ON_TREE
-	waitstate
+	waitfieldeffect FLDEFF_USE_CUT_ON_TREE
 	goto EventScript_CutTreeDown
 	end
 
@@ -71,7 +71,7 @@ EventScript_RockSmash::
 	msgbox Text_MonUsedFieldMove, MSGBOX_DEFAULT
 	closemessage
 	dofieldeffect FLDEFF_USE_ROCK_SMASH
-	waitstate
+	waitfieldeffect FLDEFF_USE_ROCK_SMASH
 	goto EventScript_SmashRock
 	end
 
@@ -79,7 +79,7 @@ EventScript_RockSmash::
 EventScript_UseRockSmash::
 	lockall
 	dofieldeffect FLDEFF_USE_ROCK_SMASH
-	waitstate
+	waitfieldeffect FLDEFF_USE_ROCK_SMASH
 	goto EventScript_SmashRock
 	end
 
@@ -132,14 +132,14 @@ EventScript_StrengthBoulder::
 	goto_if_eq VAR_RESULT, NO, EventScript_CancelStrength
 	closemessage
 	dofieldeffect FLDEFF_USE_STRENGTH
-	waitstate
+	waitfieldeffect FLDEFF_USE_STRENGTH
 	goto EventScript_ActivateStrength
 	end
 
 EventScript_UseStrength::
 	lockall
 	dofieldeffect FLDEFF_USE_STRENGTH
-	waitstate
+	waitfieldeffect FLDEFF_USE_STRENGTH
 	goto EventScript_ActivateStrength
 	end
 

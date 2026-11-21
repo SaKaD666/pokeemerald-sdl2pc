@@ -3084,7 +3084,7 @@ void AnimTask_FakeOut(u8 taskId)
 
     gBattle_WIN0H = win0h;
     gBattle_WIN0V = DISPLAY_HEIGHT;
-    SetGpuReg(REG_OFFSET_WIN0H, gBattle_WIN0H);
+    SetBattleWindowHorizontal(REG_OFFSET_WIN0H, gBattle_WIN0H);
     SetGpuReg(REG_OFFSET_WIN0V, gBattle_WIN0V);
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN1_ALL);
     SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_ALL | WINOUT_WINOBJ_ALL);
@@ -3106,7 +3106,7 @@ static void AnimTask_FakeOut_Step1(u8 taskId)
     }
     else
     {
-        gBattle_WIN0H = WIN_RANGE(gTasks[taskId].data[0], gTasks[taskId].data[1]);
+        gBattle_WIN0H = GPU_WINDOW_H_RANGE(gTasks[taskId].data[0], gTasks[taskId].data[1]);
     }
 }
 

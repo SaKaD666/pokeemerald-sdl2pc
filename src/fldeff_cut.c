@@ -8,7 +8,6 @@
 #include "field_player_avatar.h"
 #include "fieldmap.h"
 #include "fldeff.h"
-#include "malloc.h"
 #include "metatile_behavior.h"
 #include "overworld.h"
 #include "party_menu.h"
@@ -56,6 +55,7 @@ static void SetCutGrassMetatiles(s16, s16);
 static void CutGrassSpriteCallback1(struct Sprite *);
 static void CutGrassSpriteCallback2(struct Sprite *);
 static void CutGrassSpriteCallbackEnd(struct Sprite *);
+static void FinishCutGrass(void);
 static void HandleLongGrassOnHyper(u8, s16, s16);
 
 // IWRAM variables
@@ -65,7 +65,8 @@ static u8 sTileCountFromPlayer_Y;
 static bool8 sHyperCutTiles[CUT_HYPER_AREA];
 
 // EWRAM variables
-static EWRAM_DATA u8 *sCutGrassSpriteArrayPtr = NULL;
+static EWRAM_DATA u8 sCutGrassSpriteIds[CUT_SPRITE_ARRAY_COUNT] = {0};
+static EWRAM_DATA u8 sCutGrassSpriteCount = 0;
 
 // const rom data
 static const struct HyperCutterUnk sHyperCutStruct[] =
@@ -285,6 +286,13 @@ bool8 FldEff_UseCutOnGrass(void)
 {
     u8 taskId = CreateFieldMoveTask();
 
+    if (taskId == TASK_NONE)
+    {
+        FieldEffectActiveListRemove(FLDEFF_USE_CUT_ON_GRASS);
+        RestoreFieldControlsAfterFailedMove();
+        return FALSE;
+    }
+
     gTasks[taskId].ptr.funcPtr = StartCutGrassFieldEffect;
     IncrementGameStat(GAME_STAT_USED_CUT);
     return FALSE;
@@ -299,6 +307,13 @@ static void FieldCallback_CutTree(void)
 bool8 FldEff_UseCutOnTree(void)
 {
     u8 taskId = CreateFieldMoveTask();
+
+    if (taskId == TASK_NONE)
+    {
+        IncrementGameStat(GAME_STAT_USED_CUT);
+        FieldEffectActiveListRemove(FLDEFF_USE_CUT_ON_TREE);
+        return FALSE;
+    }
 
     gTasks[taskId].ptr.funcPtr = StartCutTreeFieldEffect;
     IncrementGameStat(GAME_STAT_USED_CUT);
@@ -335,15 +350,25 @@ bool8 FldEff_CutGrass(void)
 
     SetCutGrassMetatiles(gPlayerFacingPosition.x - sTileCountFromPlayer_X, gPlayerFacingPosition.y - (1 + sTileCountFromPlayer_Y));
     DrawWholeMapView();
-    sCutGrassSpriteArrayPtr = AllocZeroed(CUT_SPRITE_ARRAY_COUNT);
+    sCutGrassSpriteCount = 0;
 
-    // populate sprite ID array
-    for (i = 0; i < CUT_SPRITE_ARRAY_COUNT; i++)
+    if (IndexOfSpritePaletteTag(FLDEFF_PAL_TAG_CUT_GRASS) != 0xFF)
     {
-        sCutGrassSpriteArrayPtr[i] = CreateSprite(&sSpriteTemplate_CutGrass,
-        gSprites[gPlayerAvatar.spriteId].oam.x + 8, gSprites[gPlayerAvatar.spriteId].oam.y + 20, 0);
-        gSprites[sCutGrassSpriteArrayPtr[i]].data[2] = 32 * i;
+        for (i = 0; i < CUT_SPRITE_ARRAY_COUNT; i++)
+        {
+            u8 spriteId = CreateSprite(&sSpriteTemplate_CutGrass,
+                gSprites[gPlayerAvatar.spriteId].oam.x + 8, gSprites[gPlayerAvatar.spriteId].oam.y + 20, 0);
+
+            if (spriteId == MAX_SPRITES)
+                break;
+
+            sCutGrassSpriteIds[sCutGrassSpriteCount++] = spriteId;
+            gSprites[spriteId].data[2] = 32 * i;
+        }
     }
+
+    if (sCutGrassSpriteCount == 0)
+        FinishCutGrass();
 
     return FALSE;
 }
@@ -571,13 +596,29 @@ static void CutGrassSpriteCallback2(struct Sprite *sprite)
 
 static void CutGrassSpriteCallbackEnd(struct Sprite *sprite)
 {
+    FinishCutGrass();
+}
+
+static void FinishCutGrass(void)
+{
     u8 i;
 
-    for (i = 1; i < CUT_SPRITE_ARRAY_COUNT; i++)
-        DestroySprite(&gSprites[sCutGrassSpriteArrayPtr[i]]);
+    if (sCutGrassSpriteCount != 0)
+    {
+        for (i = 1; i < sCutGrassSpriteCount; i++)
+            DestroySprite(&gSprites[sCutGrassSpriteIds[i]]);
+        FieldEffectStop(&gSprites[sCutGrassSpriteIds[0]], FLDEFF_CUT_GRASS);
+        sCutGrassSpriteCount = 0;
+    }
+    else
+    {
+        u8 paletteNum = IndexOfSpritePaletteTag(FLDEFF_PAL_TAG_CUT_GRASS);
 
-    FieldEffectStop(&gSprites[sCutGrassSpriteArrayPtr[0]], FLDEFF_CUT_GRASS);
-    FREE_AND_SET_NULL(sCutGrassSpriteArrayPtr);
+        if (paletteNum != 0xFF)
+            FieldEffectFreePaletteIfUnused(paletteNum);
+        FieldEffectActiveListRemove(FLDEFF_CUT_GRASS);
+    }
+
     ScriptUnfreezeObjectEvents();
     UnlockPlayerFieldControls();
 

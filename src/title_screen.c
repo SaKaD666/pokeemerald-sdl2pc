@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "battle.h"
 #include "title_screen.h"
 #include "sprite.h"
@@ -108,7 +109,7 @@ const u16 gTitleScreenAlphaBlend[64] =
 
 static const struct OamData sVersionBannerLeftOamData =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -125,7 +126,7 @@ static const struct OamData sVersionBannerLeftOamData =
 
 static const struct OamData sVersionBannerRightOamData =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -196,7 +197,7 @@ static const struct CompressedSpriteSheet sSpriteSheet_EmeraldVersion[] =
 
 static const struct OamData sOamData_CopyrightBanner =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -313,7 +314,7 @@ static const struct SpritePalette sSpritePalette_PressStart[] =
 
 static const struct OamData sPokemonLogoShineOamData =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -466,7 +467,7 @@ enum {
 
 static void SpriteCB_PokemonLogoShine(struct Sprite *sprite)
 {
-    if (sprite->x < DISPLAY_WIDTH + 32)
+    if (sprite->x < GBA_DISPLAY_WIDTH + 32)
     {
         // In any mode except SHINE_MODE_SINGLE_NO_BG_COLOR the background
         // color will change, in addition to the shine sprite moving.
@@ -474,7 +475,7 @@ static void SpriteCB_PokemonLogoShine(struct Sprite *sprite)
         {
             u16 backgroundColor;
 
-            if (sprite->x < DISPLAY_WIDTH / 2)
+            if (sprite->x < GBA_DISPLAY_WIDTH / 2)
             {
                 // Brighten background color
                 if (sprite->sBgColor < 31)
@@ -495,10 +496,10 @@ static void SpriteCB_PokemonLogoShine(struct Sprite *sprite)
 
             // Flash the background green for 4 frames of movement.
             // Otherwise use the updating color.
-            if (sprite->x == DISPLAY_WIDTH / 2 + (3 * SHINE_SPEED)
-             || sprite->x == DISPLAY_WIDTH / 2 + (4 * SHINE_SPEED)
-             || sprite->x == DISPLAY_WIDTH / 2 + (5 * SHINE_SPEED)
-             || sprite->x == DISPLAY_WIDTH / 2 + (6 * SHINE_SPEED))
+            if (sprite->x == GBA_DISPLAY_WIDTH / 2 + (3 * SHINE_SPEED)
+             || sprite->x == GBA_DISPLAY_WIDTH / 2 + (4 * SHINE_SPEED)
+             || sprite->x == GBA_DISPLAY_WIDTH / 2 + (5 * SHINE_SPEED)
+             || sprite->x == GBA_DISPLAY_WIDTH / 2 + (6 * SHINE_SPEED))
                 gPlttBufferFaded[0] = RGB(24, 31, 12);
             else
                 gPlttBufferFaded[0] = backgroundColor;
@@ -516,7 +517,7 @@ static void SpriteCB_PokemonLogoShine(struct Sprite *sprite)
 
 static void SpriteCB_PokemonLogoShine_Fast(struct Sprite *sprite)
 {
-    if (sprite->x < DISPLAY_WIDTH + 32)
+    if (sprite->x < GBA_DISPLAY_WIDTH + 32)
         sprite->x += SHINE_SPEED * 2;
     else
         DestroySprite(sprite);
@@ -573,6 +574,9 @@ void CB2_InitTitleScreen(void)
     {
     default:
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetVBlankCallback(NULL);
         SetGpuReg(REG_OFFSET_BLDCNT, 0);
         SetGpuReg(REG_OFFSET_BLDALPHA, 0);
@@ -634,7 +638,7 @@ void CB2_InitTitleScreen(void)
         gMain.state = 4;
         break;
     case 4:
-        PanFadeAndZoomScreen(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 0x100, 0);
+        PanFadeAndZoomScreen(GBA_DISPLAY_WIDTH / 2, GBA_DISPLAY_HEIGHT / 2, 0x100, 0);
         SetGpuReg(REG_OFFSET_BG2X_L, -29 * 256);
         SetGpuReg(REG_OFFSET_BG2X_H, -1);
         SetGpuReg(REG_OFFSET_BG2Y_L, -32 * 256);
@@ -832,19 +836,34 @@ static void CB2_GoToMainMenu(void)
 static void CB2_GoToCopyrightScreen(void)
 {
     if (!UpdatePaletteFade())
+    {
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_InitCopyrightScreenAfterTitleScreen);
+    }
 }
 
 static void CB2_GoToClearSaveDataScreen(void)
 {
     if (!UpdatePaletteFade())
+    {
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_InitClearSaveDataScreen);
+    }
 }
 
 static void CB2_GoToResetRtcScreen(void)
 {
     if (!UpdatePaletteFade())
+    {
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_InitResetRtcScreen);
+    }
 }
 
 static void CB2_GoToBerryFixScreen(void)
@@ -852,6 +871,9 @@ static void CB2_GoToBerryFixScreen(void)
     if (!UpdatePaletteFade())
     {
         m4aMPlayAllStop();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_InitBerryFixProgram);
     }
 }

@@ -8,10 +8,6 @@
     #include "cgb_audio.h"
 #endif
 
-#define VCOUNT_VBLANK 160
-#define TOTAL_SCANLINES 228
-
-
 static inline void GenerateAudio(struct SoundMixerState *mixer, struct MixerSource *chan, struct WaveData2 *wav, float *outBuffer, u16 samplesPerFrame, float sampleRateReciprocal);
 void SampleMixer(struct SoundMixerState *mixer, u32 scanlineLimit, u16 samplesPerFrame, float *outBuffer, u8 dmaCounter, u16 maxBufSize);
 static inline bool32 TickEnvelope(struct MixerSource *chan, struct WaveData2 *wav);
@@ -30,8 +26,8 @@ void RunMixerFrame(void) {
     if (mixer->maxScanlines != 0) {
         u32 vcount = REG_VCOUNT;
         maxScanlines += vcount;
-        if (vcount < VCOUNT_VBLANK) {
-            maxScanlines += TOTAL_SCANLINES;
+        if (vcount < DISPLAY_HEIGHT) {
+            maxScanlines += DISPLAY_SCANLINE_COUNT;
         }
     }
     
@@ -99,8 +95,8 @@ void SampleMixer(struct SoundMixerState *mixer, u32 scanlineLimit, u16 samplesPe
         
         if (scanlineLimit != 0) {
             uf16 vcount = REG_VCOUNT;
-            if (vcount < VCOUNT_VBLANK) {
-                vcount += TOTAL_SCANLINES;
+            if (vcount < DISPLAY_HEIGHT) {
+                vcount += DISPLAY_SCANLINE_COUNT;
             }
             if (vcount >= scanlineLimit) {
                 goto returnEarly;

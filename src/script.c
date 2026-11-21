@@ -38,6 +38,9 @@ void InitScriptContext(struct ScriptContext *ctx, void *cmdTable, void *cmdTable
     ctx->mode = SCRIPT_MODE_STOPPED;
     ctx->scriptPtr = NULL;
     ctx->stackDepth = 0;
+    ctx->hasObjectMap = FALSE;
+    ctx->objectMapGroup = 0;
+    ctx->objectMapNum = 0;
     ctx->nativePtr = NULL;
     ctx->cmdTable = cmdTable;
     ctx->cmdTableEnd = cmdTableEnd;
@@ -268,6 +271,20 @@ void ScriptContext_SetupScript(const u8 *ptr)
     sGlobalScriptContextStatus = CONTEXT_RUNNING;
 }
 
+void ScriptContext_SetupObjectScript(const u8 *ptr, u8 mapGroup, u8 mapNum)
+{
+    ScriptContext_SetupScript(ptr);
+    ScriptContext_SetObjectMap(&sGlobalScriptContext, mapGroup, mapNum);
+}
+
+void ScriptContext_SetObjectMap(struct ScriptContext *ctx, u8 mapGroup, u8 mapNum)
+{
+    ctx->hasObjectMap = mapGroup != gSaveBlock1Ptr->location.mapGroup
+                     || mapNum != gSaveBlock1Ptr->location.mapNum;
+    ctx->objectMapGroup = mapGroup;
+    ctx->objectMapNum = mapNum;
+}
+
 // Puts the script into waiting mode; usually called from a wait* script command.
 void ScriptContext_Stop(void)
 {
@@ -418,15 +435,15 @@ bool8 InitRamScript(const u8 *script, u16 scriptSize, u8 mapGroup, u8 mapNum, u8
     return TRUE;
 }
 
-const u8 *GetRamScript(u8 localId, const u8 *script)
+const u8 *GetRamScript(u8 localId, u8 mapGroup, u8 mapNum, const u8 *script)
 {
     struct RamScriptData *scriptData = &gSaveBlock1Ptr->ramScript.data;
     gRamScriptRetAddr = NULL;
     if (scriptData->magic != RAM_SCRIPT_MAGIC)
         return script;
-    if (scriptData->mapGroup != gSaveBlock1Ptr->location.mapGroup)
+    if (scriptData->mapGroup != mapGroup)
         return script;
-    if (scriptData->mapNum != gSaveBlock1Ptr->location.mapNum)
+    if (scriptData->mapNum != mapNum)
         return script;
     if (scriptData->localId != localId)
         return script;

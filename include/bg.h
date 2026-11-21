@@ -70,6 +70,13 @@ void ShowBg(u8 bg);
 void HideBg(u8 bg);
 void SetBgAttribute(u8 bg, u8 attributeId, u8 value);
 u16 GetBgAttribute(u8 bg, u8 attributeId);
+#ifdef PLATFORM_SDL2
+#define FIELD_UI_MAP_BASE 30
+#define FIELD_UI_CHAR_BASE 2
+#define FIELD_UI_SCREEN_SIZE 1
+extern u8 gFieldUiUpperTiles[BG_CHAR_SIZE];
+bool32 IsWideFieldUi(void);
+#endif
 s32 ChangeBgX(u8 bg, s32 value, u8 op);
 s32 GetBgX(u8 bg);
 s32 ChangeBgY(u8 bg, s32 value, u8 op);

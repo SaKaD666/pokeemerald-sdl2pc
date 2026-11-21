@@ -1,4 +1,6 @@
 #include "global.h"
+#include "dma3.h"
+#include "platform/framedraw.h"
 #include "option_menu.h"
 #include "bg.h"
 #include "gpu_regs.h"
@@ -155,6 +157,9 @@ void CB2_InitOptionMenu(void)
     {
     default:
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetVBlankCallback(NULL);
         gMain.state++;
         break;
@@ -366,14 +371,23 @@ static void Task_OptionMenuFadeOut(u8 taskId)
     if (!gPaletteFade.active)
     {
         DestroyTask(taskId);
+        SetVBlankCallback(NULL);
+        ClearDma3Requests();
         FreeAllWindowBuffers();
+        SetBgTilemapBuffer(0, NULL);
+        SetBgTilemapBuffer(1, NULL);
+        ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
+        SetGpuReg(REG_OFFSET_BLDCNT, 0);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(gMain.savedCallback);
     }
 }
 
 static void HighlightOptionMenuItem(u8 index)
 {
-    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(16, DISPLAY_WIDTH - 16));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 16, GBA_DISPLAY_WIDTH - 16);
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(index * 16 + 40, index * 16 + 56));
 }
 

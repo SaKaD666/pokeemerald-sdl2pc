@@ -78,12 +78,17 @@ static const u8 sPlayerNameTextColors[] =
 
 static const u8 sEmptyItemName[] = _("");
 
+#ifdef PLATFORM_SDL2
+// Include the two transfers after the visible scanlines in the simulator.
+EWRAM_DATA static u32 sConditionGraphWindowBuffers[2][(DISPLAY_HEIGHT + 2) * GPU_WINDOW_COUNT] = {0};
+#else
 static const struct ScanlineEffectParams sConditionGraphScanline =
 {
     .dmaDest = &REG_WIN0H,
     .dmaControl = SCANLINE_EFFECT_DMACNT_32BIT,
     .initState = 1,
 };
+#endif
 
 static const u8 sConditionToLineLength[MAX_CONDITION + 1] =
 {
@@ -397,17 +402,21 @@ void ConditionGraph_InitResetScanline(struct ConditionGraph *graph)
 
 bool8 ConditionGraph_ResetScanline(struct ConditionGraph *graph)
 {
-    struct ScanlineEffectParams params;
-
     switch (graph->scanlineResetState)
     {
     case 0:
         ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+        memset(sConditionGraphWindowBuffers, 0, sizeof(sConditionGraphWindowBuffers));
+#endif
         graph->scanlineResetState++;
         return TRUE;
     case 1:
-        params = sConditionGraphScanline;
-        ScanlineEffect_SetParams(params);
+#ifdef PLATFORM_SDL2
+        ScanlineEffect_SetWindowHorizontalPairBuffers(sConditionGraphWindowBuffers[0], sConditionGraphWindowBuffers[1]);
+#else
+        ScanlineEffect_SetParams(sConditionGraphScanline);
+#endif
         graph->scanlineResetState++;
         return FALSE;
     default:
@@ -427,12 +436,23 @@ void ConditionGraph_Draw(struct ConditionGraph *graph)
 
     for (i = 0; i < CONDITION_GRAPH_HEIGHT; i++)
     {
+#ifdef PLATFORM_SDL2
+        u16 offset = (i + CONDITION_GRAPH_TOP_Y - 1) * GPU_WINDOW_COUNT;
+
+        sConditionGraphWindowBuffers[1][offset + GPU_WINDOW_0] =
+        sConditionGraphWindowBuffers[0][offset + GPU_WINDOW_0] =
+            GPU_WINDOW_H_RANGE(graph->scanlineRight[i][0], graph->scanlineRight[i][1]);
+        sConditionGraphWindowBuffers[1][offset + GPU_WINDOW_1] =
+        sConditionGraphWindowBuffers[0][offset + GPU_WINDOW_1] =
+            GPU_WINDOW_H_RANGE(graph->scanlineLeft[i][0], graph->scanlineLeft[i][1]);
+#else
         // Draw right half
         gScanlineEffectRegBuffers[1][(i + CONDITION_GRAPH_TOP_Y - 1) * 2 + 0] = // double assignment
         gScanlineEffectRegBuffers[0][(i + CONDITION_GRAPH_TOP_Y - 1) * 2 + 0] = (graph->scanlineRight[i][0] << 8) | (graph->scanlineRight[i][1]);
         // Draw left half
         gScanlineEffectRegBuffers[1][(i + CONDITION_GRAPH_TOP_Y - 1) * 2 + 1] = // double assignment
         gScanlineEffectRegBuffers[0][(i + CONDITION_GRAPH_TOP_Y - 1) * 2 + 1] = (graph->scanlineLeft[i][0] << 8) | (graph->scanlineLeft[i][1]);
+#endif
     }
 
     graph->needsDraw = FALSE;
@@ -449,8 +469,8 @@ void ConditionGraph_InitWindow(u8 bg)
     flags = (WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ) & ~(1 << bg);
 
     // Set limits for graph data
-    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE( 0, DISPLAY_WIDTH)); // Right side horizontal
-    SetGpuReg(REG_OFFSET_WIN1H, WIN_RANGE( 0, CONDITION_GRAPH_CENTER_X)); // Left side horizontal
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, DISPLAY_WIDTH); // Right side horizontal
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN1H, 0, CONDITION_GRAPH_CENTER_X); // Left side horizontal
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(CONDITION_GRAPH_TOP_Y, CONDITION_GRAPH_BOTTOM_Y)); // Right side vertical
     SetGpuReg(REG_OFFSET_WIN1V, WIN_RANGE(CONDITION_GRAPH_TOP_Y, CONDITION_GRAPH_BOTTOM_Y)); // Left side vertical
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ | WININ_WIN1_CLR);

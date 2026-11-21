@@ -9,6 +9,7 @@
 #include "bg.h"
 #include "data.h"
 #include "decompress.h"
+#include "dma3.h"
 #include "event_data.h"
 #include "event_object_movement.h"
 #include "event_scripts.h"
@@ -215,8 +216,13 @@ static const struct BgTemplate sBgTemplates_ItemMenu[] =
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0,
@@ -224,8 +230,13 @@ static const struct BgTemplate sBgTemplates_ItemMenu[] =
     {
         .bg = 1,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0,
@@ -233,8 +244,13 @@ static const struct BgTemplate sBgTemplates_ItemMenu[] =
     {
         .bg = 2,
         .charBaseIndex = 3,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 26,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 29,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0,
@@ -359,11 +375,11 @@ static const struct YesNoFuncTable sYesNoSellItemFunctions = {ConfirmSell, Cance
 
 static const struct ScrollArrowsTemplate sBagScrollArrowsTemplate = {
     .firstArrowType = SCROLL_ARROW_LEFT,
-    .firstX = 28,
-    .firstY = 16,
+    .firstX = 28 + BAG_VIEW_X,
+    .firstY = 16 + BAG_VIEW_Y,
     .secondArrowType = SCROLL_ARROW_RIGHT,
-    .secondX = 100,
-    .secondY = 16,
+    .secondX = 100 + BAG_VIEW_X,
+    .secondY = 16 + BAG_VIEW_Y,
     .fullyUpThreshold = -1,
     .fullyDownThreshold = -1,
     .tileTag = TAG_BAG_SCROLL_ARROW,
@@ -617,7 +633,7 @@ void GoToBagMenu(u8 location, u8 pocket, MainCallback exitCallback)
     if (gBagMenu == NULL)
     {
         // Alloc failed, exit
-        SetMainCallback2(exitCallback);
+        SetMainCallback2(exitCallback != NULL ? exitCallback : gBagPosition.exitCallback);
     }
     else
     {
@@ -785,12 +801,24 @@ static bool8 SetupBagMenu(void)
 
 static void BagMenu_InitBGs(void)
 {
+    InitBagBgs(gBagMenu->tilemapBuffer);
+}
+
+void InitBagBgs(void *tilemap)
+{
+    u8 bg;
+
     ResetVramOamAndBgCntRegs();
-    memset(gBagMenu->tilemapBuffer, 0, sizeof(gBagMenu->tilemapBuffer));
+    memset(tilemap, 0, BAG_TILEMAP_SIZE);
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sBgTemplates_ItemMenu, ARRAY_COUNT(sBgTemplates_ItemMenu));
-    SetBgTilemapBuffer(2, gBagMenu->tilemapBuffer);
+    SetBgTilemapBuffer(2, tilemap);
     ResetAllBgsCoordinates();
+    for (bg = 0; bg <= 2; bg++)
+    {
+        ChangeBgX(bg, -BAG_VIEW_X * 256, BG_COORD_SET);
+        ChangeBgY(bg, -BAG_VIEW_Y * 256, BG_COORD_SET);
+    }
     ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
@@ -1029,9 +1057,9 @@ static void CreatePocketScrollArrowPair(void)
     if (gBagMenu->pocketScrollArrowsTask == TASK_NONE)
         gBagMenu->pocketScrollArrowsTask = AddScrollIndicatorArrowPairParameterized(
             SCROLL_ARROW_UP,
-            172,
-            12,
-            148,
+            172 + BAG_VIEW_X,
+            12 + BAG_VIEW_Y,
+            148 + BAG_VIEW_Y,
             gBagMenu->numItemStacks[gBagPosition.pocket] - gBagMenu->numShownItems[gBagPosition.pocket],
             TAG_POCKET_SCROLL_ARROW,
             TAG_POCKET_SCROLL_ARROW,
@@ -1063,12 +1091,23 @@ static void DestroyPocketSwitchArrowPair(void)
     }
 }
 
+void FreeBagWindowBuffers(void)
+{
+    ClearScheduledBgCopiesToVram();
+    ClearDma3Requests();
+    ResetAllBgsCoordinates();
+    FreeAllWindowBuffers();
+    SetBgTilemapBuffer(0, NULL);
+    SetBgTilemapBuffer(1, NULL);
+    SetBgTilemapBuffer(2, NULL);
+}
+
 static void FreeBagMenu(void)
 {
     Free(sListBuffer2);
     Free(sListBuffer1);
-    FreeAllWindowBuffers();
-    Free(gBagMenu);
+    FreeBagWindowBuffers();
+    FREE_AND_SET_NULL(gBagMenu);
 }
 
 void Task_FadeAndCloseBagMenu(u8 taskId)

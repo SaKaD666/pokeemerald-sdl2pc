@@ -1,4 +1,5 @@
 #include "global.h"
+#include "bg.h"
 #include "main.h"
 #include "event_data.h"
 #include "field_effect.h"
@@ -517,7 +518,8 @@ static void CreateLilycoveSSTidalMultichoice(void)
         }
 
         width = ConvertPixelWidthToTileWidth(pixelWidth);
-        windowId = CreateWindowFromRect(MAX_MULTICHOICE_WIDTH - width, (6 - count) * 2, width, count * 2);
+        windowId = CreateWindowFromRect(ScriptMenu_AdjustLeftCoordFromWidth(DISPLAY_WIDTH / TILE_WIDTH, width),
+                                        (6 - count) * 2, width, count * 2);
         SetStandardWindowBorderStyle(windowId, FALSE);
 
         for (selectionCount = 0, i = 0; i < SSTIDAL_SELECTION_COUNT; i++)
@@ -585,6 +587,9 @@ bool8 ScriptMenu_ShowPokemonPic(u16 species, u8 x, u8 y)
     else
     {
         spriteId = CreateMonSprite_PicBox(species, x * 8 + 40, y * 8 + 40, 0);
+        if (spriteId == MAX_SPRITES)
+            return FALSE;
+
         taskId = CreateTask(Task_PokemonPicWindow, 0x50);
         gTasks[taskId].tWindowId = CreateWindowFromRect(x, y, 8, 8);
         gTasks[taskId].tState = 0;
@@ -684,7 +689,12 @@ bool16 ScriptMenu_CreateStartMenuForPokenavTutorial(void)
 
 static void CreateStartMenuForPokenavTutorial(void)
 {
-    u8 windowId = CreateWindowFromRect(21, 0, 7, 18);
+    u8 left = 21;
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        left = DISPLAY_WIDTH / TILE_WIDTH - 9;
+#endif
+    u8 windowId = CreateWindowFromRect(left, 0, 7, 18);
     SetStandardWindowBorderStyle(windowId, FALSE);
     AddTextPrinterParameterized(windowId, FONT_NORMAL, gText_MenuOptionPokedex, 8, 9, TEXT_SKIP_DRAW, NULL);
     AddTextPrinterParameterized(windowId, FONT_NORMAL, gText_MenuOptionPokemon, 8, 25, TEXT_SKIP_DRAW, NULL);
@@ -746,16 +756,21 @@ int ConvertPixelWidthToTileWidth(int width)
 int ScriptMenu_AdjustLeftCoordFromWidth(int left, int width)
 {
     int adjustedLeft = left;
+    int right = MAX_MULTICHOICE_WIDTH;
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        right = DISPLAY_WIDTH / TILE_WIDTH - 2;
+#endif
 
-    if (left + width > MAX_MULTICHOICE_WIDTH)
+    if (left + width > right)
     {
-        if (MAX_MULTICHOICE_WIDTH - width < 0)
+        if (right - width < 0)
         {
             adjustedLeft = 0;
         }
         else
         {
-            adjustedLeft = MAX_MULTICHOICE_WIDTH - width;
+            adjustedLeft = right - width;
         }
     }
 

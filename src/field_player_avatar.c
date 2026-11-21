@@ -1412,9 +1412,11 @@ void InitPlayerAvatar(s16 x, s16 y, u8 direction, u8 gender)
 
 void SetPlayerInvisibility(bool8 invisible)
 {
-    gObjectEvents[gPlayerAvatar.objectEventId].invisible = invisible;
-    if (TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_SURFING))
-        gSprites[gObjectEvents[gPlayerAvatar.objectEventId].fieldEffectSpriteId].invisible = invisible;
+    struct ObjectEvent *playerObjEvent = &gObjectEvents[gPlayerAvatar.objectEventId];
+
+    playerObjEvent->invisible = invisible;
+    if (TestPlayerAvatarFlags(PLAYER_AVATAR_FLAG_SURFING) && playerObjEvent->fieldEffectSpriteId < MAX_SPRITES)
+        gSprites[playerObjEvent->fieldEffectSpriteId].invisible = invisible;
 }
 
 void SetPlayerAvatarFieldMove(void)
@@ -1448,6 +1450,9 @@ static void HideShowWarpArrow(struct ObjectEvent *objectEvent)
     s16 y;
     u8 direction;
     u8 metatileBehavior = objectEvent->currentMetatileBehavior;
+
+    if (objectEvent->warpArrowSpriteId == MAX_SPRITES)
+        return;
 
     for (x = 0, direction = DIR_SOUTH; x < 4; x++, direction++)
     {
@@ -1683,7 +1688,8 @@ static void Task_WaitStopSurfing(u8 taskId)
         ObjectEventSetHeldMovement(playerObjEvent, GetFaceDirectionMovementAction(playerObjEvent->facingDirection));
         gPlayerAvatar.preventStep = FALSE;
         UnlockPlayerFieldControls();
-        DestroySprite(&gSprites[playerObjEvent->fieldEffectSpriteId]);
+        if (playerObjEvent->fieldEffectSpriteId < MAX_SPRITES)
+            DestroySprite(&gSprites[playerObjEvent->fieldEffectSpriteId]);
 #ifdef BUGFIX
         // If this is not defined but the player steps into grass from surfing, they will appear over the grass instead of in the grass.
         playerObjEvent->triggerGroundEffectsOnMove = TRUE;

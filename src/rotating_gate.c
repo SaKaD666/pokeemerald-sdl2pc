@@ -701,27 +701,30 @@ static void RotatingGate_LoadPuzzleConfig(void)
         sRotatingGate_GateSpriteIds[i] = MAX_SPRITES;
 }
 
-static void RotatingGate_CreateGatesWithinViewport(s16 deltaX, s16 deltaY)
+static void RotatingGate_CreateMissingGates(s16 deltaX, s16 deltaY)
 {
     u8 i;
 
+#ifndef PLATFORM_SDL2
     // Calculate the bounding box of the camera
     // Same as RotatingGate_DestroyGatesOutsideViewport
     s16 x = gSaveBlock1Ptr->pos.x - 2;
     s16 x2 = gSaveBlock1Ptr->pos.x + MAP_OFFSET_W + 2;
     s16 y = gSaveBlock1Ptr->pos.y - 2;
     s16 y2 = gSaveBlock1Ptr->pos.y + MAP_OFFSET_H;
+#endif
 
     for (i = 0; i < sRotatingGate_PuzzleCount; i++)
     {
+#ifndef PLATFORM_SDL2
         s16 x3 = sRotatingGate_PuzzleConfig[i].x + MAP_OFFSET;
         s16 y3 = sRotatingGate_PuzzleConfig[i].y + MAP_OFFSET;
 
-        if (y <= y3 && y2 >= y3 && x <= x3 && x2 >= x3 &&
-            sRotatingGate_GateSpriteIds[i] == MAX_SPRITES)
-        {
+        if (x3 < x || x3 > x2 || y3 < y || y3 > y2)
+            continue;
+#endif
+        if (sRotatingGate_GateSpriteIds[i] == MAX_SPRITES)
             sRotatingGate_GateSpriteIds[i] = RotatingGate_CreateGate(i, deltaX, deltaY);
-        }
     }
 }
 
@@ -740,6 +743,11 @@ static u8 RotatingGate_CreateGate(u8 gateId, s16 deltaX, s16 deltaY)
         template = sSpriteTemplate_RotatingGateLarge;
 
     template.tileTag = gate->shape + ROTATING_GATE_TILE_TAG;
+
+#ifdef PLATFORM_SDL2
+    if (GetSpriteTileStartByTag(template.tileTag) == 0xFFFF)
+        return MAX_SPRITES;
+#endif
 
     spriteId = CreateSprite(&template, 0, 0, 0x94);
     if (spriteId == MAX_SPRITES)
@@ -819,11 +827,12 @@ static void LoadRotatingGatePics(void)
     LoadSpriteSheets(sRotatingGatesGraphicsTable);
 }
 
+#ifndef PLATFORM_SDL2
 static void RotatingGate_DestroyGatesOutsideViewport(void)
 {
     s32 i;
 
-    // Same as RotatingGate_CreateGatesWithinViewport
+    // Same as RotatingGate_CreateMissingGates
     s16 x = gSaveBlock1Ptr->pos.x - 2;
     s16 x2 = gSaveBlock1Ptr->pos.x + MAP_OFFSET_W + 2;
     s16 y = gSaveBlock1Ptr->pos.y - 2;
@@ -846,6 +855,7 @@ static void RotatingGate_DestroyGatesOutsideViewport(void)
         }
     }
 }
+#endif
 
 static s32 RotatingGate_CanRotate(u8 gateId, s32 rotationDirection)
 {
@@ -943,8 +953,10 @@ void RotatingGatePuzzleCameraUpdate(s16 deltaX, s16 deltaY)
 {
     if (GetCurrentMapRotatingGatePuzzleType())
     {
-        RotatingGate_CreateGatesWithinViewport(deltaX, deltaY);
+        RotatingGate_CreateMissingGates(deltaX, deltaY);
+#ifndef PLATFORM_SDL2
         RotatingGate_DestroyGatesOutsideViewport();
+#endif
     }
 }
 
@@ -954,7 +966,7 @@ void RotatingGate_InitPuzzleAndGraphics(void)
     {
         LoadRotatingGatePics();
         RotatingGate_LoadPuzzleConfig();
-        RotatingGate_CreateGatesWithinViewport(0, 0);
+        RotatingGate_CreateMissingGates(0, 0);
     }
 }
 

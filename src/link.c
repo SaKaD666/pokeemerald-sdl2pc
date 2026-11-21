@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "m4a.h"
 #include "malloc.h"
 #include "reload_save.h"
@@ -1593,6 +1594,10 @@ void CB2_LinkError(void)
 {
     u8 *tilemapBuffer;
 
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
+
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
     m4aMPlayStop(&gMPlayInfo_SE1);
     m4aMPlayStop(&gMPlayInfo_SE2);
@@ -1711,6 +1716,9 @@ static void CB2_PrintErrorMessage(void)
                 PlaySE(SE_PIN);
                 gWirelessCommType = 0;
                 sLinkErrorBuffer.disconnected = FALSE;
+#ifdef PLATFORM_SDL2
+                SetFrameViewToGbaSize(FALSE);
+#endif
                 ReloadSave();
             }
         }
@@ -1720,6 +1728,9 @@ static void CB2_PrintErrorMessage(void)
             {
                 rfu_REQ_stopMode();
                 rfu_waitREQComplete();
+#ifdef PLATFORM_SDL2
+                SetFrameViewToGbaSize(FALSE);
+#endif
                 DoSoftReset();
             }
         }

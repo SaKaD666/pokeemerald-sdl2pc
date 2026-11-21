@@ -1,4 +1,8 @@
 #include "global.h"
+#ifdef PORTABLE
+#include "field_camera.h"
+#include "platform/system.h"
+#endif
 #include "crt0.h"
 #include "malloc.h"
 #include "link.h"
@@ -137,7 +141,7 @@ void AgbMain(void)
     RegisterRamReset(RESET_ALL);
 #endif //MODERN
 #ifdef PORTABLE
-    REG_VCOUNT = 161; // prep for being in VBlank period
+    ENTER_VBLANK();
 #endif
     *(vu16 *)BG_PLTT = RGB_WHITE; // Set the backdrop to white on startup
     InitGpuRegManager();
@@ -378,6 +382,9 @@ static void VBlankIntr(void)
 
     CopyBufferedValuesToGpuRegs();
     ProcessDma3Requests();
+#ifdef PORTABLE
+    TransferFieldTilemaps();
+#endif
 
     gPcmDmaCounter = gSoundInfo.pcmDmaCounter;
 

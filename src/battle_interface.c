@@ -1,5 +1,6 @@
 #include "global.h"
 #include "battle.h"
+#include "battle_bg.h"
 #include "pokemon.h"
 #include "battle_controllers.h"
 #include "battle_interface.h"
@@ -1099,6 +1100,10 @@ void InitBattlerHealthboxCoords(u8 battler)
         }
     }
 
+#ifdef PLATFORM_SDL2
+    // Keep the healthboxes on the side opposite their battler.
+    x += GetBattlerSide(battler) == B_SIDE_PLAYER ? BATTLE_OPPONENT_PLATFORM_SHIFT : BATTLE_PLAYER_PLATFORM_SHIFT;
+#endif
     UpdateSpritePos(gHealthboxSpriteIds[battler], x, y);
 }
 

@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "rayquaza_scene.h"
 #include "sprite.h"
 #include "task.h"
@@ -1295,6 +1296,9 @@ void DoRayquazaScene(u8 animId, bool8 endEarly, MainCallback exitCallback)
 
 static void CB2_InitRayquazaScene(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetVBlankHBlankCallbacksToNull();
     ClearScheduledBgCopiesToVram();
     ScanlineEffect_Stop();
@@ -1310,6 +1314,8 @@ static void CB2_InitRayquazaScene(void)
 static void CB2_RayquazaScene(void)
 {
     RunTasks();
+    if (sRayScene == NULL)
+        return;
     AnimateSprites();
     BuildOamBuffer();
     DoScheduledBgTilemapCopiesToVram();
@@ -1327,11 +1333,23 @@ static void Task_EndAfterFadeScreen(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
+        MainCallback exitCallback = sRayScene->exitCallback;
+        u8 bg;
+
+        IsDma3ManagerBusyWithBgCopy();
+        SetVBlankHBlankCallbacksToNull();
+        ScanlineEffect_Stop();
+        ClearScheduledBgCopiesToVram();
+        for (bg = 0; bg < ARRAY_COUNT(sRayScene->tilemapBuffers); bg++)
+            UnsetBgTilemapBuffer(bg);
         ResetSpriteData();
         FreeAllSpritePalettes();
-        SetMainCallback2(sRayScene->exitCallback);
-        Free(sRayScene);
+        FREE_AND_SET_NULL(sRayScene);
         DestroyTask(taskId);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
+        SetMainCallback2(exitCallback);
     }
 }
 
@@ -1352,14 +1370,20 @@ static void Task_SetNextAnim(u8 taskId)
     }
 }
 
-// The cutscene window is cropped to a narrower view, with black borders on each vertical edge
-// This function is used in scenes where sprites in these borders need to be hidden
+static void ResetRaySceneBackgrounds(void)
+{
+    ResetVramOamAndBgCntRegs();
+    ResetBgsAndClearDma3BusyFlags(0);
+    memset(sRayScene->tilemapBuffers, 0, sizeof(sRayScene->tilemapBuffers));
+}
+
+// Hide sprites and backgrounds in the top and bottom letterbox bands.
 static void SetWindowsHideVertBorders(void)
 {
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
     SetGpuReg(REG_OFFSET_WINOUT, 0);
-    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(0, DISPLAY_WIDTH));
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(24, DISPLAY_HEIGHT - 24));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, GBA_DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(24, GBA_DISPLAY_HEIGHT - 24));
     gPlttBufferUnfaded[0] = 0;
     gPlttBufferFaded[0] = 0;
 }
@@ -1567,8 +1591,7 @@ static void VBlankCB_DuoFight(void)
 
 static void InitDuoFightSceneBgs(void)
 {
-    ResetVramOamAndBgCntRegs();
-    ResetBgsAndClearDma3BusyFlags(0);
+    ResetRaySceneBackgrounds();
     InitBgsFromTemplates(0, sBgTemplates_DuoFight, ARRAY_COUNT(sBgTemplates_DuoFight));
     SetBgTilemapBuffer(0, sRayScene->tilemapBuffers[0]);
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
@@ -1861,7 +1884,7 @@ static void SpriteCB_DuoFight_Groudon(struct Sprite *sprite)
 static void DuoFight_SlideGroudonDown(struct Sprite *sprite)
 {
     s16 *data = sprite->data;
-    if (sprite->y <= DISPLAY_HEIGHT)
+    if (sprite->y <= GBA_DISPLAY_HEIGHT)
     {
         sprite->y += 8;
         gSprites[sprite->sGroudonBodySpriteId].y += 8;
@@ -1966,7 +1989,7 @@ static void SpriteCB_DuoFight_Kyogre(struct Sprite *sprite)
 static void DuoFight_SlideKyogreDown(struct Sprite *sprite)
 {
     s16 *data = sprite->data;
-    if (sprite->y <= DISPLAY_HEIGHT)
+    if (sprite->y <= GBA_DISPLAY_HEIGHT)
     {
         sprite->y += 8;
         gSprites[sprite->data[0] >> 8].y += 8;
@@ -2005,8 +2028,7 @@ static void DuoFight_SlideKyogreDown(struct Sprite *sprite)
 
 static void InitTakesFlightSceneBgs(void)
 {
-    ResetVramOamAndBgCntRegs();
-    ResetBgsAndClearDma3BusyFlags(0);
+    ResetRaySceneBackgrounds();
     InitBgsFromTemplates(1, sBgTemplates_TakesFlight, ARRAY_COUNT(sBgTemplates_TakesFlight));
     SetBgTilemapBuffer(0, sRayScene->tilemapBuffers[0]);
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
@@ -2206,8 +2228,7 @@ static void SpriteCB_TakesFlight_Smoke(struct Sprite *sprite)
 
 static void InitDescendsSceneBgs(void)
 {
-    ResetVramOamAndBgCntRegs();
-    ResetBgsAndClearDma3BusyFlags(0);
+    ResetRaySceneBackgrounds();
     InitBgsFromTemplates(0, sBgTemplates_Descends, ARRAY_COUNT(sBgTemplates_Descends));
     SetBgTilemapBuffer(0, sRayScene->tilemapBuffers[0]);
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
@@ -2247,33 +2268,49 @@ static void LoadDescendsSceneGfx(void)
     LoadCompressedSpritePalette(&sSpritePal_Descends_Rayquaza);
 }
 
-// Draw ray of light emerging from the clouds
+static void SetRayDescendsLightForLine(u16 line)
+{
+    if (line >= 24 && line < GBA_DISPLAY_HEIGHT - 24 && line - 24 <= sRayScene->revealedLightLine)
+        REG_BLDALPHA = BLDALPHA_BLEND(8, 13);
+    else
+        REG_BLDALPHA = BLDALPHA_BLEND(0, 16);
+}
+
+static void AdvanceRayDescendsLight(void)
+{
+    if (sRayScene->revealedLightLine <= 39)
+        sRayScene->revealedLightLine += 4;
+    else if (sRayScene->revealedLightLine <= 79)
+        sRayScene->revealedLightLine += 2;
+    else if (sRayScene->revealedLightLine <= 0x1FFF)
+        sRayScene->revealedLightLine++;
+
+    sRayScene->revealedLightTimer++;
+}
+
 static void HBlankCB_RayDescends(void)
 {
-    u16 vcount = GetGpuReg(REG_OFFSET_VCOUNT);
-    if (vcount >= 24 && vcount <= 135 && vcount - 24 <= sRayScene->revealedLightLine)
-        REG_BLDALPHA = 0xD08; // This line is above where light has been revealed, draw it
-    else
-        REG_BLDALPHA = 0x1000; // Below where light has been revealed, hide it
+    u16 line = REG_VCOUNT;
 
-    if (vcount == 0)
-    {
-        if (sRayScene->revealedLightLine <= 0x1FFF)
-        {
-            // Increase the number of pixel rows of the light that have been revealed
-            // Gradually slows as it reaches the bottom
-            if (sRayScene->revealedLightLine <= 39)
-                sRayScene->revealedLightLine += 4;
-            else if (sRayScene->revealedLightLine <= 79)
-                sRayScene->revealedLightLine += 2;
-            else
-                sRayScene->revealedLightLine += 1;
-        }
-
-        // Pointless
-        sRayScene->revealedLightTimer++;
-    }
+#ifdef PLATFORM_SDL2
+    // HBlank runs after the current scanline. VBlank sets up line zero.
+    if (++line < GBA_DISPLAY_HEIGHT)
+        SetRayDescendsLightForLine(line);
+#else
+    SetRayDescendsLightForLine(line);
+    if (line == 0)
+        AdvanceRayDescendsLight();
+#endif
 }
+
+#ifdef PLATFORM_SDL2
+static void VBlankCB_RayDescends(void)
+{
+    VBlankCB_RayquazaScene();
+    AdvanceRayDescendsLight();
+    SetRayDescendsLightForLine(0);
+}
+#endif
 
 #define tState data[0]
 #define tTimer data[1]
@@ -2323,6 +2360,9 @@ static void Task_HandleRayDescends(u8 taskId)
             {
                 tTimer = 0;
                 tState++;
+#ifdef PLATFORM_SDL2
+                SetVBlankCallback(VBlankCB_RayDescends);
+#endif
                 SetHBlankCallback(HBlankCB_RayDescends);
                 EnableInterrupts(INTR_FLAG_HBLANK | INTR_FLAG_VBLANK);
             }
@@ -2456,8 +2496,7 @@ static void SpriteCB_Descends_Rayquaza(struct Sprite *sprite)
 
 static void InitChargesSceneBgs(void)
 {
-    ResetVramOamAndBgCntRegs();
-    ResetBgsAndClearDma3BusyFlags(0);
+    ResetRaySceneBackgrounds();
     InitBgsFromTemplates(0, sBgTemplates_Charges, ARRAY_COUNT(sBgTemplates_Charges));
     SetBgTilemapBuffer(0, sRayScene->tilemapBuffers[0]);
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
@@ -2645,8 +2684,7 @@ static void Task_RayChargesEnd(u8 taskId)
 
 static void InitChasesAwaySceneBgs(void)
 {
-    ResetVramOamAndBgCntRegs();
-    ResetBgsAndClearDma3BusyFlags(0);
+    ResetRaySceneBackgrounds();
     InitBgsFromTemplates(1, sBgTemplates_ChasesAway, ARRAY_COUNT(sBgTemplates_ChasesAway));
     SetBgTilemapBuffer(0, sRayScene->tilemapBuffers[0]);
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);

@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "bg.h"
 #include "data.h"
 #include "decompress.h"
@@ -27,7 +28,7 @@
 #define STARTER_MON_COUNT   3
 
 // Position of the sprite of the selected starter Pokémon
-#define STARTER_PKMN_POS_X (DISPLAY_WIDTH / 2)
+#define STARTER_PKMN_POS_X (GBA_DISPLAY_WIDTH / 2)
 #define STARTER_PKMN_POS_Y 64
 
 #define TAG_POKEBALL_SELECT 0x1000
@@ -152,7 +153,7 @@ static const u8 sTextColors[] = {TEXT_COLOR_TRANSPARENT, TEXT_COLOR_WHITE, TEXT_
 
 static const struct OamData sOam_Hand =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -169,7 +170,7 @@ static const struct OamData sOam_Hand =
 
 static const struct OamData sOam_Pokeball =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -186,7 +187,7 @@ static const struct OamData sOam_Pokeball =
 
 static const struct OamData sOam_StarterCircle =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_DOUBLE,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -350,7 +351,7 @@ static const struct SpriteTemplate sSpriteTemplate_StarterCircle =
 // .text
 u16 GetStarterPokemon(u16 chosenStarterId)
 {
-    if (chosenStarterId > STARTER_MON_COUNT)
+    if (chosenStarterId >= STARTER_MON_COUNT)
         chosenStarterId = 0;
     return sStarterMon[chosenStarterId];
 }
@@ -376,6 +377,9 @@ void CB2_ChooseStarter(void)
     u8 taskId;
     u8 spriteId;
 
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetVBlankCallback(NULL);
 
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
@@ -465,6 +469,8 @@ void CB2_ChooseStarter(void)
 static void CB2_StarterChoose(void)
 {
     RunTasks();
+    if (gMain.callback2 != CB2_StarterChoose)
+        return;
     AnimateSprites();
     BuildOamBuffer();
     DoScheduledBgTilemapCopiesToVram();
@@ -539,16 +545,24 @@ static void Task_HandleConfirmStarterInput(u8 taskId)
 {
     u8 spriteId;
 
-    switch (Menu_ProcessInputNoWrapClearOnChoose())
+    switch (Menu_ProcessInputNoWrap())
     {
     case 0:  // YES
         // Return the starter choice and exit.
         gSpecialVar_Result = gTasks[taskId].tStarterSelection;
+        SetVBlankCallback(NULL);
+        ClearScheduledBgCopiesToVram();
         ResetAllPicSprites();
+        FreeAllWindowBuffers();
+        DestroyTask(taskId);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(gMain.savedCallback);
         break;
     case 1:  // NO
     case MENU_B_PRESSED:
+        EraseYesNoWindow();
         PlaySE(SE_SELECT);
         spriteId = gTasks[taskId].tPkmnSpriteId;
         FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
@@ -595,11 +609,11 @@ static void CreateStarterPokemonLabel(u8 selection)
     PutWindowTilemap(sStarterLabelWindowId);
     ScheduleBgCopyTilemapToVram(0);
 
-    labelLeft = sStarterLabelCoords[selection][0] * 8 - 4;
+    labelLeft = max(sStarterLabelCoords[selection][0] * 8 - 4, 0);
     labelRight = (sStarterLabelCoords[selection][0] + 13) * 8 + 4;
     labelTop = sStarterLabelCoords[selection][1] * 8;
     labelBottom = (sStarterLabelCoords[selection][1] + 4) * 8;
-    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(labelLeft, labelRight));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, labelLeft, labelRight);
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(labelTop, labelBottom));
 }
 

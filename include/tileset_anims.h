@@ -1,6 +1,19 @@
 #ifndef GUARD_TILESET_ANIMS_H
 #define GUARD_TILESET_ANIMS_H
 
+struct Tileset;
+
+struct TilesetAnimation
+{
+    u16 counter;
+    u16 period;
+    void (*callback)(u16);
+};
+
+struct TilesetAnimation GetSecondaryTilesetAnimation(void);
+void SetSecondaryTilesetAnimation(const struct TilesetAnimation *animation);
+void InitNeighborTilesetAnimation(const struct Tileset *tileset, struct TilesetAnimation *animation);
+void AnimateNeighborTileset(struct TilesetAnimation *animation, u8 *tiles);
 void InitTilesetAnimations(void);
 void InitSecondaryTilesetAnimation(void);
 void UpdateTilesetAnimations(void);

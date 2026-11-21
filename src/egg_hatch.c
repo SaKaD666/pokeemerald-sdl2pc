@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "pokemon.h"
 #include "egg_hatch.h"
 #include "pokedex.h"
@@ -43,8 +44,8 @@
 
 #define PALTAG_EGG       54321
 
-#define EGG_X (DISPLAY_WIDTH / 2)
-#define EGG_Y (DISPLAY_HEIGHT / 2 - 5)
+#define EGG_X (GBA_DISPLAY_WIDTH / 2)
+#define EGG_Y (GBA_DISPLAY_HEIGHT / 2 - 5)
 
 struct EggHatchData
 {
@@ -239,7 +240,7 @@ static const struct BgTemplate sBgTemplates_EggHatch[] =
         .bg = 0,
         .charBaseIndex = 2,
         .mapBaseIndex = 24,
-        .screenSize = 3,
+        .screenSize = 2,
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -492,6 +493,9 @@ static void CB2_LoadEggHatch(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetGpuReg(REG_OFFSET_DISPCNT, 0);
 
         sEggHatchData = Alloc(sizeof(*sEggHatchData));
@@ -512,8 +516,8 @@ static void CB2_LoadEggHatch(void)
         ChangeBgY(0, 0, BG_COORD_SET);
 
         SetBgAttribute(1, BG_ATTR_PRIORITY, 2);
-        SetBgTilemapBuffer(1, Alloc(0x1000));
-        SetBgTilemapBuffer(0, Alloc(0x2000));
+        SetBgTilemapBuffer(1, Alloc(2 * BG_SCREEN_SIZE));
+        SetBgTilemapBuffer(0, Alloc(2 * BG_SCREEN_SIZE));
 
         DeactivateAllTextPrinters();
         ResetPaletteFade();
@@ -574,11 +578,29 @@ static void CB2_LoadEggHatch(void)
     UpdatePaletteFade();
 }
 
+static void FreeEggHatchScene(void)
+{
+    void *dialogueTilemap = GetBgTilemapBuffer(0);
+    void *platformTilemap = GetBgTilemapBuffer(1);
+
+    // Complete copies while the scene still owns their source buffers.
+    IsDma3ManagerBusyWithBgCopy();
+    SetVBlankCallback(NULL);
+    FreeAllWindowBuffers();
+    UnsetBgTilemapBuffer(0);
+    UnsetBgTilemapBuffer(1);
+    Free(dialogueTilemap);
+    Free(platformTilemap);
+    FreeMonSpritesGfx();
+    FREE_AND_SET_NULL(sEggHatchData);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
+}
+
 static void EggHatchSetMonNickname(void)
 {
     SetMonData(&gPlayerParty[gSpecialVar_0x8004], MON_DATA_NICKNAME, gStringVar3);
-    FreeMonSpritesGfx();
-    Free(sEggHatchData);
     SetMainCallback2(CB2_ReturnToField);
 }
 
@@ -685,17 +707,19 @@ static void CB2_EggHatch(void)
         break;
     case 10:
         // Handle the nickname prompt input
-        switch (Menu_ProcessInputNoWrapClearOnChoose())
+        switch (Menu_ProcessInputNoWrap())
         {
         case 0: // Yes
             GetMonNickname2(&gPlayerParty[sEggHatchData->eggPartyId], gStringVar3);
             species = GetMonData(&gPlayerParty[sEggHatchData->eggPartyId], MON_DATA_SPECIES);
             gender = GetMonGender(&gPlayerParty[sEggHatchData->eggPartyId]);
             personality = GetMonData(&gPlayerParty[sEggHatchData->eggPartyId], MON_DATA_PERSONALITY, 0);
+            FreeEggHatchScene();
             DoNamingScreen(NAMING_SCREEN_NICKNAME, gStringVar3, species, gender, personality, EggHatchSetMonNickname);
-            break;
+            return;
         case 1: // No
         case MENU_B_PRESSED:
+            EraseYesNoWindow();
             sEggHatchData->state++;
             break;
         }
@@ -707,12 +731,9 @@ static void CB2_EggHatch(void)
     case 12:
         if (!gPaletteFade.active)
         {
-            FreeMonSpritesGfx();
-            RemoveWindow(sEggHatchData->windowId);
-            UnsetBgTilemapBuffer(0);
-            UnsetBgTilemapBuffer(1);
-            Free(sEggHatchData);
+            FreeEggHatchScene();
             SetMainCallback2(CB2_ReturnToField);
+            return;
         }
         break;
     }

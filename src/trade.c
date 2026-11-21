@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "malloc.h"
 #include "battle_anim.h"
 #include "battle_interface.h"
@@ -394,6 +395,9 @@ static bool32 _IsLinkTaskFinished(void)
 
 static void InitTradeMenu(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     ResetSpriteData();
     FreeAllSpritePalettes();
     ResetTasks();
@@ -1415,8 +1419,8 @@ static void TradeMenuMoveCursor(u8 *cursorPosition, u8 direction)
     if (newPosition == (PARTY_SIZE * 2)) // CANCEL
     {
         StartSpriteAnim(&gSprites[sTradeMenu->cursorSpriteId], CURSOR_ANIM_ON_CANCEL);
-        gSprites[sTradeMenu->cursorSpriteId].x = DISPLAY_WIDTH - 16;
-        gSprites[sTradeMenu->cursorSpriteId].y = DISPLAY_HEIGHT;
+        gSprites[sTradeMenu->cursorSpriteId].x = GBA_DISPLAY_WIDTH - 16;
+        gSprites[sTradeMenu->cursorSpriteId].y = GBA_DISPLAY_HEIGHT;
     }
     else
     {
@@ -1551,6 +1555,9 @@ static void CB_ShowTradeMonSummaryScreen(void)
 {
     if (!gPaletteFade.active)
     {
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         if (sTradeMenu->cursorPosition < PARTY_SIZE)
             ShowPokemonSummaryScreen(SUMMARY_MODE_LOCK_MOVES, gPlayerParty, sTradeMenu->cursorPosition, sTradeMenu->partyCounts[TRADE_PLAYER] - 1, CB2_ReturnToTradeMenu);
         else
@@ -1755,6 +1762,10 @@ static void CB_ExitCanceledTrade(void)
             Free(sTradeMenu);
             FreeAllWindowBuffers();
             DestroyWirelessStatusIndicatorSprite();
+#ifdef PLATFORM_SDL2
+            SetVBlankCallback(NULL);
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_ReturnToFieldFromMultiplayer);
         }
     }
@@ -1765,6 +1776,10 @@ static void CB_ExitCanceledTrade(void)
             Free(sMenuTextTileBuffer);
             Free(sTradeMenu);
             FreeAllWindowBuffers();
+#ifdef PLATFORM_SDL2
+            SetVBlankCallback(NULL);
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_ReturnToFieldFromMultiplayer);
         }
     }
@@ -2829,6 +2844,9 @@ void CB2_LinkTrade(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         if (!gReceivedRemoteLinkPlayers)
         {
             gLinkType = LINKTYPE_TRADE_DISCONNECTED;
@@ -2850,8 +2868,8 @@ void CB2_LinkTrade(void)
         sTradeAnim->texY = 64;
         sTradeAnim->neverRead_D8 = 0;
         sTradeAnim->neverRead_DA = 0;
-        sTradeAnim->scrX = DISPLAY_WIDTH / 2;
-        sTradeAnim->scrY = DISPLAY_HEIGHT / 2;
+        sTradeAnim->scrX = GBA_DISPLAY_WIDTH / 2;
+        sTradeAnim->scrY = GBA_DISPLAY_HEIGHT / 2;
         sTradeAnim->sXY = 256;
         sTradeAnim->alpha = 0;
         break;
@@ -3000,6 +3018,9 @@ static void CB2_InitInGameTrade(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         gSelectedTradeMonPositions[TRADE_PLAYER] = gSpecialVar_0x8005;
         gSelectedTradeMonPositions[TRADE_PARTNER] = PARTY_SIZE;
         StringCopy(gLinkPlayers[0].name, gSaveBlock2Ptr->playerName);
@@ -3021,8 +3042,8 @@ static void CB2_InitInGameTrade(void)
         sTradeAnim->texY = 64;
         sTradeAnim->neverRead_D8 = 0;
         sTradeAnim->neverRead_DA = 0;
-        sTradeAnim->scrX = DISPLAY_WIDTH / 2;
-        sTradeAnim->scrY = DISPLAY_HEIGHT / 2;
+        sTradeAnim->scrX = GBA_DISPLAY_WIDTH / 2;
+        sTradeAnim->scrY = GBA_DISPLAY_HEIGHT / 2;
         sTradeAnim->sXY = 256;
         sTradeAnim->alpha = 0;
         sTradeAnim->timer = 0;
@@ -3651,8 +3672,8 @@ static bool8 DoTradeAnim_Cable(void)
     case STATE_CROSSING_MON_PICS_MOVE:
         gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 -= 3;
         gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].y2 += 3;
-        if (gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 < -DISPLAY_HEIGHT
-         && gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 >= -DISPLAY_HEIGHT - 3)
+        if (gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 < -GBA_DISPLAY_HEIGHT
+         && gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 >= -GBA_DISPLAY_HEIGHT - 3)
         {
             PlaySE(SE_WARP_IN);
         }
@@ -3886,6 +3907,10 @@ static bool8 DoTradeAnim_Cable(void)
         if (!gPaletteFade.active)
         {
             PlayNewMapMusic(sTradeAnim->cachedMapMusic);
+            SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             if (sTradeAnim)
             {
                 FreeAllWindowBuffers();
@@ -4129,8 +4154,8 @@ static bool8 DoTradeAnim_Wireless(void)
     case STATE_CROSSING_MON_PICS_MOVE:
         gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 -= 3;
         gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].y2 += 3;
-        if (gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 < -DISPLAY_HEIGHT
-         && gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 >= -DISPLAY_HEIGHT - 3)
+        if (gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 < -GBA_DISPLAY_HEIGHT
+         && gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].y2 >= -GBA_DISPLAY_HEIGHT - 3)
         {
             PlaySE(SE_WARP_IN);
         }
@@ -4383,6 +4408,10 @@ static bool8 DoTradeAnim_Wireless(void)
         if (!gPaletteFade.active)
         {
             PlayNewMapMusic(sTradeAnim->cachedMapMusic);
+            SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             if (sTradeAnim)
             {
                 FreeAllWindowBuffers();
@@ -4826,6 +4855,7 @@ static void CB2_FreeTradeAnim(void)
 {
     if (!gPaletteFade.active)
     {
+        SetVBlankCallback(NULL);
         FreeAllWindowBuffers();
         Free(GetBgTilemapBuffer(3));
         Free(GetBgTilemapBuffer(1));
@@ -4834,7 +4864,11 @@ static void CB2_FreeTradeAnim(void)
         FREE_AND_SET_NULL(sTradeAnim);
         if (gWirelessCommType)
             DestroyWirelessStatusIndicatorSprite();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(gMain.savedCallback == CB2_StartCreateTradeMenu);
+#endif
         SetMainCallback2(gMain.savedCallback);
+        return;
     }
     RunTasks();
     AnimateSprites();
@@ -4934,9 +4968,9 @@ static void Task_OpenCenterWhiteColumn(u8 taskId)
 
     if (data[0] == 0)
     {
-        sTradeAnim->wirelessWinLeft = sTradeAnim->wirelessWinRight = DISPLAY_WIDTH / 2;
+        sTradeAnim->wirelessWinLeft = sTradeAnim->wirelessWinRight = GBA_DISPLAY_WIDTH / 2;
         sTradeAnim->wirelessWinTop = 0;
-        sTradeAnim->wirelessWinBottom = DISPLAY_HEIGHT;
+        sTradeAnim->wirelessWinBottom = GBA_DISPLAY_HEIGHT;
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
         SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_OBJ);
         SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG0 |
@@ -4962,7 +4996,7 @@ static void Task_CloseCenterWhiteColumn(u8 taskId)
     if (data[0] == 0)
     {
         sTradeAnim->wirelessWinLeft = 80;
-        sTradeAnim->wirelessWinRight = DISPLAY_WIDTH - 80;
+        sTradeAnim->wirelessWinRight = GBA_DISPLAY_WIDTH - 80;
         SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_OBJ);
         SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG0 |
                                     WININ_WIN0_BG1 |
@@ -4972,13 +5006,13 @@ static void Task_CloseCenterWhiteColumn(u8 taskId)
     SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE2(sTradeAnim->wirelessWinLeft, sTradeAnim->wirelessWinRight));
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE2(sTradeAnim->wirelessWinTop, sTradeAnim->wirelessWinBottom));
 
-    if (sTradeAnim->wirelessWinLeft != DISPLAY_WIDTH / 2)
+    if (sTradeAnim->wirelessWinLeft != GBA_DISPLAY_WIDTH / 2)
     {
         data[0]++;
         sTradeAnim->wirelessWinLeft += 5;
         sTradeAnim->wirelessWinRight -= 5;
 
-        if (sTradeAnim->wirelessWinLeft > DISPLAY_WIDTH / 2 - 5)
+        if (sTradeAnim->wirelessWinLeft > GBA_DISPLAY_WIDTH / 2 - 5)
             BlendPalettes(0x8, 0, RGB_WHITEALPHA);
     }
     else

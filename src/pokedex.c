@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "battle_main.h"
 #include "bg.h"
 #include "data.h"
@@ -313,7 +314,7 @@ static void ClearSearchParameterBoxText(void);
 
 static const struct OamData sOamData_ScrollBar =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -330,7 +331,7 @@ static const struct OamData sOamData_ScrollBar =
 
 static const struct OamData sOamData_ScrollArrow =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -347,7 +348,7 @@ static const struct OamData sOamData_ScrollArrow =
 
 static const struct OamData sOamData_InterfaceText =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -364,7 +365,7 @@ static const struct OamData sOamData_InterfaceText =
 
 static const struct OamData sOamData_RotatingPokeBall =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_WINDOW,
     .mosaic = FALSE,
@@ -381,7 +382,7 @@ static const struct OamData sOamData_RotatingPokeBall =
 
 static const struct OamData sOamData_SeenOwnText =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -398,7 +399,7 @@ static const struct OamData sOamData_SeenOwnText =
 
 static const struct OamData sOamData_Dex8x16 =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -1594,6 +1595,9 @@ void CB2_OpenPokedex(void)
     {
     case 0:
     default:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetVBlankCallback(NULL);
         ResetOtherVideoRegisters(0);
         DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
@@ -1852,6 +1856,9 @@ static void Task_ClosePokedex(u8 taskId)
         ClearMonSprites();
         FreeWindowAndBgBuffers();
         DestroyTask(taskId);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_ReturnToFieldWithOpenMenu);
         m4aMPlayVolumeControl(&gMPlayInfo_BGM, TRACKS_ALL, 0x100);
         Free(sPokedexView);
@@ -2786,7 +2793,7 @@ static void CreateInterfaceSprites(u8 page)
     // Scroll arrows
     spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, 4, 0);
     gSprites[spriteId].sIsDownArrow = FALSE;
-    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, DISPLAY_HEIGHT - 4, 0);
+    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, GBA_DISPLAY_HEIGHT - 4, 0);
     gSprites[spriteId].sIsDownArrow = TRUE;
     gSprites[spriteId].vFlip = TRUE;
 
@@ -2797,20 +2804,20 @@ static void CreateInterfaceSprites(u8 page)
     spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 48, 120, 0);
     StartSpriteAnim(&gSprites[spriteId], 3);
     // Select button
-    spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 16, DISPLAY_HEIGHT - 16, 0);
+    spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 16, GBA_DISPLAY_HEIGHT - 16, 0);
     StartSpriteAnim(&gSprites[spriteId], 2);
     gSprites[spriteId].data[2] = 0x80;
     // Search text
-    spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 48, DISPLAY_HEIGHT - 16, 0);
+    spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 48, GBA_DISPLAY_HEIGHT - 16, 0);
     StartSpriteAnim(&gSprites[spriteId], 1);
 
-    spriteId = CreateSprite(&sRotatingPokeBallSpriteTemplate, 0, DISPLAY_HEIGHT / 2, 2);
+    spriteId = CreateSprite(&sRotatingPokeBallSpriteTemplate, 0, GBA_DISPLAY_HEIGHT / 2, 2);
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
     gSprites[spriteId].oam.matrixNum = 30;
     gSprites[spriteId].data[0] = 30;
     gSprites[spriteId].data[1] = 0;
 
-    spriteId = CreateSprite(&sRotatingPokeBallSpriteTemplate, 0, DISPLAY_HEIGHT / 2, 2);
+    spriteId = CreateSprite(&sRotatingPokeBallSpriteTemplate, 0, GBA_DISPLAY_HEIGHT / 2, 2);
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
     gSprites[spriteId].oam.matrixNum = 31;
     gSprites[spriteId].data[0] = 31;
@@ -3765,7 +3772,7 @@ static void Task_LoadSizeScreen(u8 taskId)
 
             StringCopy(string, gText_SizeComparedTo);
             StringAppend(string, gSaveBlock2Ptr->playerName);
-            PrintInfoScreenText(string, GetStringCenterAlignXOffset(FONT_NORMAL, string, DISPLAY_WIDTH), 121);
+            PrintInfoScreenText(string, GetStringCenterAlignXOffset(FONT_NORMAL, string, GBA_DISPLAY_WIDTH), 121);
             gMain.state++;
         }
         break;
@@ -3971,6 +3978,9 @@ static void Task_DisplayCaughtMonDexPage(u8 taskId)
         {
             gPokedexVBlankCB = gMain.vblankCallback;
             SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(TRUE);
+#endif
             ResetOtherVideoRegisters(DISPCNT_BG0_ON);
             ResetBgsAndClearDma3BusyFlags(0);
             InitBgsFromTemplates(0, sNewEntryInfoScreen_BgTemplate, ARRAY_COUNT(sNewEntryInfoScreen_BgTemplate));
@@ -4076,20 +4086,26 @@ static void Task_ExitCaughtMonPage(u8 taskId)
         paletteNum = gSprites[gTasks[taskId].tMonSpriteId].oam.paletteNum;
         lzPaletteData = GetMonSpritePalFromSpeciesAndPersonality(species, otId, personality);
         LoadCompressedPalette(lzPaletteData, OBJ_PLTT_ID(paletteNum), PLTT_SIZE_4BPP);
+#ifdef PLATFORM_SDL2
+        gSprites[gTasks[taskId].tMonSpriteId].x += (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
+        gSprites[gTasks[taskId].tMonSpriteId].y += (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
+        gSprites[gTasks[taskId].tMonSpriteId].callback = SpriteCallbackDummy;
+        SetFrameViewToGbaSize(FALSE);
+#endif
         DestroyTask(taskId);
     }
 }
 
 static void SpriteCB_SlideCaughtMonToCenter(struct Sprite *sprite)
 {
-    if (sprite->x < DISPLAY_WIDTH / 2)
+    if (sprite->x < GBA_DISPLAY_WIDTH / 2)
         sprite->x += 2;
-    if (sprite->x > DISPLAY_WIDTH / 2)
+    if (sprite->x > GBA_DISPLAY_WIDTH / 2)
         sprite->x -= 2;
 
-    if (sprite->y < DISPLAY_HEIGHT / 2)
+    if (sprite->y < GBA_DISPLAY_HEIGHT / 2)
         sprite->y += 1;
-    if (sprite->y > DISPLAY_HEIGHT / 2)
+    if (sprite->y > GBA_DISPLAY_HEIGHT / 2)
         sprite->y -= 1;
 }
 
@@ -4113,7 +4129,7 @@ static void PrintMonInfo(u32 num, u32 value, u32 owned, u32 newEntry)
     const u8 *description;
 
     if (newEntry)
-        PrintInfoScreenText(gText_PokedexRegistration, GetStringCenterAlignXOffset(FONT_NORMAL, gText_PokedexRegistration, DISPLAY_WIDTH), 0);
+        PrintInfoScreenText(gText_PokedexRegistration, GetStringCenterAlignXOffset(FONT_NORMAL, gText_PokedexRegistration, GBA_DISPLAY_WIDTH), 0);
     if (value == 0)
         value = NationalToHoennOrder(num);
     else
@@ -4152,7 +4168,7 @@ static void PrintMonInfo(u32 num, u32 value, u32 owned, u32 newEntry)
         description = gPokedexEntries[num].description;
     else
         description = sExpandedPlaceholder_PokedexDescription;
-    PrintInfoScreenText(description, GetStringCenterAlignXOffset(FONT_NORMAL, description, DISPLAY_WIDTH), 95);
+    PrintInfoScreenText(description, GetStringCenterAlignXOffset(FONT_NORMAL, description, GBA_DISPLAY_WIDTH), 95);
 }
 
 static void PrintMonHeight(u16 height, u8 left, u8 top)

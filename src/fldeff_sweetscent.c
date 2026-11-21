@@ -38,25 +38,36 @@ static void FieldCallback_SweetScent(void)
 
 bool8 FldEff_SweetScent(void)
 {
-    u8 taskId;
+    u8 taskId = CreateFieldMoveTask();
 
+    if (taskId == TASK_NONE)
+    {
+        FieldEffectActiveListRemove(FLDEFF_SWEET_SCENT);
+        RestoreFieldControlsAfterFailedMove();
+        return FALSE;
+    }
     SetWeatherScreenFadeOut();
-    taskId = CreateFieldMoveTask();
     gTasks[taskId].ptr.funcPtr = StartSweetScentFieldEffect;
     return FALSE;
 }
 
 static void StartSweetScentFieldEffect(void)
 {
-    u8 taskId;
+    bool8 firstSlotInUse = gTasks[0].isActive;
+    u8 taskId = CreateTask(TrySweetScentEncounter, 0);
+
+    FieldEffectActiveListRemove(FLDEFF_SWEET_SCENT);
+    if (taskId == 0 && firstSlotInUse)
+    {
+        SetWeatherPalStateIdle();
+        RestoreFieldControlsAfterFailedMove();
+        return;
+    }
 
     PlaySE(SE_M_SWEET_SCENT);
     CpuFastCopy(gPlttBufferUnfaded, gPaletteDecompressionBuffer, PLTT_SIZE);
     CpuFastCopy(gPlttBufferFaded, gPlttBufferUnfaded, PLTT_SIZE);
     BeginNormalPaletteFade(~(1 << (gSprites[GetPlayerAvatarSpriteId()].oam.paletteNum + 16)), 4, 0, 8, RGB_RED);
-    taskId = CreateTask(TrySweetScentEncounter, 0);
-    gTasks[taskId].data[0] = 0;
-    FieldEffectActiveListRemove(FLDEFF_SWEET_SCENT);
 }
 
 static void TrySweetScentEncounter(u8 taskId)

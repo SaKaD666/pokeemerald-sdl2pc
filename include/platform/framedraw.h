@@ -4,4 +4,7 @@
 #include "global.h"
 
 void DrawFrame(uint16_t *pixels);
+#ifdef PLATFORM_SDL2
+void SetFrameViewToGbaSize(bool8 enabled);
+#endif
 #endif

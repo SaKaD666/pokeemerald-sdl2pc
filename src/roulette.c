@@ -27,6 +27,9 @@
 #include "trig.h"
 #include "tv.h"
 #include "window.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 #include "constants/coins.h"
 #include "constants/rgb.h"
 #include "constants/roulette.h"
@@ -1041,17 +1044,14 @@ static const struct YesNoFuncTable sYesNoTable_KeepPlaying =
 static void CB2_Roulette(void)
 {
     RunTasks();
+#ifdef PORTABLE
+    if (sRoulette == NULL)
+        return;
+#endif
     AnimateSprites();
     BuildOamBuffer();
-#ifdef PORTABLE
-    if (sRoulette)
-    {
-#endif
     if (sRoulette->flashUtil.enabled)
         RouletteFlash_Run(&sRoulette->flashUtil);
-#ifdef PORTABLE
-    }
-#endif
 }
 
 static void VBlankCB_Roulette(void)
@@ -1184,6 +1184,9 @@ static void CB2_LoadRoulette(void)
         SetVBlankCallback(NULL);
         ScanlineEffect_Stop();
         SetVBlankHBlankCallbacksToNull();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ResetVramOamAndBgCntRegs();
         ResetAllBgsCoordinates();
         break;
@@ -1985,6 +1988,10 @@ static void Task_ExitRoulette(u8 taskId)
     if (UpdatePaletteFade() == 0)
     {
         SetVBlankCallback(NULL);
+#ifdef PORTABLE
+        IsDma3ManagerBusyWithBgCopy();
+        ClearScheduledBgCopiesToVram();
+#endif
         gSpriteCoordOffsetX = gSpriteCoordOffsetY = 0;
         ResetVramOamAndBgCntRegs();
         ResetAllBgsCoordinates();
@@ -1995,6 +2002,9 @@ static void Task_ExitRoulette(u8 taskId)
         ResetPaletteFade();
         ResetSpriteData();
         FreeRoulette();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         gFieldCallback = FieldCB_ContinueScriptHandleMusic;
         SetMainCallback2(CB2_ReturnToField);
         DestroyTask(taskId);

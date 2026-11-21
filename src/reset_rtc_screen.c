@@ -18,6 +18,9 @@
 #include "window.h"
 #include "gpu_regs.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 #define PALTAG_ARROW 0x1000
 
@@ -521,6 +524,9 @@ void CB2_InitResetRtcScreen(void)
 {
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
     SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     DmaClear16(3, PLTT, PLTT_SIZE);
     DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
     ResetOamRange(0, 128);

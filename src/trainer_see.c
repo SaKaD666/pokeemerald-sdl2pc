@@ -4,6 +4,7 @@
 #include "event_object_movement.h"
 #include "field_effect.h"
 #include "field_player_avatar.h"
+#include "fieldmap.h"
 #include "pokemon.h"
 #include "script.h"
 #include "script_movement.h"
@@ -179,7 +180,7 @@ static const struct SpriteTemplate sSpriteTemplate_ExclamationQuestionMark =
 static const struct SpriteTemplate sSpriteTemplate_HeartIcon =
 {
     .tileTag = TAG_NONE,
-    .paletteTag = FLDEFF_PAL_TAG_GENERAL_0,
+    .paletteTag = TAG_NONE,
     .oam = &sOamData_Icons,
     .anims = sSpriteAnimTable_Icons,
     .images = sSpriteImageTable_HeartIcon,
@@ -230,7 +231,7 @@ bool8 CheckForTrainersWantingBattle(void)
         ResetTrainerOpponentIds();
         for (i = 0; i < gNoOfApproachingTrainers; i++, gApproachingTrainerId++)
         {
-            ConfigureTwoTrainersBattle(gApproachingTrainers[i].objectEventId,
+            ConfigureApproachingTrainerBattle(gApproachingTrainers[i].objectEventId,
                                        gApproachingTrainers[i].trainerScriptPtr);
         }
         SetUpTwoTrainersBattle();
@@ -370,9 +371,9 @@ static u8 GetTrainerApproachDistanceEast(struct ObjectEvent *trainerObj, s16 ran
 static u8 CheckPathBetweenTrainerAndPlayer(struct ObjectEvent *trainerObj, u8 approachDistance, u8 direction)
 {
     s16 x, y;
-    u8 rangeX, rangeY;
     u8 i;
-    u8 collision;
+    u8 elevation = trainerObj->currentElevation;
+    const u8 rangeFlag = 1 << (COLLISION_OUTSIDE_RANGE - 1);
 
     if (approachDistance == 0)
         return 0;
@@ -380,26 +381,24 @@ static u8 CheckPathBetweenTrainerAndPlayer(struct ObjectEvent *trainerObj, u8 ap
     x = trainerObj->currentCoords.x;
     y = trainerObj->currentCoords.y;
 
-    MoveCoords(direction, &x, &y);
-    for (i = 0; i < approachDistance - 1; i++, MoveCoords(direction, &x, &y))
+    for (i = 1; i <= approachDistance; i++)
     {
-        // Check for collisions on approach, ignoring the "out of range" collision for regular movement
-        collision = GetCollisionFlagsAtCoords(trainerObj, x, y, direction);
-        if (collision != 0 && (collision & ~(1 << (COLLISION_OUTSIDE_RANGE - 1))))
+        u8 sourceElevation = MapGridGetElevationAt(x, y);
+        u8 sourceBehavior = MapGridGetMetatileBehaviorAt(x, y);
+        u8 targetElevation;
+        u8 collision;
+
+        MoveCoords(direction, &x, &y);
+        collision = GetCollisionFlagsAtCoords(trainerObj, x, y, direction, sourceBehavior, elevation) & ~rangeFlag;
+        if (i == approachDistance)
+            return collision == (1 << (COLLISION_OBJECT_EVENT - 1)) ? approachDistance : 0;
+        if (collision != 0)
             return 0;
+
+        targetElevation = MapGridGetElevationAt(x, y);
+        if (sourceElevation != ELEVATION_MULTI_LEVEL && targetElevation != ELEVATION_MULTI_LEVEL)
+            elevation = targetElevation;
     }
-
-    rangeX = trainerObj->range.rangeX;
-    rangeY = trainerObj->range.rangeY;
-    trainerObj->range.rangeX = 0;
-    trainerObj->range.rangeY = 0;
-
-    collision = GetCollisionAtCoords(trainerObj, x, y, direction);
-
-    trainerObj->range.rangeX = rangeX;
-    trainerObj->range.rangeY = rangeY;
-    if (collision == COLLISION_OBJECT_EVENT)
-        return approachDistance;
 
     return 0;
 }
@@ -592,7 +591,7 @@ static bool8 JumpInPlaceBuriedTrainer(u8 taskId, struct Task *task, struct Objec
 {
     struct Sprite *sprite;
 
-    if (gSprites[task->tOutOfAshSpriteId].animCmdIndex == 2)
+    if (task->tOutOfAshSpriteId == MAX_SPRITES || gSprites[task->tOutOfAshSpriteId].animCmdIndex == 2)
     {
         trainerObj->fixedPriority = 0;
         trainerObj->triggerGroundEffectsOnMove = TRUE;
@@ -699,6 +698,8 @@ u8 FldEff_ExclamationMarkIcon(void)
 
     if (spriteId != MAX_SPRITES)
         SetIconSpriteData(&gSprites[spriteId], FLDEFF_EXCLAMATION_MARK_ICON, 0);
+    else
+        FieldEffectActiveListRemove(FLDEFF_EXCLAMATION_MARK_ICON);
 
     return 0;
 }
@@ -709,6 +710,8 @@ u8 FldEff_QuestionMarkIcon(void)
 
     if (spriteId != MAX_SPRITES)
         SetIconSpriteData(&gSprites[spriteId], FLDEFF_QUESTION_MARK_ICON, 1);
+    else
+        FieldEffectActiveListRemove(FLDEFF_QUESTION_MARK_ICON);
 
     return 0;
 }
@@ -722,7 +725,11 @@ u8 FldEff_HeartIcon(void)
         struct Sprite *sprite = &gSprites[spriteId];
 
         SetIconSpriteData(sprite, FLDEFF_HEART_ICON, 0);
-        sprite->oam.paletteNum = 2;
+        sprite->oam.paletteNum = PALSLOT_NPC_1;
+    }
+    else
+    {
+        FieldEffectActiveListRemove(FLDEFF_HEART_ICON);
     }
 
     return 0;

@@ -79,7 +79,7 @@ int main(int argc, char **argv)
     freopen( "CON", "w", stdout ) ;
 #endif
 
-    ReadSaveFile("pokeemerald.sav");
+    ReadSaveFile("pokeemerald-v3.sav");
 
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
     {
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 
     Uint32 windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
 #ifdef PLATFORM_VULKAN
-    windowFlags |= SDL_WINDOW_VULKAN;
+    windowFlags |= SDL_WINDOW_VULKAN | SDL_WINDOW_ALLOW_HIGHDPI;
 #endif
     sdlWindow = SDL_CreateWindow("pokeemerald", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale, windowFlags);
     if (sdlWindow == NULL)
@@ -232,27 +232,22 @@ int main(int argc, char **argv)
 
 static void ReadSaveFile(char *path)
 {
-    // Check whether the saveFile exists, and create it if not
+    memset(FLASH_BASE, 0xFF, sizeof(FLASH_BASE));
     sSaveFile = fopen(path, "r+b");
     if (sSaveFile == NULL)
     {
-        sSaveFile = fopen(path, "w+b");
+        FILE *created = fopen(path, "ab");
+        if (created != NULL)
+        {
+            fclose(created);
+            sSaveFile = fopen(path, "r+b");
+        }
     }
 
-    fseek(sSaveFile, 0, SEEK_END);
-    int fileSize = ftell(sSaveFile);
-    fseek(sSaveFile, 0, SEEK_SET);
-
-    // Only read as many bytes as fit inside the buffer
-    // or as many bytes as are in the file
-    int bytesToRead = (fileSize < sizeof(FLASH_BASE)) ? fileSize : sizeof(FLASH_BASE);
-
-    int bytesRead = fread(FLASH_BASE, 1, bytesToRead, sSaveFile);
-
-    // Fill the buffer if the savefile was just created or smaller than the buffer itself
-    for (int i = bytesRead; i < sizeof(FLASH_BASE); i++)
+    if (sSaveFile != NULL)
     {
-        FLASH_BASE[i] = 0xFF;
+        size_t bytesRead = fread(FLASH_BASE, 1, sizeof(FLASH_BASE), sSaveFile);
+        memset(FLASH_BASE + bytesRead, 0xFF, sizeof(FLASH_BASE) - bytesRead);
     }
 }
 
@@ -262,6 +257,7 @@ static void StoreSaveFile()
     {
         fseek(sSaveFile, 0, SEEK_SET);
         fwrite(FLASH_BASE, 1, sizeof(FLASH_BASE), sSaveFile);
+        fflush(sSaveFile);
     }
 }
 
@@ -272,24 +268,22 @@ void Platform_StoreSaveFile(void)
 
 void Platform_ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 {
-    DBGPRINTF("ReadFlash(sectorNum=0x%04X,offset=0x%08X,size=0x%02X)\n",sectorNum,offset,size);
-    FILE * savefile = fopen("pokeemerald.sav", "r+b");
-    if (savefile == NULL)
+    size_t address;
+
+    if (sectorNum >= gFlash->sector.count || offset >= gFlash->sector.size)
     {
-        puts("Error opening save file.");
+        memset(dest, 0xFF, size);
         return;
     }
-    if (fseek(savefile, (sectorNum << gFlash->sector.shift) + offset, SEEK_SET))
+
+    address = (size_t)sectorNum * gFlash->sector.size + offset;
+    if (address >= sizeof(FLASH_BASE) || size > sizeof(FLASH_BASE) - address)
     {
-        fclose(savefile);
+        memset(dest, 0xFF, size);
         return;
     }
-    if (fread(dest, 1, size, savefile) != size)
-    {
-        fclose(savefile);
-        return;
-    }
-    fclose(savefile);
+
+    memcpy(dest, FLASH_BASE + address, size);
 }
 
 void Platform_QueueAudio(float *audioBuffer, s32 samplesPerFrame)
@@ -493,7 +487,7 @@ void VDraw(void)
 #ifndef PLATFORM_VULKAN
     SDL_UpdateTexture(sdlTexture, NULL, videoFrame, DISPLAY_WIDTH * sizeof (Uint16));
 #endif
-    REG_VCOUNT = 161; // prep for being in VBlank period
+    ENTER_VBLANK();
 }
 
 int DoMain(void *data)

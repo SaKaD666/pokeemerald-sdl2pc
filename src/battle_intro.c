@@ -128,6 +128,15 @@ void HandleIntroSlide(u8 environment)
         taskId = CreateTask(sBattleIntroSlideFuncs[environment], 0);
     }
 
+#ifdef PLATFORM_SDL2
+    if (gTasks[taskId].func != BattleIntroSlideLink && gTasks[taskId].func != BattleIntroSlidePartner)
+    {
+        // The regular entry art is one block. Leave the extra columns transparent
+        // so the wide terrain shows through during the horizontal scanline effect.
+        CpuFill32(0, (void *)BG_SCREEN_ADDR(29), BG_SCREEN_SIZE);
+        SetAnimBgAttribute(1, BG_ANIM_SCREEN_SIZE, 1);
+    }
+#endif
     gTasks[taskId].tState = 0;
     gTasks[taskId].tEnvironment = environment;
     gTasks[taskId].data[2] = 0;

@@ -16,7 +16,7 @@ void ReturnToFieldFromFlyMapSelect(void);
 u8 AddNewGameBirchObject(s16 x, s16 y, u8 subpriority);
 void FieldEffectStop(struct Sprite *sprite, u8 id);
 u8 CreateTrainerSprite(u8 trainerSpriteID, s16 x, s16 y, u8 subpriority, u8 *buffer);
-void FldEff_TeleportWarpOut(void);
+bool8 FldEff_TeleportWarpOut(void);
 void FieldEffectActiveListRemove(u8 id);
 void MultiplyInvertedPaletteRGBComponents(u16 i, u8 r, u8 g, u8 b);
 void FieldEffectActiveListAdd(u8 id);
@@ -45,6 +45,6 @@ void SpriteCB_AshLaunch(struct Sprite *sprite);
 void MultiplyPaletteRGBComponents(u16 i, u8 r, u8 g, u8 b);
 void FreeResourcesAndDestroySprite(struct Sprite *sprite, u8 spriteId);
 u8 CreateMonSprite_PicBox(u16 species, s16 x, s16 y, u8 subpriority);
-void StartEscapeRopeFieldEffect(void);
+bool8 StartEscapeRopeFieldEffect(void);
 
 #endif // GUARD_FIELD_EFFECTS_H

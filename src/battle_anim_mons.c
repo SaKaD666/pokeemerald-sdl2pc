@@ -1,5 +1,6 @@
 #include "global.h"
 #include "battle.h"
+#include "battle_bg.h"
 #include "battle_anim.h"
 #include "bg.h"
 #include "contest.h"
@@ -126,6 +127,10 @@ u8 GetBattlerSpriteCoord(u8 battler, u8 coordType)
     case BATTLER_COORD_X:
     case BATTLER_COORD_X_2:
         retVal = sBattlerCoords[IS_DOUBLE_BATTLE()][GetBattlerPosition(battler)].x;
+#ifdef PLATFORM_SDL2
+        if (!IsContest())
+            retVal += GetBattlerSide(battler) == B_SIDE_PLAYER ? BATTLE_PLAYER_PLATFORM_SHIFT : BATTLE_OPPONENT_PLATFORM_SHIFT;
+#endif
         break;
     case BATTLER_COORD_Y:
         retVal = sBattlerCoords[IS_DOUBLE_BATTLE()][GetBattlerPosition(battler)].y;

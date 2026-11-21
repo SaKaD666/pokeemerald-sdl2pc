@@ -6,6 +6,8 @@
 #include "task.h"
 #include "battle_transition.h"
 #include "fieldmap.h"
+#include "field_camera.h"
+#include "tileset_anims.h"
 
 static EWRAM_DATA struct {
     const u16 *src;
@@ -16,10 +18,10 @@ static EWRAM_DATA struct {
 static u8 sTilesetDMA3TransferBufferSize;
 static u16 sPrimaryTilesetAnimCounter;
 static u16 sPrimaryTilesetAnimCounterMax;
-static u16 sSecondaryTilesetAnimCounter;
-static u16 sSecondaryTilesetAnimCounterMax;
 static void (*sPrimaryTilesetAnimCallback)(u16);
-static void (*sSecondaryTilesetAnimCallback)(u16);
+static struct TilesetAnimation sSecondaryTilesetAnimation;
+static u8 *sNeighborAnimationTiles;
+static bool8 sNeighborAnimationUpdatePending;
 
 static void _InitPrimaryTilesetAnimation(void);
 static void _InitSecondaryTilesetAnimation(void);
@@ -43,6 +45,7 @@ static void TilesetAnim_MauvilleGym(u16);
 static void TilesetAnim_BikeShop(u16);
 static void TilesetAnim_BattlePyramid(u16);
 static void TilesetAnim_BattleDome(u16);
+static void TilesetAnim_BattleDome2(u16);
 static void QueueAnimTiles_General_Flower(u16);
 static void QueueAnimTiles_General_Water(u16);
 static void QueueAnimTiles_General_SandWaterEdge(u16);
@@ -547,11 +550,23 @@ static const u16 *const sTilesetAnims_BattleDomeFloorLightPals[] = {
 static void ResetTilesetAnimBuffer(void)
 {
     sTilesetDMA3TransferBufferSize = 0;
+    sNeighborAnimationUpdatePending = FALSE;
     CpuFill32(0, sTilesetDMA3TransferBuffer, sizeof sTilesetDMA3TransferBuffer);
 }
 
 static void AppendTilesetAnimToBuffer(const u16 *src, u16 *dest, u16 size)
 {
+    if (sNeighborAnimationTiles != NULL)
+    {
+        uintptr_t secondaryStart = BG_VRAM + NUM_TILES_IN_PRIMARY * TILE_SIZE_4BPP;
+        uintptr_t offset = (uintptr_t)dest - secondaryStart;
+        u32 tileBytes = (NUM_TILES_TOTAL - NUM_TILES_IN_PRIMARY) * TILE_SIZE_4BPP;
+
+        if (offset < tileBytes && size <= tileBytes - offset)
+            memcpy(sNeighborAnimationTiles + offset, src, size);
+        return;
+    }
+
     if (sTilesetDMA3TransferBufferSize < 20)
     {
         sTilesetDMA3TransferBuffer[sTilesetDMA3TransferBufferSize].src = src;
@@ -569,6 +584,11 @@ void TransferTilesetAnimsBuffer(void)
         DmaCopy16(3, sTilesetDMA3TransferBuffer[i].src, sTilesetDMA3TransferBuffer[i].dest, sTilesetDMA3TransferBuffer[i].size);
 
     sTilesetDMA3TransferBufferSize = 0;
+    if (sNeighborAnimationUpdatePending)
+    {
+        sNeighborAnimationUpdatePending = FALSE;
+        TransferNeighborTilesetAnimations();
+    }
 }
 
 void InitTilesetAnimations(void)
@@ -583,18 +603,59 @@ void InitSecondaryTilesetAnimation(void)
     _InitSecondaryTilesetAnimation();
 }
 
+struct TilesetAnimation GetSecondaryTilesetAnimation(void)
+{
+    return sSecondaryTilesetAnimation;
+}
+
+void SetSecondaryTilesetAnimation(const struct TilesetAnimation *animation)
+{
+    sSecondaryTilesetAnimation = *animation;
+}
+
+static void AdvanceTilesetAnimation(struct TilesetAnimation *animation)
+{
+    if (++animation->counter >= animation->period)
+        animation->counter = 0;
+
+    if (animation->callback != NULL)
+        animation->callback(animation->counter);
+}
+
+void InitNeighborTilesetAnimation(const struct Tileset *tileset, struct TilesetAnimation *animation)
+{
+    struct TilesetAnimation active = sSecondaryTilesetAnimation;
+
+    sSecondaryTilesetAnimation = (struct TilesetAnimation){0};
+    if (tileset->callback != NULL)
+        tileset->callback();
+
+    *animation = sSecondaryTilesetAnimation;
+    sSecondaryTilesetAnimation = active;
+}
+
+void AnimateNeighborTileset(struct TilesetAnimation *animation, u8 *tiles)
+{
+    // The Battle Dome animation changes the active scene's palette and tasks.
+    if (animation->callback == NULL || animation->callback == TilesetAnim_BattleDome
+     || animation->callback == TilesetAnim_BattleDome2)
+        return;
+
+    sNeighborAnimationTiles = tiles;
+    AdvanceTilesetAnimation(animation);
+    sNeighborAnimationTiles = NULL;
+}
+
 void UpdateTilesetAnimations(void)
 {
     ResetTilesetAnimBuffer();
     if (++sPrimaryTilesetAnimCounter >= sPrimaryTilesetAnimCounterMax)
         sPrimaryTilesetAnimCounter = 0;
-    if (++sSecondaryTilesetAnimCounter >= sSecondaryTilesetAnimCounterMax)
-        sSecondaryTilesetAnimCounter = 0;
-
     if (sPrimaryTilesetAnimCallback)
         sPrimaryTilesetAnimCallback(sPrimaryTilesetAnimCounter);
-    if (sSecondaryTilesetAnimCallback)
-        sSecondaryTilesetAnimCallback(sSecondaryTilesetAnimCounter);
+
+    AdvanceTilesetAnimation(&sSecondaryTilesetAnimation);
+    sNeighborAnimationUpdatePending = TRUE;
 }
 
 static void _InitPrimaryTilesetAnimation(void)
@@ -608,9 +669,9 @@ static void _InitPrimaryTilesetAnimation(void)
 
 static void _InitSecondaryTilesetAnimation(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = 0;
-    sSecondaryTilesetAnimCallback = NULL;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = 0;
+    sSecondaryTilesetAnimation.callback = NULL;
     if (gMapHeader.mapLayout->secondaryTileset && gMapHeader.mapLayout->secondaryTileset->callback)
         gMapHeader.mapLayout->secondaryTileset->callback();
 }
@@ -675,163 +736,163 @@ static void QueueAnimTiles_General_Waterfall(u16 timer)
 
 void InitTilesetAnim_Petalburg(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = NULL;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = NULL;
 }
 
 void InitTilesetAnim_Rustboro(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Rustboro;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Rustboro;
 }
 
 void InitTilesetAnim_Dewford(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Dewford;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Dewford;
 }
 
 void InitTilesetAnim_Slateport(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Slateport;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Slateport;
 }
 
 void InitTilesetAnim_Mauville(void)
 {
-    sSecondaryTilesetAnimCounter = sPrimaryTilesetAnimCounter;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Mauville;
+    sSecondaryTilesetAnimation.counter = sPrimaryTilesetAnimCounter;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Mauville;
 }
 
 void InitTilesetAnim_Lavaridge(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Lavaridge;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Lavaridge;
 }
 
 void InitTilesetAnim_Fallarbor(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = NULL;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = NULL;
 }
 
 void InitTilesetAnim_Fortree(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = NULL;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = NULL;
 }
 
 void InitTilesetAnim_Lilycove(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = NULL;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = NULL;
 }
 
 void InitTilesetAnim_Mossdeep(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = NULL;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = NULL;
 }
 
 void InitTilesetAnim_EverGrande(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_EverGrande;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_EverGrande;
 }
 
 void InitTilesetAnim_Pacifidlog(void)
 {
-    sSecondaryTilesetAnimCounter = sPrimaryTilesetAnimCounter;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Pacifidlog;
+    sSecondaryTilesetAnimation.counter = sPrimaryTilesetAnimCounter;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Pacifidlog;
 }
 
 void InitTilesetAnim_Sootopolis(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Sootopolis;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Sootopolis;
 }
 
 void InitTilesetAnim_BattleFrontierOutsideWest(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_BattleFrontierOutsideWest;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_BattleFrontierOutsideWest;
 }
 
 void InitTilesetAnim_BattleFrontierOutsideEast(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_BattleFrontierOutsideEast;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_BattleFrontierOutsideEast;
 }
 
 void InitTilesetAnim_Underwater(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = 128;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Underwater;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = 128;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Underwater;
 }
 
 void InitTilesetAnim_SootopolisGym(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = 240;
-    sSecondaryTilesetAnimCallback = TilesetAnim_SootopolisGym;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = 240;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_SootopolisGym;
 }
 
 void InitTilesetAnim_Cave(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_Cave;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_Cave;
 }
 
 void InitTilesetAnim_EliteFour(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = 128;
-    sSecondaryTilesetAnimCallback = TilesetAnim_EliteFour;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = 128;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_EliteFour;
 }
 
 void InitTilesetAnim_MauvilleGym(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_MauvilleGym;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_MauvilleGym;
 }
 
 void InitTilesetAnim_BikeShop(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_BikeShop;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_BikeShop;
 }
 
 void InitTilesetAnim_BattlePyramid(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_BattlePyramid;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_BattlePyramid;
 }
 
 void InitTilesetAnim_BattleDome(void)
 {
-    sSecondaryTilesetAnimCounter = 0;
-    sSecondaryTilesetAnimCounterMax = sPrimaryTilesetAnimCounterMax;
-    sSecondaryTilesetAnimCallback = TilesetAnim_BattleDome;
+    sSecondaryTilesetAnimation.counter = 0;
+    sSecondaryTilesetAnimation.period = sPrimaryTilesetAnimCounterMax;
+    sSecondaryTilesetAnimation.callback = TilesetAnim_BattleDome;
 }
 
 static void TilesetAnim_Rustboro(u16 timer)
@@ -1171,8 +1232,8 @@ static void BlendAnimPalette_BattleDome_FloorLights(u16 timer)
     BlendPalette(BG_PLTT_ID(8), 16, gPaletteFade.y, gPaletteFade.blendColor & 0x7FFF);
     if ((u8)FindTaskIdByFunc(Task_BattleTransition_Intro) != TASK_NONE)
     {
-        sSecondaryTilesetAnimCallback = TilesetAnim_BattleDome2;
-        sSecondaryTilesetAnimCounterMax = 32;
+        sSecondaryTilesetAnimation.callback = TilesetAnim_BattleDome2;
+        sSecondaryTilesetAnimation.period = 32;
     }
 }
 
@@ -1182,7 +1243,7 @@ static void BlendAnimPalette_BattleDome_FloorLightsNoBlend(u16 timer)
     if ((u8)FindTaskIdByFunc(Task_BattleTransition_Intro) == TASK_NONE)
     {
         BlendPalette(BG_PLTT_ID(8), 16, gPaletteFade.y, gPaletteFade.blendColor & 0x7FFF);
-        if (!--sSecondaryTilesetAnimCounterMax)
-            sSecondaryTilesetAnimCallback = NULL;
+        if (!--sSecondaryTilesetAnimation.period)
+            sSecondaryTilesetAnimation.callback = NULL;
     }
 }

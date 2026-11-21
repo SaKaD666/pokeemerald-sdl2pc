@@ -1,4 +1,6 @@
 #include "global.h"
+#include "dma3.h"
+#include "platform/framedraw.h"
 #include "naming_screen.h"
 #include "malloc.h"
 #include "palette.h"
@@ -420,6 +422,9 @@ static void CB2_LoadNamingScreen(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ResetVHBlank();
         NamingScreen_Init();
         gMain.state++;
@@ -473,7 +478,7 @@ static void NamingScreen_Init(void)
     sNamingScreen->bgToHide = 1;
     sNamingScreen->template = sNamingScreenTemplates[sNamingScreen->templateNum];
     sNamingScreen->currentPage = sNamingScreen->template->initialPage;
-    sNamingScreen->inputCharBaseXPos = (DISPLAY_WIDTH - sNamingScreen->template->maxChars * 8) / 2 + 6;
+    sNamingScreen->inputCharBaseXPos = (GBA_DISPLAY_WIDTH - sNamingScreen->template->maxChars * 8) / 2 + 6;
     if (sNamingScreen->templateNum == NAMING_SCREEN_WALDA)
         sNamingScreen->inputCharBaseXPos += 11;
     sNamingScreen->keyRepeatStartDelayCopy = gKeyRepeatStartDelay;
@@ -697,9 +702,14 @@ static bool8 MainState_Exit(void)
 {
     if (!gPaletteFade.active)
     {
+        u8 bg;
+
 #ifndef PORTABLE // See note on TID generation in InitPlayerTrainerId in new_game.c
         if (sNamingScreen->templateNum == NAMING_SCREEN_PLAYER)
             SeedRngAndSetTrainerId();
+#endif
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
 #endif
         SetMainCallback2(sNamingScreen->returnCallback);
         DestroyTask(FindTaskIdByFunc(Task_NamingScreen));
@@ -708,7 +718,11 @@ static bool8 MainState_Exit(void)
         // Fix use-after-free issues with gNamingScreenData caused by sprites calling their callbacks which attempt to read from gNamingScreenData.
         ResetSpriteData();
 #endif
+        ClearScheduledBgCopiesToVram();
+        ClearDma3Requests();
         FreeAllWindowBuffers();
+        for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+            SetBgTilemapBuffer(bg, NULL);
         FREE_AND_SET_NULL(sNamingScreen);
     }
     return FALSE;

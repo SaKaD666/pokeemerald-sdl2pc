@@ -34,6 +34,9 @@
 #include "data.h"
 #include "confetti_util.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 #define HALL_OF_FAME_MAX_TEAMS 50
 #define TAG_CONFETTI 1001
@@ -370,6 +373,9 @@ static bool8 InitHallOfFameScreen(void)
     {
     case 0:
         SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ClearVramOamPltt_LoadHofPal();
         sHofGfxPtr = AllocZeroed(sizeof(*sHofGfxPtr));
         gMain.state = 1;
@@ -518,14 +524,25 @@ static void Task_Hof_InitTeamSaveData(u8 taskId)
     gTasks[taskId].func = Task_Hof_TrySaveData;
 }
 
+static void ReleaseHofDisplay(void)
+{
+    SetVBlankCallback(NULL);
+#ifdef PORTABLE
+    IsDma3ManagerBusyWithBgCopy();
+    ClearScheduledBgCopiesToVram();
+#endif
+    FreeAllWindowBuffers();
+    UnsetBgTilemapBuffer(0);
+    UnsetBgTilemapBuffer(1);
+    UnsetBgTilemapBuffer(3);
+}
+
 static void Task_Hof_TrySaveData(u8 taskId)
 {
     gGameContinueCallback = CB2_DoHallOfFameScreenDontSaveData;
     if (TrySavingData(SAVE_HALL_OF_FAME) == SAVE_STATUS_ERROR && gDamagedSaveSectors != 0)
     {
-        UnsetBgTilemapBuffer(1);
-        UnsetBgTilemapBuffer(3);
-        FreeAllWindowBuffers();
+        ReleaseHofDisplay();
 
         TRY_FREE_AND_SET_NULL(sHofGfxPtr);
         TRY_FREE_AND_SET_NULL(sHofMonPtr);
@@ -763,15 +780,16 @@ static void Task_Hof_HandleExit(u8 taskId)
         HideBg(0);
         HideBg(1);
         HideBg(3);
-        FreeAllWindowBuffers();
-        UnsetBgTilemapBuffer(1);
-        UnsetBgTilemapBuffer(3);
+        ReleaseHofDisplay();
         ResetBgsAndClearDma3BusyFlags(0);
         DestroyTask(taskId);
 
         TRY_FREE_AND_SET_NULL(sHofGfxPtr);
         TRY_FREE_AND_SET_NULL(sHofMonPtr);
 
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         StartCredits();
     }
 }
@@ -801,6 +819,9 @@ void CB2_DoHallOfFamePC(void)
     case 0:
     default:
         SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ClearVramOamPltt_LoadHofPal();
         sHofGfxPtr = AllocZeroed(sizeof(*sHofGfxPtr));
         gMain.state = 1;
@@ -821,7 +842,7 @@ void CB2_DoHallOfFamePC(void)
         {
             struct HallofFameTeam *fameTeam = (struct HallofFameTeam *)(gDecompressionBuffer);
             fameTeam->mon[0] = sDummyFameMon;
-            ComputerScreenOpenEffect(0, 0, 0);
+            ComputerScreenOpenEffect(0, TRUE, 0);
             SetVBlankCallback(VBlankCB_HallOfFame);
             gMain.state++;
         }
@@ -1045,7 +1066,7 @@ static void Task_HofPC_HandlePaletteOnExit(u8 taskId)
     CpuCopy16(gPlttBufferFaded, gPlttBufferUnfaded, PLTT_SIZE);
     fameTeam = (struct HallofFameTeam *)(gDecompressionBuffer);
     fameTeam->mon[0] = sDummyFameMon;
-    ComputerScreenCloseEffect(0, 0, 0);
+    ComputerScreenCloseEffect(0, TRUE, 0);
     gTasks[taskId].func = Task_HofPC_HandleExit;
 }
 
@@ -1069,15 +1090,16 @@ static void Task_HofPC_HandleExit(u8 taskId)
         HideBg(1);
         HideBg(3);
         HofPCTopBar_RemoveWindow();
-        FreeAllWindowBuffers();
-        UnsetBgTilemapBuffer(1);
-        UnsetBgTilemapBuffer(3);
+        ReleaseHofDisplay();
         ResetBgsAndClearDma3BusyFlags(0);
         DestroyTask(taskId);
 
         TRY_FREE_AND_SET_NULL(sHofGfxPtr);
         TRY_FREE_AND_SET_NULL(sHofMonPtr);
 
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         ReturnFromHallOfFamePC();
     }
 }
@@ -1373,7 +1395,7 @@ static bool8 CreateHofConfettiSprite(void)
     u8 spriteID;
     struct Sprite *sprite;
 
-    s16 posX = Random() % DISPLAY_WIDTH;
+    s16 posX = Random() % GBA_DISPLAY_WIDTH;
     s16 posY = -(Random() % 8);
 
     spriteID = CreateSprite(&sSpriteTemplate_HofConfetti, posX, posY, 0);

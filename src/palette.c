@@ -2,6 +2,7 @@
 #include "palette.h"
 #include "util.h"
 #include "decompress.h"
+#include "field_weather.h"
 #include "gpu_regs.h"
 #include "task.h"
 #include "constants/rgb.h"
@@ -66,6 +67,7 @@ EWRAM_DATA struct PaletteFadeControl gPaletteFade = {0};
 static EWRAM_DATA u32 sFiller = 0;
 #endif
 static EWRAM_DATA u32 sPlttBufferTransferPending = 0;
+static u8 sFieldFastFadeAmount;
 EWRAM_DATA u8 ALIGNED(2) gPaletteDecompressionBuffer[PLTT_SIZE] = {0};
 
 static const struct PaletteStructTemplate sDummyPaletteStructTemplate = {
@@ -88,18 +90,27 @@ void LoadCompressedPalette(const u32 *src, u16 offset, u16 size)
     LZDecompressWram(src, gPaletteDecompressionBuffer);
     CpuCopy16(gPaletteDecompressionBuffer, &gPlttBufferUnfaded[offset], size);
     CpuCopy16(gPaletteDecompressionBuffer, &gPlttBufferFaded[offset], size);
+    ClearFieldPaletteWeather(offset, size);
 }
 
 void LoadPalette(const void *src, u16 offset, u16 size)
 {
     CpuCopy16(src, &gPlttBufferUnfaded[offset], size);
     CpuCopy16(src, &gPlttBufferFaded[offset], size);
+    ClearFieldPaletteWeather(offset, size);
 }
 
 void FillPalette(u16 value, u16 offset, u16 size)
 {
     CpuFill16(value, &gPlttBufferUnfaded[offset], size);
     CpuFill16(value, &gPlttBufferFaded[offset], size);
+    ClearFieldPaletteWeather(offset, size);
+}
+
+void FillFadedPalette(u16 color)
+{
+    CpuFill16(color, gPlttBufferFaded, PLTT_SIZE);
+    RecordFieldPaletteBlend(0, PLTT_BUFFER_SIZE, 16, color);
 }
 
 void TransferPlttBuffer(void)
@@ -107,6 +118,7 @@ void TransferPlttBuffer(void)
     if (!gPaletteFade.bufferTransferDisabled)
     {
         DmaCopy16Defvars(3, gPlttBufferFaded, (void *)PLTT, PLTT_SIZE);
+        TransferFieldPaletteWeather();
         sPlttBufferTransferPending = FALSE;
         if (gPaletteFade.mode == HARDWARE_FADE && gPaletteFade.active)
             UpdateBlendRegisters();
@@ -193,6 +205,7 @@ bool8 BeginNormalPaletteFade(u32 selectedPalettes, s8 delay, u8 startY, u8 targe
         temp = gPaletteFade.bufferTransferDisabled;
         gPaletteFade.bufferTransferDisabled = FALSE;
         CpuCopy32(gPlttBufferFaded, (void *)PLTT, PLTT_SIZE);
+        TransferFieldPaletteWeather();
         sPlttBufferTransferPending = FALSE;
         if (gPaletteFade.mode == HARDWARE_FADE && gPaletteFade.active)
             UpdateBlendRegisters();
@@ -534,6 +547,8 @@ void UnfadePlttBuffer(u32 selectedPalettes)
 {
     u16 paletteOffset = 0;
 
+    RestoreFieldPaletteWeather(selectedPalettes);
+
     while (selectedPalettes)
     {
         if (selectedPalettes & 1)
@@ -555,16 +570,17 @@ void BeginFastPaletteFade(u8 submode)
 
 static void BeginFastPaletteFadeInternal(u8 submode)
 {
+    sFieldFastFadeAmount = 0;
     gPaletteFade.y = 31;
     gPaletteFade_submode = submode & 0x3F;
     gPaletteFade.active = TRUE;
     gPaletteFade.mode = FAST_FADE;
 
     if (submode == FAST_FADE_IN_FROM_BLACK)
-        CpuFill16(RGB_BLACK, gPlttBufferFaded, PLTT_SIZE);
+        FillFadedPalette(RGB_BLACK);
 
     if (submode == FAST_FADE_IN_FROM_WHITE)
-        CpuFill16(RGB_WHITE, gPlttBufferFaded, PLTT_SIZE);
+        FillFadedPalette(RGB_WHITE);
 
     UpdatePaletteFade();
 }
@@ -690,6 +706,12 @@ static u8 UpdateFastPaletteFade(void)
         }
     }
 
+    if (paletteOffsetStart == 0)
+    {
+        sFieldFastFadeAmount = min(sFieldFastFadeAmount + 2, 31);
+        RecordFieldPaletteFastFade(gPaletteFade_submode, sFieldFastFadeAmount);
+    }
+
     gPaletteFade.objPaletteToggle ^= 1;
 
     if (gPaletteFade.objPaletteToggle)
@@ -709,12 +731,13 @@ static u8 UpdateFastPaletteFade(void)
         case FAST_FADE_IN_FROM_WHITE:
         case FAST_FADE_IN_FROM_BLACK:
             CpuCopy32(gPlttBufferUnfaded, gPlttBufferFaded, PLTT_SIZE);
+            RestoreFieldPaletteWeather(PALETTES_BG);
             break;
         case FAST_FADE_OUT_TO_WHITE:
-            CpuFill32(0xFFFFFFFF, gPlttBufferFaded, PLTT_SIZE);
+            FillFadedPalette(RGB_WHITEALPHA);
             break;
         case FAST_FADE_OUT_TO_BLACK:
-            CpuFill32(0x00000000, gPlttBufferFaded, PLTT_SIZE);
+            FillFadedPalette(RGB_BLACK);
             break;
         }
 
@@ -844,6 +867,7 @@ void BlendPalettes(u32 selectedPalettes, u8 coeff, u16 color)
 void BlendPalettesUnfaded(u32 selectedPalettes, u8 coeff, u16 color)
 {
     DmaCopy32Defvars(3, gPlttBufferUnfaded, gPlttBufferFaded, PLTT_SIZE);
+    RestoreFieldPaletteWeather(PALETTES_BG);
     BlendPalettes(selectedPalettes, coeff, color);
 }
 

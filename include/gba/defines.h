@@ -92,13 +92,21 @@ extern unsigned char OAM[OAM_SIZE] __attribute__ ((aligned (4)));
 #define TILE_WIDTH  8
 #define TILE_HEIGHT 8
 
-// Dimensions of the GBA screen in pixels
-#define DISPLAY_WIDTH  240
-#define DISPLAY_HEIGHT 160
+// Dimensions of the original screen and its UI tilemaps.
+#define GBA_DISPLAY_WIDTH  240
+#define GBA_DISPLAY_HEIGHT 160
+#define DISPLAY_TILE_WIDTH  (GBA_DISPLAY_WIDTH / TILE_WIDTH)
+#define DISPLAY_TILE_HEIGHT (GBA_DISPLAY_HEIGHT / TILE_HEIGHT)
 
-// Dimensions of the GBA screen in tiles
-#define DISPLAY_TILE_WIDTH  (DISPLAY_WIDTH / TILE_WIDTH)
-#define DISPLAY_TILE_HEIGHT (DISPLAY_HEIGHT / TILE_HEIGHT)
+#ifdef PLATFORM_SDL2
+#define DISPLAY_WIDTH  320
+#define DISPLAY_HEIGHT 180
+#else
+#define DISPLAY_WIDTH  GBA_DISPLAY_WIDTH
+#define DISPLAY_HEIGHT GBA_DISPLAY_HEIGHT
+#endif
+
+#define DISPLAY_SCANLINE_COUNT 228
 
 // Size of different tile formats in bytes
 #define TILE_SIZE(bpp) ((bpp) * TILE_WIDTH * TILE_HEIGHT / 8)

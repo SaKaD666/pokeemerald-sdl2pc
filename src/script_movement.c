@@ -6,17 +6,21 @@
 #include "constants/event_objects.h"
 #include "constants/event_object_movement.h"
 
+// Each movement script uses one bit in the task's 16-bit completion mask.
+#define MOVEMENT_SCRIPT_COUNT 16
+
 static void ScriptMovement_StartMoveObjects(u8 priority);
 static u8 GetMoveObjectsTaskId(void);
 static bool8 ScriptMovement_TryAddNewMovement(u8 taskId, u8 objEventId, const u8 *movementScript);
 static u8 GetMovementScriptIdFromObjectEventId(u8 taskId, u8 objEventId);
+static void SetObjectEventIdAtMovementScript(u8 taskId, u8 moveScrId, u8 objEventId);
 static bool8 IsMovementScriptFinished(u8 taskId, u8 moveScrId);
 static void ScriptMovement_AddNewMovement(u8 taskId, u8 moveScrId, u8 objEventId, const u8 *movementScript);
 static void ScriptMovement_UnfreezeActiveObjects(u8 taskId);
 static void ScriptMovement_MoveObjects(u8 taskId);
 static void ScriptMovement_TakeStep(u8 taskId, u8 moveScrId, u8 objEventId, const u8 *movementScript);
 
-static EWRAM_DATA const u8 *sMovementScripts[OBJECT_EVENTS_COUNT] = {0};
+static EWRAM_DATA const u8 *sMovementScripts[MOVEMENT_SCRIPT_COUNT] = {0};
 
 bool8 ScriptMovement_StartObjectMovementScript(u8 localId, u8 mapNum, u8 mapGroup, const u8 *movementScript)
 {
@@ -38,8 +42,10 @@ bool8 ScriptMovement_IsObjectMovementFinished(u8 localId, u8 mapNum, u8 mapGroup
     if (TryGetObjectEventIdByLocalIdAndMap(localId, mapNum, mapGroup, &objEventId))
         return TRUE;
     taskId = GetMoveObjectsTaskId();
+    if (taskId == TASK_NONE)
+        return TRUE;
     moveScrId = GetMovementScriptIdFromObjectEventId(taskId, objEventId);
-    if (moveScrId == OBJECT_EVENTS_COUNT)
+    if (moveScrId == MOVEMENT_SCRIPT_COUNT)
         return TRUE;
     return IsMovementScriptFinished(taskId, moveScrId);
 }
@@ -54,6 +60,21 @@ void ScriptMovement_UnfreezeObjectEvents(void)
         ScriptMovement_UnfreezeActiveObjects(taskId);
         DestroyTask(taskId);
     }
+}
+
+void ScriptMovement_ForgetObjectEvent(u8 objectEventId)
+{
+    u8 taskId = GetMoveObjectsTaskId();
+    u8 moveScrId;
+
+    if (taskId == TASK_NONE)
+        return;
+
+    moveScrId = GetMovementScriptIdFromObjectEventId(taskId, objectEventId);
+    if (moveScrId == MOVEMENT_SCRIPT_COUNT)
+        return;
+
+    SetObjectEventIdAtMovementScript(taskId, moveScrId, 0xFF);
 }
 
 static void ScriptMovement_StartMoveObjects(u8 priority)
@@ -77,7 +98,7 @@ static bool8 ScriptMovement_TryAddNewMovement(u8 taskId, u8 objEventId, const u8
     u8 moveScrId;
 
     moveScrId = GetMovementScriptIdFromObjectEventId(taskId, objEventId);
-    if (moveScrId != OBJECT_EVENTS_COUNT)
+    if (moveScrId != MOVEMENT_SCRIPT_COUNT)
     {
         if (IsMovementScriptFinished(taskId, moveScrId) == 0)
         {
@@ -90,7 +111,7 @@ static bool8 ScriptMovement_TryAddNewMovement(u8 taskId, u8 objEventId, const u8
         }
     }
     moveScrId = GetMovementScriptIdFromObjectEventId(taskId, LOCALID_PLAYER);
-    if (moveScrId == OBJECT_EVENTS_COUNT)
+    if (moveScrId == MOVEMENT_SCRIPT_COUNT)
     {
         return TRUE;
     }
@@ -107,12 +128,12 @@ static u8 GetMovementScriptIdFromObjectEventId(u8 taskId, u8 objEventId)
     u8 i;
 
     moveScriptId = (u8 *)&gTasks[taskId].data[1];
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++, moveScriptId++)
+    for (i = 0; i < MOVEMENT_SCRIPT_COUNT; i++, moveScriptId++)
     {
         if (*moveScriptId == objEventId)
             return i;
     }
-    return OBJECT_EVENTS_COUNT;
+    return MOVEMENT_SCRIPT_COUNT;
 }
 
 static void LoadObjectEventIdPtrFromMovementScript(u8 taskId, u8 moveScrId, u8 **pObjEventId)
@@ -185,7 +206,7 @@ static void ScriptMovement_UnfreezeActiveObjects(u8 taskId)
     u8 i;
 
     pObjEventId = (u8 *)&gTasks[taskId].data[1];
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++, pObjEventId++)
+    for (i = 0; i < MOVEMENT_SCRIPT_COUNT; i++, pObjEventId++)
     {
         if (*pObjEventId != 0xFF)
             UnfreezeObjectEvent(&gObjectEvents[*pObjEventId]);
@@ -197,7 +218,7 @@ static void ScriptMovement_MoveObjects(u8 taskId)
     u8 i;
     u8 objEventId;
 
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+    for (i = 0; i < MOVEMENT_SCRIPT_COUNT; i++)
     {
         LoadObjectEventIdFromMovementScript(taskId, i, &objEventId);
         if (objEventId != 0xFF)

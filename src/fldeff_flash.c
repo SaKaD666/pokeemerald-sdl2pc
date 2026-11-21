@@ -93,6 +93,12 @@ bool8 SetUpFieldMove_Flash(void)
 static void FieldCallback_Flash(void)
 {
     u8 taskId = CreateFieldMoveTask();
+
+    if (taskId == TASK_NONE)
+    {
+        RestoreFieldControlsAfterFailedMove();
+        return;
+    }
     gFieldEffectArguments[0] = GetCursorSelectionMonId();
     gTasks[taskId].ptr.funcPtr = FldEff_UseFlash;
 }
@@ -207,11 +213,46 @@ static void Task_ExitCaveTransition1(u8 taskId)
     gTasks[taskId].func = Task_ExitCaveTransition2;
 }
 
+static void LoadCaveTransitionBg(void)
+{
+    LZ77UnCompVram(sCaveTransitionTiles, (void *)BG_CHAR_ADDR(3));
+#ifdef PLATFORM_SDL2
+    u16 *tilemap = (u16 *)BG_SCREEN_ADDR(30);
+    const u16 margin = (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / (2 * TILE_WIDTH);
+    u16 y, x;
+
+    LZ77UnCompVram(sCaveTransitionTilemap, tilemap);
+    for (y = 0; y < 32; y++)
+    {
+        u16 row[32];
+
+        // Extend the native border into the margins and the extra scanlines.
+        if (y < GBA_DISPLAY_HEIGHT / TILE_HEIGHT)
+            CpuCopy16(tilemap + y * 32, row, sizeof(row));
+        else
+            CpuFill16(tilemap[(GBA_DISPLAY_HEIGHT / TILE_HEIGHT - 1) * 32], row, sizeof(row));
+
+        for (x = 0; x < 64; x++)
+        {
+            u16 column = min(max(x, margin) - margin, DISPLAY_TILE_WIDTH - 1);
+
+            tilemap[x / 32 * 1024 + y * 32 + x % 32] = row[column];
+        }
+    }
+    SetGpuReg(REG_OFFSET_BG0VOFS, (GBA_DISPLAY_HEIGHT - DISPLAY_HEIGHT) / 2);
+    SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(3)
+                               | BGCNT_SCREENBASE(30) | BGCNT_16COLOR | BGCNT_TXT512x256);
+#else
+    LZ77UnCompVram(sCaveTransitionTilemap, (void *)BG_SCREEN_ADDR(31));
+    SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(3)
+                               | BGCNT_SCREENBASE(31) | BGCNT_16COLOR | BGCNT_TXT256x256);
+#endif
+}
+
 static void Task_ExitCaveTransition2(u8 taskId)
 {
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
-    LZ77UnCompVram(sCaveTransitionTiles, (void *)(VRAM + 0xC000));
-    LZ77UnCompVram(sCaveTransitionTilemap, (void *)(VRAM + 0xF800));
+    LoadCaveTransitionBg();
     LoadPalette(sCaveTransitionPalette_White, BG_PLTT_ID(14), PLTT_SIZE_4BPP);
     LoadPalette(&sCaveTransitionPalette_Enter[8], BG_PLTT_ID(14), PLTT_SIZEOF(8));
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0
@@ -223,11 +264,6 @@ static void Task_ExitCaveTransition2(u8 taskId)
                                 | BLDCNT_TGT2_BD);
     SetGpuReg(REG_OFFSET_BLDALPHA, 0);
     SetGpuReg(REG_OFFSET_BLDY, 0);
-    SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0)
-                               | BGCNT_CHARBASE(3)
-                               | BGCNT_SCREENBASE(31)
-                               | BGCNT_16COLOR
-                               | BGCNT_TXT256x256);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0
                                 | DISPCNT_OBJ_1D_MAP
                                 | DISPCNT_BG0_ON
@@ -295,16 +331,10 @@ static void Task_EnterCaveTransition1(u8 taskId)
 static void Task_EnterCaveTransition2(u8 taskId)
 {
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
-    LZ77UnCompVram(sCaveTransitionTiles, (void *)(VRAM + 0xC000));
-    LZ77UnCompVram(sCaveTransitionTilemap, (void *)(VRAM + 0xF800));
+    LoadCaveTransitionBg();
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
     SetGpuReg(REG_OFFSET_BLDALPHA, 0);
     SetGpuReg(REG_OFFSET_BLDY, 0);
-    SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0)
-                               | BGCNT_CHARBASE(3)
-                               | BGCNT_SCREENBASE(31)
-                               | BGCNT_16COLOR
-                               | BGCNT_TXT256x256);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0
                                 | DISPCNT_OBJ_1D_MAP
                                 | DISPCNT_BG0_ON

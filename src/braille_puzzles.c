@@ -265,6 +265,13 @@ bool8 FldEff_UsePuzzleEffect(void)
 {
     u8 taskId = CreateFieldMoveTask();
 
+    if (taskId == TASK_NONE)
+    {
+        FieldEffectActiveListRemove(FLDEFF_USE_TOMB_PUZZLE_EFFECT);
+        RestoreFieldControlsAfterFailedMove();
+        return FALSE;
+    }
+
     if (sIsRegisteelPuzzle == TRUE)
     {
         gTasks[taskId].ptr.funcPtr = UseRegisteelHm_Callback;

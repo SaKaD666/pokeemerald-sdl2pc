@@ -12,22 +12,31 @@
 #define NUM_SAVE_SLOTS 2
 
 // If the sector's signature field is not this value then the sector is either invalid or empty.
+#if defined(PLATFORM_SDL2)
+#define SECTOR_SIGNATURE 0x8012027
+#elif defined(PORTABLE)
+#define SECTOR_SIGNATURE 0x8012026
+#else
 #define SECTOR_SIGNATURE 0x8012025
+#endif
 
 #define SPECIAL_SECTOR_SENTINEL 0xB39D
 
 #define SECTOR_ID_SAVEBLOCK2          0
 #define SECTOR_ID_SAVEBLOCK1_START    1
+#ifdef PORTABLE
+#define SECTOR_ID_SAVEBLOCK1_END      5
+#else
 #define SECTOR_ID_SAVEBLOCK1_END      4
-#define SECTOR_ID_PKMN_STORAGE_START  5
-#define SECTOR_ID_PKMN_STORAGE_END   13
-#define NUM_SECTORS_PER_SLOT         14
-// Save Slot 1: 0-13;  Save Slot 2: 14-27
-#define SECTOR_ID_HOF_1              28
-#define SECTOR_ID_HOF_2              29
-#define SECTOR_ID_TRAINER_HILL       30
-#define SECTOR_ID_RECORDED_BATTLE    31
-#define SECTORS_COUNT                32
+#endif
+#define SECTOR_ID_PKMN_STORAGE_START  (SECTOR_ID_SAVEBLOCK1_END + 1)
+#define SECTOR_ID_PKMN_STORAGE_END    (SECTOR_ID_PKMN_STORAGE_START + 8)
+#define NUM_SECTORS_PER_SLOT          (SECTOR_ID_PKMN_STORAGE_END + 1)
+#define SECTOR_ID_HOF_1               (NUM_SAVE_SLOTS * NUM_SECTORS_PER_SLOT)
+#define SECTOR_ID_HOF_2               (SECTOR_ID_HOF_1 + 1)
+#define SECTOR_ID_TRAINER_HILL        (SECTOR_ID_HOF_2 + 1)
+#define SECTOR_ID_RECORDED_BATTLE     (SECTOR_ID_TRAINER_HILL + 1)
+#define SECTORS_COUNT                 (SECTOR_ID_RECORDED_BATTLE + 1)
 
 #define NUM_HOF_SECTORS 2
 
@@ -84,7 +93,14 @@ struct SaveSector
 extern u16 gLastWrittenSector;
 extern u32 gLastSaveCounter;
 extern u16 gLastKnownGoodSector;
-extern u32 gDamagedSaveSectors;
+#ifdef PORTABLE
+typedef u64 SaveSectorMask;
+#else
+typedef u32 SaveSectorMask;
+#endif
+
+#define SAVE_SECTOR_BIT(sector) ((SaveSectorMask)1 << (sector))
+extern SaveSectorMask gDamagedSaveSectors;
 extern u32 gSaveCounter;
 extern struct SaveSector *gFastSaveSector;
 extern u16 gIncrementalSectorId;

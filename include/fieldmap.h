@@ -19,11 +19,21 @@
 #define MAP_OFFSET_W (MAP_OFFSET * 2 + 1)
 #define MAP_OFFSET_H (MAP_OFFSET * 2)
 
+#if defined(PLATFORM_SDL2) && !defined(ENABLE_WIDE_OBJECT_SPAWN)
+#define ENABLE_WIDE_OBJECT_SPAWN 0
+#endif
+
 #include "main.h"
 
 extern struct BackupMapLayout gBackupMapLayout;
 
+bool32 InitMapGrid(s32 width, s32 height);
+
 s32 MapGridGetMetatileIdAt(s32 x, s32 y);
+const struct MapLayout *MapGridGetSourceLayoutAt(s32 x, s32 y);
+#ifdef PLATFORM_SDL2
+bool8 MapGridIsFromMap(s32 x, s32 y, u8 mapGroup, u8 mapNum);
+#endif
 s32 MapGridGetMetatileBehaviorAt(s32 x, s32 y);
 void MapGridSetMetatileIdAt(s32 x, s32 y, u16 metatile);
 void MapGridSetMetatileEntryAt(s32 x, s32 y, u16 metatile);
@@ -50,6 +60,7 @@ void CopyPrimaryTilesetToVram(struct MapLayout const *mapLayout);
 void CopySecondaryTilesetToVram(struct MapLayout const *mapLayout);
 const struct MapHeader *const GetMapHeaderFromConnection(const struct MapConnection *connection);
 const struct MapConnection *GetMapConnectionAtPos(s16 x, s16 y);
+bool8 ProjectMapCoordsToCurrentMap(u8 mapGroup, u8 mapNum, s16 *x, s16 *y);
 void MapGridSetMetatileImpassabilityAt(s32 x, s32 y, bool32 impassable);
 
 // field_region_map.c

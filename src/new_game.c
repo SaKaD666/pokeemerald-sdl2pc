@@ -159,6 +159,9 @@ void ResetMenuAndMonGlobals(void)
 
 void NewGameInitData(void)
 {
+#ifdef PLATFORM_SDL2
+    ClearConnectedObjectTemplateChanges();
+#endif
     if (gSaveFileStatus == SAVE_STATUS_EMPTY || gSaveFileStatus == SAVE_STATUS_CORRUPT)
         RtcReset();
 

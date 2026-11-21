@@ -470,7 +470,7 @@ void AnimTask_MoveAttackerMementoShadow(u8 taskId)
     ScanlineEffect_SetParams(scanlineParams);
     SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WINOBJ_BG_ALL | WINOUT_WINOBJ_OBJ | WINOUT_WINOBJ_CLR | (var0 ^ (WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ | WINOUT_WIN01_CLR)));
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ | WININ_WIN1_CLR);
-    gBattle_WIN0H = (task->data[14] << 8) | task->data[15];
+    gBattle_WIN0H = GPU_WINDOW_H_RANGE(max(0, task->data[14]), task->data[15]);
     gBattle_WIN0V = DISPLAY_HEIGHT;
 
     task->func = AnimTask_MoveAttackerMementoShadow_Step;
@@ -519,7 +519,7 @@ static void AnimTask_MoveAttackerMementoShadow_Step(u8 taskId)
         if (task->data[14] >= task->data[15])
             task->data[14] = task->data[15];
 
-        gBattle_WIN0H = (task->data[14] << 8) | task->data[15];
+        gBattle_WIN0H = GPU_WINDOW_H_RANGE(max(0, task->data[14]), task->data[15]);
 
         if (task->data[14] == task->data[15])
             task->data[0]++;
@@ -630,7 +630,7 @@ void AnimTask_MoveTargetMementoShadow(u8 taskId)
             SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WINOBJ_BG_ALL | WINOUT_WINOBJ_OBJ | WINOUT_WINOBJ_CLR | WINOUT_WIN01_BG0 | WINOUT_WIN01_BG1 | WINOUT_WIN01_BG3 | WINOUT_WIN01_OBJ | WINOUT_WIN01_CLR);
 
         SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ | WININ_WIN1_CLR);
-        gBattle_WIN0H = (task->data[14] << 8) | task->data[15];
+        gBattle_WIN0H = GPU_WINDOW_H_RANGE(max(0, task->data[14]), task->data[15]);
         gBattle_WIN0V = DISPLAY_HEIGHT;
 
         task->data[0] = 0;
@@ -668,7 +668,7 @@ static void AnimTask_MoveTargetMementoShadow_Step(u8 taskId)
             task->data[1] = 1;
         }
 
-        gBattle_WIN0H = (task->data[14] << 8) | task->data[15];
+        gBattle_WIN0H = GPU_WINDOW_H_RANGE(max(0, task->data[14]), task->data[15]);
         task->data[4] += 8;
         if (task->data[4] >= task->data[6])
             task->data[4] = task->data[6];

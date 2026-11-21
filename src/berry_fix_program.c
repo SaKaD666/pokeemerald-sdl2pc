@@ -13,6 +13,9 @@
 #include "menu.h"
 #include "m4a.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 enum {
     WIN_TITLE,          // "Berry Program Update" header on the first screen
@@ -197,6 +200,9 @@ void CB2_InitBerryFixProgram(void)
     EnableInterrupts(INTR_FLAG_VBLANK);
     m4aSoundVSyncOff();
     SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     ResetSpriteData();
     ResetTasks();
     ScanlineEffect_Stop();

@@ -1,4 +1,5 @@
 #include "global.h"
+#include "gpu_regs.h"
 #include "battle.h"
 #include "data.h"
 #include "task.h"
@@ -18,10 +19,56 @@ EWRAM_DATA u16 ALIGNED(4) gScanlineEffectRegBuffers[2][0x3C0] = {0};
 EWRAM_DATA struct ScanlineEffect gScanlineEffect = {0};
 EWRAM_DATA static bool8 sShouldStopWaveTask = FALSE;
 
+#ifdef PLATFORM_SDL2
+static void ReleaseWindowHorizontalDma(void)
+{
+    if (gScanlineEffect.dmaDest == GetGpuWindowHorizontalDmaDest(GPU_WINDOW_0))
+    {
+        DmaStop(0);
+        ResetGpuWindowHorizontalBounds(GPU_WINDOW_0);
+        if ((u16)gScanlineEffect.dmaControl == GPU_WINDOW_COUNT)
+            ResetGpuWindowHorizontalBounds(GPU_WINDOW_1);
+    }
+}
+
+static void CopyFirstWindowPair(void)
+{
+    vu32 *dest = gScanlineEffect.dmaDest;
+    const u32 *src = gScanlineEffect.dmaSrcBuffers[gScanlineEffect.srcBuffer];
+
+    dest[GPU_WINDOW_0] = src[-GPU_WINDOW_COUNT + GPU_WINDOW_0];
+    dest[GPU_WINDOW_1] = src[-GPU_WINDOW_COUNT + GPU_WINDOW_1];
+}
+
+static void SetWindowHorizontalBuffers(u32 *first, u32 *second, u16 count, u16 destMode, void (*copyFirstLine)(void))
+{
+    ReleaseWindowHorizontalDma();
+    gScanlineEffect.dmaSrcBuffers[0] = first + count;
+    gScanlineEffect.dmaSrcBuffers[1] = second + count;
+    gScanlineEffect.dmaDest = GetGpuWindowHorizontalDmaDest(GPU_WINDOW_0);
+    gScanlineEffect.dmaControl = ((u32)(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_32BIT | destMode) << 16) | count;
+    gScanlineEffect.setFirstScanlineReg = copyFirstLine;
+    gScanlineEffect.state = 1;
+}
+
+void ScanlineEffect_SetWindow0HorizontalBuffers(u32 *first, u32 *second)
+{
+    SetWindowHorizontalBuffers(first, second, 1, DMA_DEST_FIXED, CopyValue32Bit);
+}
+
+void ScanlineEffect_SetWindowHorizontalPairBuffers(u32 *first, u32 *second)
+{
+    SetWindowHorizontalBuffers(first, second, GPU_WINDOW_COUNT, DMA_DEST_RELOAD, CopyFirstWindowPair);
+}
+#endif
+
 void ScanlineEffect_Stop(void)
 {
     gScanlineEffect.state = 0;
     DmaStop(0);
+#ifdef PLATFORM_SDL2
+    ReleaseWindowHorizontalDma();
+#endif
     if (gScanlineEffect.waveTaskId != TASK_NONE)
     {
         DestroyTask(gScanlineEffect.waveTaskId);
@@ -31,6 +78,9 @@ void ScanlineEffect_Stop(void)
 
 void ScanlineEffect_Clear(void)
 {
+#ifdef PLATFORM_SDL2
+    ReleaseWindowHorizontalDma();
+#endif
     CpuFill16(0, gScanlineEffectRegBuffers, sizeof(gScanlineEffectRegBuffers));
     gScanlineEffect.dmaSrcBuffers[0] = NULL;
     gScanlineEffect.dmaSrcBuffers[1] = NULL;
@@ -45,6 +95,9 @@ void ScanlineEffect_Clear(void)
 
 void ScanlineEffect_SetParams(struct ScanlineEffectParams params)
 {
+#ifdef PLATFORM_SDL2
+    ReleaseWindowHorizontalDma();
+#endif
     if (params.dmaControl == SCANLINE_EFFECT_DMACNT_16BIT)  // 16-bit
     {
         // Set the DMA src to the value for the second scanline because the
@@ -79,6 +132,9 @@ void ScanlineEffect_InitHBlankDmaTransfer(void)
     {
         gScanlineEffect.state = 0;
         DmaStop(0);
+#ifdef PLATFORM_SDL2
+        ReleaseWindowHorizontalDma();
+#endif
         sShouldStopWaveTask = TRUE;
     }
     else
@@ -109,9 +165,9 @@ static void CopyValue16Bit(void)
 static void CopyValue32Bit(void)
 {
     vu32 *dest = (vu32 *)gScanlineEffect.dmaDest;
-    vu32 *src = (vu32 *)&gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer];
+    const u32 *src = gScanlineEffect.dmaSrcBuffers[gScanlineEffect.srcBuffer];
 
-    *dest = *src;
+    *dest = src[-1];
 }
 
 #define tStartLine            data[0]

@@ -44,7 +44,7 @@ static void GetPlayerPosition(struct MapPosition *);
 static void GetInFrontOfPlayerPosition(struct MapPosition *);
 static u16 GetPlayerCurMetatileBehavior(int);
 static bool8 TryStartInteractionScript(struct MapPosition *, u16, u8);
-static const u8 *GetInteractionScript(struct MapPosition *, u8, u8);
+static const u8 *GetInteractionScript(struct MapPosition *, u8, u8, u8 *);
 static const u8 *GetInteractedObjectEventScript(struct MapPosition *, u8, u8);
 static const u8 *GetInteractedBackgroundEventScript(struct MapPosition *, u8, u8);
 static const u8 *GetInteractedMetatileScript(struct MapPosition *, u8, u8);
@@ -219,7 +219,8 @@ static u16 GetPlayerCurMetatileBehavior(int runningState)
 
 static bool8 TryStartInteractionScript(struct MapPosition *position, u16 metatileBehavior, u8 direction)
 {
-    const u8 *script = GetInteractionScript(position, metatileBehavior, direction);
+    u8 objectEventId = OBJECT_EVENTS_COUNT;
+    const u8 *script = GetInteractionScript(position, metatileBehavior, direction, &objectEventId);
     if (script == NULL)
         return FALSE;
 
@@ -233,15 +234,21 @@ static bool8 TryStartInteractionScript(struct MapPosition *position, u16 metatil
      && script != EventScript_PC)
         PlaySE(SE_SELECT);
 
-    ScriptContext_SetupScript(script);
+    if (objectEventId != OBJECT_EVENTS_COUNT)
+        ScriptContext_SetupObjectScript(script, gObjectEvents[objectEventId].mapGroup, gObjectEvents[objectEventId].mapNum);
+    else
+        ScriptContext_SetupScript(script);
     return TRUE;
 }
 
-static const u8 *GetInteractionScript(struct MapPosition *position, u8 metatileBehavior, u8 direction)
+static const u8 *GetInteractionScript(struct MapPosition *position, u8 metatileBehavior, u8 direction, u8 *objectEventId)
 {
     const u8 *script = GetInteractedObjectEventScript(position, metatileBehavior, direction);
     if (script != NULL)
+    {
+        *objectEventId = gSelectedObjectEvent;
         return script;
+    }
 
     script = GetInteractedBackgroundEventScript(position, metatileBehavior, direction);
     if (script != NULL)
@@ -309,7 +316,7 @@ static const u8 *GetInteractedObjectEventScript(struct MapPosition *position, u8
     else
         script = GetObjectEventScriptPointerByObjectEventId(objectEventId);
 
-    script = GetRamScript(gSpecialVar_LastTalked, script);
+    script = GetRamScript(gSpecialVar_LastTalked, gObjectEvents[objectEventId].mapGroup, gObjectEvents[objectEventId].mapNum, script);
     return script;
 }
 

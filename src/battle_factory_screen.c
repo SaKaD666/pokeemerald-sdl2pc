@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "battle.h"
 #include "battle_factory_screen.h"
 #include "battle_factory.h"
@@ -1139,6 +1140,9 @@ static void CB2_InitSelectScreen(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         TRY_FREE_AND_SET_NULL(sFactorySelectMons);
         SetHBlankCallback(NULL);
         SetVBlankCallback(NULL);
@@ -1487,6 +1491,9 @@ static void Select_Task_OpenSummaryScreen(u8 taskId)
         sFactorySelectMons = AllocZeroed(sizeof(struct Pokemon) * SELECTABLE_MONS_COUNT);
         for (i = 0; i < SELECTABLE_MONS_COUNT; i++)
             sFactorySelectMons[i] = sFactorySelectScreen->mons[i].monData;
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         ShowPokemonSummaryScreen(SUMMARY_MODE_LOCK_MOVES, sFactorySelectMons, currMonId, SELECTABLE_MONS_COUNT - 1, CB2_InitSelectScreen);
         break;
     }
@@ -1514,6 +1521,10 @@ static void Select_Task_Exit(u8 taskId)
             FREE_AND_SET_NULL(sSelectMonPicBgTilemapBuffer);
             FREE_AND_SET_NULL(sFactorySelectScreen);
             FreeAllWindowBuffers();
+            SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_ReturnToFieldContinueScript);
             DestroyTask(taskId);
         }
@@ -2135,7 +2146,7 @@ static void Select_Task_OpenChosenMonPics(u8 taskId)
     {
     case 0:
         task->tWinLeft = 16;
-        task->tWinRight = DISPLAY_WIDTH - 16;
+        task->tWinRight = GBA_DISPLAY_WIDTH - 16;
         task->tWinTop = 64;
         task->tWinBottom = 65;
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
@@ -2177,7 +2188,7 @@ static void Select_Task_CloseChosenMonPics(u8 taskId)
     {
     case 0:
         task->tWinLeft = 16;
-        task->tWinRight = DISPLAY_WIDTH - 16;
+        task->tWinRight = GBA_DISPLAY_WIDTH - 16;
         task->tWinTop = 32;
         task->tWinBottom = 96;
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
@@ -2401,6 +2412,9 @@ static void Swap_Task_OpenSummaryScreen(u8 taskId)
         DestroyTask(taskId);
         sFactorySwapScreen->fromSummaryScreen = TRUE;
         sFactorySwapScreen->speciesNameColorBackup = gPlttBufferUnfaded[BG_PLTT_ID(PALNUM_TEXT) + 4];
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         ShowPokemonSummaryScreen(SUMMARY_MODE_NORMAL, gPlayerParty, sFactorySwapScreen->cursorPos, FRONTIER_PARTY_SIZE - 1, CB2_InitSwapScreen);
         break;
     }
@@ -2450,6 +2464,10 @@ static void Swap_Task_Exit(u8 taskId)
             FREE_AND_SET_NULL(sSwapMonPicBgTilemapBuffer);
             FREE_AND_SET_NULL(sFactorySwapScreen);
             FreeAllWindowBuffers();
+            SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_ReturnToFieldContinueScript);
             DestroyTask(taskId);
         }
@@ -2828,7 +2846,7 @@ static void Swap_Task_SlideCycleBalls(u8 taskId)
                 finished = FALSE;
             }
 
-            if (gSprites[sFactorySwapScreen->ballSpriteIds[i]].x - 16 > DISPLAY_WIDTH)
+            if (gSprites[sFactorySwapScreen->ballSpriteIds[i]].x - 16 > GBA_DISPLAY_WIDTH)
             {
                 // Ball is offscreen right, cycle its palette and move to left side of screen
                 lastX = gSprites[sFactorySwapScreen->ballSpriteIds[i]].x;
@@ -2880,14 +2898,14 @@ static void Swap_Task_SlideButtonOnOffScreen(u8 taskId)
         if (!gTasks[taskId].tSlidingOn)
         {
             // Sliding "Pkmn for Swap" offscreen
-            if (currPosX + deltaX < DISPLAY_WIDTH)
+            if (currPosX + deltaX < GBA_DISPLAY_WIDTH)
             {
                 sliding = TRUE;
             }
             else
             {
                 sliding = FALSE;
-                posX = DISPLAY_WIDTH;
+                posX = GBA_DISPLAY_WIDTH;
             }
         }
         else
@@ -2932,14 +2950,14 @@ static void Swap_Task_SlideButtonOnOffScreen(u8 taskId)
         if (!gTasks[taskId].tSlidingOn)
         {
             // Sliding "Cancel" offscreen
-            if (currPosX + deltaX < DISPLAY_WIDTH)
+            if (currPosX + deltaX < GBA_DISPLAY_WIDTH)
             {
                 sliding = TRUE;
             }
             else
             {
                 sliding = FALSE;
-                posX = DISPLAY_WIDTH;
+                posX = GBA_DISPLAY_WIDTH;
             }
         }
         else
@@ -3254,6 +3272,9 @@ static void CB2_InitSwapScreen(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetHBlankCallback(NULL);
         SetVBlankCallback(NULL);
         CpuFill32(0, (void *)VRAM, VRAM_SIZE);
@@ -3414,7 +3435,7 @@ static void CB2_InitSwapScreen(void)
 static void Swap_InitAllSprites(void)
 {
     u8 i;
-    u8 x;
+    s16 x;
     struct SpriteTemplate spriteTemplate;
 
     spriteTemplate = sSpriteTemplate_Swap_Pokeball;
@@ -3436,31 +3457,31 @@ static void Swap_InitAllSprites(void)
     gSprites[sFactorySwapScreen->menuCursor2SpriteId].centerToCornerVecY = 0;
 
     if (sFactorySwapScreen->fromSummaryScreen == TRUE)
-        x = DISPLAY_WIDTH;
+        x = GBA_DISPLAY_WIDTH;
     else
-        x = DISPLAY_WIDTH - 48;
+        x = GBA_DISPLAY_WIDTH - 48;
 
     // Unusual way to create sprites
     // The sprite template for the selector arrow is re-used
     // with the tiles swapped out
     spriteTemplate = sSpriteTemplate_Swap_Arrow;
     spriteTemplate.tileTag = GFXTAG_ACTION_BOX_LEFT;
-    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[0][0] = CreateSprite(&spriteTemplate, DISPLAY_WIDTH, 120, 10);
+    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[0][0] = CreateSprite(&spriteTemplate, GBA_DISPLAY_WIDTH, 120, 10);
 
     spriteTemplate = sSpriteTemplate_Swap_MenuHighlightLeft;
     spriteTemplate.tileTag = GFXTAG_ACTION_BOX_RIGHT;
-    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[0][1] = CreateSprite(&spriteTemplate, DISPLAY_WIDTH + 16, 120, 10);
-    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[0][2] = CreateSprite(&spriteTemplate, DISPLAY_WIDTH + 48, 120, 10);
+    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[0][1] = CreateSprite(&spriteTemplate, GBA_DISPLAY_WIDTH + 16, 120, 10);
+    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[0][2] = CreateSprite(&spriteTemplate, GBA_DISPLAY_WIDTH + 48, 120, 10);
 
     spriteTemplate = sSpriteTemplate_Swap_Arrow;
     spriteTemplate.tileTag = GFXTAG_ACTION_HIGHLIGHT_LEFT;
-    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[1][0] = CreateSprite(&spriteTemplate, DISPLAY_WIDTH, 120, 1);
+    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[1][0] = CreateSprite(&spriteTemplate, GBA_DISPLAY_WIDTH, 120, 1);
 
     spriteTemplate = sSpriteTemplate_Swap_MenuHighlightLeft;
     spriteTemplate.tileTag = GFXTAG_ACTION_HIGHLIGHT_MIDDLE;
-    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[1][1] = CreateSprite(&spriteTemplate, DISPLAY_WIDTH + 16, 120, 1);
+    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[1][1] = CreateSprite(&spriteTemplate, GBA_DISPLAY_WIDTH + 16, 120, 1);
     spriteTemplate.tileTag = GFXTAG_ACTION_HIGHLIGHT_RIGHT;
-    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[1][2] = CreateSprite(&spriteTemplate, DISPLAY_WIDTH + 48, 120, 1);
+    sFactorySwapScreen->pkmnForSwapButtonSpriteIds[1][2] = CreateSprite(&spriteTemplate, GBA_DISPLAY_WIDTH + 48, 120, 1);
 
     spriteTemplate = sSpriteTemplate_Swap_Arrow;
     spriteTemplate.tileTag = GFXTAG_ACTION_BOX_LEFT;
@@ -4179,7 +4200,7 @@ static void Task_OpenMonPic(u8 taskId)
     case 0:
         // Init
         task->tWinLeft = 88;
-        task->tWinRight = DISPLAY_WIDTH - 88;
+        task->tWinRight = GBA_DISPLAY_WIDTH - 88;
         task->tWinTop = 64;
         task->tWinBottom = 65;
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
@@ -4227,7 +4248,7 @@ static void Task_CloseMonPic(u8 taskId)
     case 0:
         // Init
         task->tWinLeft = 88;
-        task->tWinRight = DISPLAY_WIDTH - 88;
+        task->tWinRight = GBA_DISPLAY_WIDTH - 88;
         task->tWinTop = 32;
         task->tWinBottom = 96;
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);

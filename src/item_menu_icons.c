@@ -437,7 +437,7 @@ void RemoveBagSprite(u8 id)
 void AddBagVisualSprite(u8 bagPocketId)
 {
     u8 *spriteId = &gBagMenu->spriteIds[ITEMMENUSPRITE_BAG];
-    *spriteId = CreateSprite(&sBagSpriteTemplate, 68, 66, 0);
+    *spriteId = CreateSprite(&sBagSpriteTemplate, 68 + BAG_VIEW_X, 66 + BAG_VIEW_Y, 0);
     SetBagVisualPocketId(bagPocketId, FALSE);
 }
 
@@ -499,7 +499,7 @@ void AddSwitchPocketRotatingBallSprite(s16 rotationDirection)
     u8 *spriteId = &gBagMenu->spriteIds[ITEMMENUSPRITE_BALL];
     LoadSpriteSheet(&sRotatingBallTable);
     LoadSpritePalette(&sRotatingBallPaletteTable);
-    *spriteId = CreateSprite(&sRotatingBallSpriteTemplate, 16, 16, 0);
+    *spriteId = CreateSprite(&sRotatingBallSpriteTemplate, 16 + BAG_VIEW_X, 16 + BAG_VIEW_Y, 0);
     gSprites[*spriteId].data[0] = rotationDirection;
 }
 
@@ -546,8 +546,8 @@ void AddBagItemIconSprite(u16 itemId, u8 id)
         if (iconSpriteId != MAX_SPRITES)
         {
             *spriteId = iconSpriteId;
-            gSprites[iconSpriteId].x2 = 24;
-            gSprites[iconSpriteId].y2 = 88;
+            gSprites[iconSpriteId].x2 = 24 + BAG_VIEW_X;
+            gSprites[iconSpriteId].y2 = 88 + BAG_VIEW_Y;
         }
     }
 }
@@ -584,7 +584,7 @@ void SetItemMenuSwapLineInvisibility(bool8 invisible)
 
 void UpdateItemMenuSwapLinePos(u8 y)
 {
-    UpdateSwapLineSpritesPos(&gBagMenu->spriteIds[ITEMMENUSPRITE_SWAP_LINE], ITEMMENU_SWAP_LINE_LENGTH | SWAP_LINE_HAS_MARGIN, 120, (y + 1) * 16);
+    UpdateSwapLineSpritesPos(&gBagMenu->spriteIds[ITEMMENUSPRITE_SWAP_LINE], ITEMMENU_SWAP_LINE_LENGTH | SWAP_LINE_HAS_MARGIN, 120 + BAG_VIEW_X, (y + 1) * 16 + BAG_VIEW_Y);
 }
 
 static void ArrangeBerryGfx(void *src, void *dest)

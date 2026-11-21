@@ -5,6 +5,17 @@
 #include "main.h"
 #include "menu_helpers.h"
 
+#define BAG_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
+#define BAG_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
+#ifdef PLATFORM_SDL2
+#define BAG_TILEMAP_SIZE (2 * BG_SCREEN_SIZE)
+#else
+#define BAG_TILEMAP_SIZE BG_SCREEN_SIZE
+#endif
+
+void InitBagBgs(void *tilemap);
+void FreeBagWindowBuffers(void);
+
 enum {
     ITEMMENULOCATION_FIELD,
     ITEMMENULOCATION_BATTLE,
@@ -61,7 +72,7 @@ extern struct BagPosition gBagPosition;
 struct BagMenu
 {
     MainCallback newScreenCallback;
-    u8 tilemapBuffer[BG_SCREEN_SIZE];
+    u8 ALIGNED(4) tilemapBuffer[BAG_TILEMAP_SIZE];
     u8 spriteIds[ITEMMENUSPRITE_COUNT];
     u8 windowIds[ITEMWIN_COUNT];
     u8 toSwapPos;

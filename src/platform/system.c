@@ -1,5 +1,6 @@
 #ifdef PORTABLE
 #include "global.h"
+#include "gba/flash_internal.h"
 #include "platform/dma.h"
 #include "m4a.h"
 
@@ -9,7 +10,7 @@ unsigned char REG_BASE[0x400] __attribute__ ((aligned (4)));
 unsigned char PLTT[PLTT_SIZE] __attribute__ ((aligned (4)));
 unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
 unsigned char OAM[OAM_SIZE] __attribute__ ((aligned (4)));
-unsigned char FLASH_BASE[131072] __attribute__ ((aligned (4)));
+unsigned char FLASH_BASE[PORTABLE_FLASH_SIZE] __attribute__ ((aligned (4)));
 struct SoundInfo *SOUND_INFO_PTR;
 
 extern void (*const gIntrTable[])(void);

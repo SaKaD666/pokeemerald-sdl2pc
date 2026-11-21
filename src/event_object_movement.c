@@ -1,4 +1,5 @@
 #include "global.h"
+#include "script_movement.h"
 #include "malloc.h"
 #include "battle_pyramid.h"
 #include "berry.h"
@@ -26,6 +27,7 @@
 #include "constants/event_objects.h"
 #include "constants/field_effects.h"
 #include "constants/items.h"
+#include "constants/maps.h"
 #include "constants/mauville_old_man.h"
 #include "constants/trainer_types.h"
 #include "constants/union_room.h"
@@ -100,8 +102,8 @@ static void TryEnableObjectEventAnim(struct ObjectEvent *, struct Sprite *);
 static void ObjectEventExecHeldMovementAction(struct ObjectEvent *, struct Sprite *);
 static void UpdateObjectEventSpriteAnimPause(struct ObjectEvent *, struct Sprite *);
 static bool8 IsCoordOutsideObjectEventMovementRange(struct ObjectEvent *, s16, s16);
-static bool8 IsMetatileDirectionallyImpassable(struct ObjectEvent *, s16, s16, u8);
-static bool8 DoesObjectCollideWithObjectAt(struct ObjectEvent *, s16, s16);
+static bool8 IsMetatileDirectionallyImpassable(u8, s16, s16, u8);
+static bool8 DoesObjectCollideWithObjectAt(struct ObjectEvent *, s16, s16, u8);
 static void UpdateObjectEventOffscreen(struct ObjectEvent *, struct Sprite *);
 static void UpdateObjectEventSpriteVisibility(struct ObjectEvent *, struct Sprite *);
 static void ObjectEventUpdateMetatileBehaviors(struct ObjectEvent *);
@@ -1204,19 +1206,34 @@ void ResetObjectEvents(void)
     CreateReflectionEffectSprites();
 }
 
+u8 gReflectionEffectMatrixIds[2] = {0xFF, 0xFF};
+
 static void CreateReflectionEffectSprites(void)
 {
-    u8 spriteId = CreateSpriteAtEnd(gFieldEffectObjectTemplatePointers[FLDEFFOBJ_REFLECTION_DISTORTION], 0, 0, 31);
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    InitSpriteAffineAnim(&gSprites[spriteId]);
-    StartSpriteAffineAnim(&gSprites[spriteId], 0);
-    gSprites[spriteId].invisible = TRUE;
+    u8 i;
 
-    spriteId = CreateSpriteAtEnd(gFieldEffectObjectTemplatePointers[FLDEFFOBJ_REFLECTION_DISTORTION], 0, 0, 31);
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    InitSpriteAffineAnim(&gSprites[spriteId]);
-    StartSpriteAffineAnim(&gSprites[spriteId], 1);
-    gSprites[spriteId].invisible = TRUE;
+    for (i = 0; i < ARRAY_COUNT(gReflectionEffectMatrixIds); i++)
+    {
+        u8 spriteId = CreateSpriteAtEnd(gFieldEffectObjectTemplatePointers[FLDEFFOBJ_REFLECTION_DISTORTION], 0, 0, 31);
+        struct Sprite *sprite;
+
+        gReflectionEffectMatrixIds[i] = 0xFF;
+        if (spriteId == MAX_SPRITES)
+            continue;
+
+        sprite = &gSprites[spriteId];
+        sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
+        if (!InitSpriteAffineAnim(sprite))
+        {
+            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+            DestroySprite(sprite);
+            continue;
+        }
+
+        gReflectionEffectMatrixIds[i] = sprite->oam.matrixNum;
+        StartSpriteAffineAnim(sprite, i);
+        sprite->invisible = TRUE;
+    }
 }
 
 u8 GetFirstInactiveObjectEventId(void)
@@ -1382,6 +1399,8 @@ static bool8 GetAvailableObjectEventId(u16 localId, u8 mapNum, u8 mapGroup, u8 *
 
 static void RemoveObjectEvent(struct ObjectEvent *objectEvent)
 {
+    if (objectEvent->active)
+        ScriptMovement_ForgetObjectEvent(objectEvent - gObjectEvents);
     objectEvent->active = FALSE;
     RemoveObjectEventInternal(objectEvent);
 }
@@ -1430,6 +1449,17 @@ static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEven
 
     objectEvent = &gObjectEvents[objectEventId];
     graphicsInfo = GetObjectEventGraphicsInfo(objectEvent->graphicsId);
+    if (objectEvent->movementType == MOVEMENT_TYPE_INVISIBLE)
+        objectEvent->invisible = TRUE;
+
+    *(u16 *)&spriteTemplate->paletteTag = TAG_NONE;
+    spriteId = CreateSprite(spriteTemplate, 0, 0, 0);
+    if (spriteId == MAX_SPRITES)
+    {
+        gObjectEvents[objectEventId].active = FALSE;
+        return OBJECT_EVENTS_COUNT;
+    }
+
     paletteSlot = graphicsInfo->paletteSlot;
     if (paletteSlot == PALSLOT_PLAYER)
     {
@@ -1443,17 +1473,6 @@ static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEven
     {
         paletteSlot -= 16;
         _PatchObjectPalette(graphicsInfo->paletteTag, paletteSlot);
-    }
-
-    if (objectEvent->movementType == MOVEMENT_TYPE_INVISIBLE)
-        objectEvent->invisible = TRUE;
-
-    *(u16 *)&spriteTemplate->paletteTag = TAG_NONE;
-    spriteId = CreateSprite(spriteTemplate, 0, 0, 0);
-    if (spriteId == MAX_SPRITES)
-    {
-        gObjectEvents[objectEventId].active = FALSE;
-        return OBJECT_EVENTS_COUNT;
     }
 
     sprite = &gSprites[spriteId];
@@ -1475,6 +1494,42 @@ static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEven
     return objectEventId;
 }
 
+#ifdef PLATFORM_SDL2
+static u8 ResolveConnectedObjectGraphicsId(u8 graphicsId, u8 mapNum, u8 mapGroup)
+{
+    u8 gender = gSaveBlock2Ptr->playerGender;
+    u16 map = (mapGroup << 8) | mapNum;
+
+    if (gSaveBlock1Ptr->location.mapNum == mapNum && gSaveBlock1Ptr->location.mapGroup == mapGroup)
+        return graphicsId;
+
+    // The falling avatar uses the player's gender, unlike the rival.
+    if (map == MAP_ROUTE111 && graphicsId == OBJ_EVENT_GFX_VAR_0)
+        return GetRivalAvatarGraphicsIdByStateIdAndGender(PLAYER_AVATAR_STATE_NORMAL, gender);
+
+    gender = gender == MALE ? FEMALE : MALE;
+    switch (map)
+    {
+    case MAP_LAVARIDGE_TOWN:
+    case MAP_ROUTE110:
+    case MAP_ROUTE119:
+        if (graphicsId == OBJ_EVENT_GFX_VAR_3)
+            return GetRivalAvatarGraphicsIdByStateIdAndGender(PLAYER_AVATAR_STATE_MACH_BIKE, gender);
+        // fall through
+    case MAP_LILYCOVE_CITY:
+    case MAP_LITTLEROOT_TOWN:
+    case MAP_OLDALE_TOWN:
+    case MAP_ROUTE103:
+    case MAP_ROUTE104:
+    case MAP_RUSTBORO_CITY:
+        if (graphicsId == OBJ_EVENT_GFX_VAR_0)
+            return GetRivalAvatarGraphicsIdByStateIdAndGender(PLAYER_AVATAR_STATE_NORMAL, gender);
+        break;
+    }
+    return graphicsId;
+}
+#endif
+
 static u8 TrySpawnObjectEventTemplate(const struct ObjectEventTemplate *objectEventTemplate, u8 mapNum, u8 mapGroup, s16 cameraX, s16 cameraY)
 {
     u8 objectEventId;
@@ -1482,6 +1537,18 @@ static u8 TrySpawnObjectEventTemplate(const struct ObjectEventTemplate *objectEv
     struct SpriteFrameImage spriteFrameImage;
     const struct ObjectEventGraphicsInfo *graphicsInfo;
     const struct SubspriteTable *subspriteTables = NULL;
+
+#ifdef PLATFORM_SDL2
+    struct ObjectEventTemplate resolvedTemplate;
+    u8 graphicsId = ResolveConnectedObjectGraphicsId(objectEventTemplate->graphicsId, mapNum, mapGroup);
+
+    if (graphicsId != objectEventTemplate->graphicsId)
+    {
+        resolvedTemplate = *objectEventTemplate;
+        resolvedTemplate.graphicsId = graphicsId;
+        objectEventTemplate = &resolvedTemplate;
+    }
+#endif
 
     graphicsInfo = GetObjectEventGraphicsInfo(objectEventTemplate->graphicsId);
     MakeSpriteTemplateFromObjectEventTemplate(objectEventTemplate, &spriteTemplate, &subspriteTables);
@@ -1530,14 +1597,22 @@ u8 SpawnSpecialObjectEventParameterized(u8 graphicsId, u8 movementBehavior, u8 l
 u8 TrySpawnObjectEvent(u8 localId, u8 mapNum, u8 mapGroup)
 {
     const struct ObjectEventTemplate *objectEventTemplate;
+    struct ObjectEventTemplate projectedTemplate;
     s16 cameraX, cameraY;
 
     objectEventTemplate = GetObjectEventTemplateByLocalIdAndMap(localId, mapNum, mapGroup);
     if (!objectEventTemplate)
         return OBJECT_EVENTS_COUNT;
 
+    projectedTemplate = *objectEventTemplate;
+#ifdef PLATFORM_SDL2
+    ApplyConnectedObjectTemplateChanges(mapGroup, mapNum, &projectedTemplate);
+#endif
+    if (!ProjectMapCoordsToCurrentMap(mapGroup, mapNum, &projectedTemplate.x, &projectedTemplate.y))
+        return OBJECT_EVENTS_COUNT;
+
     GetObjectEventMovingCameraOffset(&cameraX, &cameraY);
-    return TrySpawnObjectEventTemplate(objectEventTemplate, mapNum, mapGroup, cameraX, cameraY);
+    return TrySpawnObjectEventTemplate(&projectedTemplate, mapNum, mapGroup, cameraX, cameraY);
 }
 
 static void CopyObjectGraphicsInfoToSpriteTemplate(u16 graphicsId, void (*callback)(struct Sprite *), struct SpriteTemplate *spriteTemplate, const struct SubspriteTable **subspriteTables)
@@ -1573,6 +1648,9 @@ u8 CreateObjectGraphicsSprite(u16 graphicsId, void (*callback)(struct Sprite *),
     u8 spriteId;
 
     spriteTemplate = Alloc(sizeof(struct SpriteTemplate));
+    if (spriteTemplate == NULL)
+        return MAX_SPRITES;
+
     CopyObjectGraphicsInfoToSpriteTemplate(graphicsId, callback, spriteTemplate, &subspriteTables);
     if (spriteTemplate->paletteTag != TAG_NONE)
         LoadObjectEventPalette(spriteTemplate->paletteTag);
@@ -1642,10 +1720,93 @@ u8 CreateVirtualObject(u8 graphicsId, u8 virtualObjId, s16 x, s16 y, u8 elevatio
     return spriteId;
 }
 
+#ifdef PLATFORM_SDL2
+enum
+{
+    OBJECT_SPAWN_MARGIN = 1,
+    OBJECT_RETAIN_MARGIN = 2,
+};
+
+static bool8 IsWideObjectSpawnEnabled(void)
+{
+    return ENABLE_WIDE_OBJECT_SPAWN && IsOverworldTilemapWide() && !IsOverworldLinkActive()
+        && CurrentBattlePyramidLocation() == PYRAMID_LOCATION_NONE && !InTrainerHill();
+}
+
+static bool8 IsInWideObjectView(s32 x, s32 y, s32 margin, u8 graphicsId)
+{
+    s32 dx = x - gSaveBlock1Ptr->pos.x - MAP_OFFSET;
+    s32 dy = y - gSaveBlock1Ptr->pos.y - MAP_OFFSET;
+    const struct ObjectEventGraphicsInfo *graphicsInfo;
+    s32 left, top;
+    s32 padding;
+
+    if (dx >= -MAP_VIEW_LEFT_MARGIN - margin && dx < MAP_VIEW_WIDTH - MAP_VIEW_LEFT_MARGIN + margin
+     && dy >= -MAP_VIEW_TOP_MARGIN - margin && dy < MAP_VIEW_HEIGHT - MAP_VIEW_TOP_MARGIN + margin)
+        return TRUE;
+
+    graphicsInfo = GetObjectEventGraphicsInfo(graphicsId);
+    left = dx * 16 + 8 - graphicsInfo->width / 2;
+    top = dy * 16 + 16 - graphicsInfo->height;
+    padding = (margin - OBJECT_SPAWN_MARGIN) * 16;
+
+    // Union of the 320x180 screen over phases 0..15 and pans of ±8x, ±4y.
+    return left < 191 + padding && left + graphicsInfo->width > -160 - padding
+        && top < 117 + padding && top + graphicsInfo->height > -86 - padding;
+}
+
+static void TrySpawnConnectedObjects(s16 cameraX, s16 cameraY)
+{
+    const struct MapConnections *connections = gMapHeader.connections;
+    s32 i;
+
+    if (connections == NULL)
+        return;
+
+    for (i = 0; i < connections->count; i++)
+    {
+        const struct MapConnection *connection = &connections->connections[i];
+        const struct MapHeader *header;
+        u32 j;
+
+        if (connection->direction != CONNECTION_NORTH && connection->direction != CONNECTION_SOUTH
+         && connection->direction != CONNECTION_WEST && connection->direction != CONNECTION_EAST)
+            continue;
+
+        header = GetMapHeaderFromConnection(connection);
+        if (header == NULL || header->events == NULL)
+            continue;
+
+        for (j = 0; j < header->events->objectEventCount; j++)
+        {
+            struct ObjectEventTemplate template = header->events->objectEvents[j];
+            u8 mapGroup = connection->mapGroup;
+            u8 mapNum = connection->mapNum;
+            s32 x, y;
+
+            if (FlagGet(template.flagId))
+                continue;
+            ApplyConnectedObjectTemplateChanges(mapGroup, mapNum, &template);
+            if (!ProjectMapCoordsToCurrentMap(mapGroup, mapNum, &template.x, &template.y))
+                continue;
+
+            x = template.x + MAP_OFFSET;
+            y = template.y + MAP_OFFSET;
+            if (MapGridIsFromMap(x, y, mapGroup, mapNum)
+             && IsInWideObjectView(x, y, OBJECT_SPAWN_MARGIN, ResolveConnectedObjectGraphicsId(template.graphicsId, mapNum, mapGroup)))
+                TrySpawnObjectEventTemplate(&template, mapNum, mapGroup, cameraX, cameraY);
+        }
+    }
+}
+#endif
+
 void TrySpawnObjectEvents(s16 cameraX, s16 cameraY)
 {
     u8 i;
     u8 objectCount;
+#ifdef PLATFORM_SDL2
+    bool8 wideSpawn = IsWideObjectSpawnEnabled();
+#endif
 
     if (gMapHeader.events != NULL)
     {
@@ -1666,12 +1827,23 @@ void TrySpawnObjectEvents(s16 cameraX, s16 cameraY)
             struct ObjectEventTemplate *template = &gSaveBlock1Ptr->objectEventTemplates[i];
             s16 npcX = template->x + MAP_OFFSET;
             s16 npcY = template->y + MAP_OFFSET;
+            bool8 inView;
 
-            if (top <= npcY && bottom >= npcY && left <= npcX && right >= npcX
-                && !FlagGet(template->flagId))
+#ifdef PLATFORM_SDL2
+            if (wideSpawn)
+                inView = IsInWideObjectView(npcX, npcY, OBJECT_SPAWN_MARGIN, template->graphicsId);
+            else
+#endif
+                inView = top <= npcY && bottom >= npcY && left <= npcX && right >= npcX;
+            if (inView && !FlagGet(template->flagId))
                 TrySpawnObjectEventTemplate(template, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup, cameraX, cameraY);
         }
     }
+
+#ifdef PLATFORM_SDL2
+    if (wideSpawn)
+        TrySpawnConnectedObjects(cameraX, cameraY);
+#endif
 }
 
 void RemoveObjectEventsOutsideView(void)
@@ -1698,6 +1870,16 @@ void RemoveObjectEventsOutsideView(void)
 
 static void RemoveObjectEventIfOutsideView(struct ObjectEvent *objectEvent)
 {
+#ifdef PLATFORM_SDL2
+    if (IsWideObjectSpawnEnabled())
+    {
+        if (!IsInWideObjectView(objectEvent->currentCoords.x, objectEvent->currentCoords.y, OBJECT_RETAIN_MARGIN, objectEvent->graphicsId)
+         && !IsInWideObjectView(objectEvent->initialCoords.x, objectEvent->initialCoords.y, OBJECT_RETAIN_MARGIN, objectEvent->graphicsId))
+            RemoveObjectEvent(objectEvent);
+        return;
+    }
+#endif
+
     s16 left =   gSaveBlock1Ptr->pos.x - 2;
     s16 right =  gSaveBlock1Ptr->pos.x + 17;
     s16 top =    gSaveBlock1Ptr->pos.y;
@@ -2151,7 +2333,8 @@ void MoveObjectEventToMapCoords(struct ObjectEvent *objectEvent, s16 x, s16 y)
 void TryMoveObjectEventToMapCoords(u8 localId, u8 mapNum, u8 mapGroup, s16 x, s16 y)
 {
     u8 objectEventId;
-    if (!TryGetObjectEventIdByLocalIdAndMap(localId, mapNum, mapGroup, &objectEventId))
+    if (!TryGetObjectEventIdByLocalIdAndMap(localId, mapNum, mapGroup, &objectEventId)
+     && ProjectMapCoordsToCurrentMap(mapGroup, mapNum, &x, &y))
     {
         x += MAP_OFFSET;
         y += MAP_OFFSET;
@@ -2164,27 +2347,22 @@ void ShiftStillObjectEventCoords(struct ObjectEvent *objectEvent)
     ShiftObjectEventCoords(objectEvent, objectEvent->currentCoords.x, objectEvent->currentCoords.y);
 }
 
-void UpdateObjectEventCoordsForCameraUpdate(void)
+void ShiftObjectEventCoordsForCameraTransition(s16 dx, s16 dy)
 {
     u8 i;
-    s16 dx;
-    s16 dy;
 
-    if (gCamera.active)
+    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
     {
-        dx = gCamera.x;
-        dy = gCamera.y;
-        for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+        struct ObjectEvent *objectEvent = &gObjectEvents[i];
+
+        if (objectEvent->active)
         {
-            if (gObjectEvents[i].active)
-            {
-                gObjectEvents[i].initialCoords.x -= dx;
-                gObjectEvents[i].initialCoords.y -= dy;
-                gObjectEvents[i].currentCoords.x -= dx;
-                gObjectEvents[i].currentCoords.y -= dy;
-                gObjectEvents[i].previousCoords.x -= dx;
-                gObjectEvents[i].previousCoords.y -= dy;
-            }
+            objectEvent->initialCoords.x -= dx;
+            objectEvent->initialCoords.y -= dy;
+            objectEvent->currentCoords.x -= dx;
+            objectEvent->currentCoords.y -= dy;
+            objectEvent->previousCoords.x -= dx;
+            objectEvent->previousCoords.y -= dy;
         }
     }
 }
@@ -2216,7 +2394,17 @@ static bool8 ObjectEventDoesElevationMatch(struct ObjectEvent *objectEvent, u8 e
 
 void UpdateObjectEventsForCameraUpdate(s16 x, s16 y)
 {
-    UpdateObjectEventCoordsForCameraUpdate();
+#ifdef PLATFORM_SDL2
+    if (IsWideObjectSpawnEnabled())
+    {
+        RemoveObjectEventsOutsideView();
+        TrySpawnObjectEvents(x, y);
+        return;
+    }
+#else
+    if (gCamera.active)
+        ShiftObjectEventCoordsForCameraTransition(gCamera.x, gCamera.y);
+#endif
     TrySpawnObjectEvents(x, y);
     RemoveObjectEventsOutsideView();
 }
@@ -2227,6 +2415,9 @@ void UpdateObjectEventsForCameraUpdate(s16 x, s16 y)
 u8 AddCameraObject(u8 followSpriteId)
 {
     u8 spriteId = CreateSprite(&sCameraSpriteTemplate, 0, 0, 4);
+
+    if (spriteId == MAX_SPRITES)
+        return MAX_SPRITES;
 
     gSprites[spriteId].invisible = TRUE;
     gSprites[spriteId].sCamera_FollowSpriteId = followSpriteId;
@@ -2508,8 +2699,25 @@ void TryOverrideTemplateCoordsForObjectEvent(const struct ObjectEvent *objectEve
 void TryOverrideObjectEventTemplateCoords(u8 localId, u8 mapNum, u8 mapGroup)
 {
     u8 objectEventId;
-    if (!TryGetObjectEventIdByLocalIdAndMap(localId, mapNum, mapGroup, &objectEventId))
-        OverrideTemplateCoordsForObjectEvent(&gObjectEvents[objectEventId]);
+    const struct ObjectEvent *objectEvent;
+    if (TryGetObjectEventIdByLocalIdAndMap(localId, mapNum, mapGroup, &objectEventId))
+        return;
+    objectEvent = &gObjectEvents[objectEventId];
+#ifdef PLATFORM_SDL2
+    if (mapNum != gSaveBlock1Ptr->location.mapNum || mapGroup != gSaveBlock1Ptr->location.mapGroup)
+    {
+        s16 originX = 0, originY = 0;
+        if (ProjectMapCoordsToCurrentMap(mapGroup, mapNum, &originX, &originY))
+        {
+            s32 x = (s32)objectEvent->currentCoords.x - MAP_OFFSET - originX;
+            s32 y = (s32)objectEvent->currentCoords.y - MAP_OFFSET - originY;
+            if (x >= -32768 && x <= 32767 && y >= -32768 && y <= 32767)
+                SetConnectedObjectTemplateCoords(mapGroup, mapNum, localId, x, y);
+        }
+        return;
+    }
+#endif
+    OverrideTemplateCoordsForObjectEvent(objectEvent);
 }
 
 void OverrideSecretBaseDecorationSpriteScript(u8 localId, u8 mapNum, u8 mapGroup, u8 decorationCategory)
@@ -4360,7 +4568,7 @@ void MovementType_TreeDisguise(struct Sprite *sprite)
     {
         ObjectEventGetLocalIdAndMap(objectEvent, &gFieldEffectArguments[0], &gFieldEffectArguments[1], &gFieldEffectArguments[2]);
         objectEvent->fieldEffectSpriteId = FieldEffectStart(FLDEFF_TREE_DISGUISE);
-        objectEvent->directionSequenceIndex = 1;
+        objectEvent->directionSequenceIndex = objectEvent->fieldEffectSpriteId == MAX_SPRITES ? 2 : 1;
         sprite->data[7]++;
     }
     UpdateObjectEventCurrentMovement(&gObjectEvents[sprite->sObjEventId], sprite, MovementType_Disguise_Callback);
@@ -4381,7 +4589,7 @@ void MovementType_MountainDisguise(struct Sprite *sprite)
     {
         ObjectEventGetLocalIdAndMap(objectEvent, &gFieldEffectArguments[0], &gFieldEffectArguments[1], &gFieldEffectArguments[2]);
         objectEvent->fieldEffectSpriteId = FieldEffectStart(FLDEFF_MOUNTAIN_DISGUISE);
-        objectEvent->directionSequenceIndex = 1;
+        objectEvent->directionSequenceIndex = objectEvent->fieldEffectSpriteId == MAX_SPRITES ? 2 : 1;
         sprite->data[7]++;
     }
     UpdateObjectEventCurrentMovement(&gObjectEvents[sprite->sObjEventId], sprite, MovementType_Disguise_Callback);
@@ -4660,28 +4868,28 @@ u8 GetCollisionAtCoords(struct ObjectEvent *objectEvent, s16 x, s16 y, u32 dir)
     u8 direction = dir;
     if (IsCoordOutsideObjectEventMovementRange(objectEvent, x, y))
         return COLLISION_OUTSIDE_RANGE;
-    else if (MapGridGetCollisionAt(x, y) || GetMapBorderIdAt(x, y) == CONNECTION_INVALID || IsMetatileDirectionallyImpassable(objectEvent, x, y, direction))
+    else if (MapGridGetCollisionAt(x, y) || GetMapBorderIdAt(x, y) == CONNECTION_INVALID || IsMetatileDirectionallyImpassable(objectEvent->currentMetatileBehavior, x, y, direction))
         return COLLISION_IMPASSABLE;
     else if (objectEvent->trackedByCamera && !CanCameraMoveInDirection(direction))
         return COLLISION_IMPASSABLE;
     else if (IsElevationMismatchAt(objectEvent->currentElevation, x, y))
         return COLLISION_ELEVATION_MISMATCH;
-    else if (DoesObjectCollideWithObjectAt(objectEvent, x, y))
+    else if (DoesObjectCollideWithObjectAt(objectEvent, x, y, objectEvent->currentElevation))
         return COLLISION_OBJECT_EVENT;
     return COLLISION_NONE;
 }
 
-u8 GetCollisionFlagsAtCoords(struct ObjectEvent *objectEvent, s16 x, s16 y, u8 direction)
+u8 GetCollisionFlagsAtCoords(struct ObjectEvent *objectEvent, s16 x, s16 y, u8 direction, u8 sourceBehavior, u8 elevation)
 {
     u8 flags = 0;
 
     if (IsCoordOutsideObjectEventMovementRange(objectEvent, x, y))
         flags |= 1 << (COLLISION_OUTSIDE_RANGE - 1);
-    if (MapGridGetCollisionAt(x, y) || GetMapBorderIdAt(x, y) == CONNECTION_INVALID || IsMetatileDirectionallyImpassable(objectEvent, x, y, direction) || (objectEvent->trackedByCamera && !CanCameraMoveInDirection(direction)))
+    if (MapGridGetCollisionAt(x, y) || GetMapBorderIdAt(x, y) == CONNECTION_INVALID || IsMetatileDirectionallyImpassable(sourceBehavior, x, y, direction) || (objectEvent->trackedByCamera && !CanCameraMoveInDirection(direction)))
         flags |= 1 << (COLLISION_IMPASSABLE - 1);
-    if (IsElevationMismatchAt(objectEvent->currentElevation, x, y))
+    if (IsElevationMismatchAt(elevation, x, y))
         flags |= 1 << (COLLISION_ELEVATION_MISMATCH - 1);
-    if (DoesObjectCollideWithObjectAt(objectEvent, x, y))
+    if (DoesObjectCollideWithObjectAt(objectEvent, x, y, elevation))
         flags |= 1 << (COLLISION_OBJECT_EVENT - 1);
     return flags;
 }
@@ -4712,16 +4920,16 @@ static bool8 IsCoordOutsideObjectEventMovementRange(struct ObjectEvent *objectEv
     return FALSE;
 }
 
-static bool8 IsMetatileDirectionallyImpassable(struct ObjectEvent *objectEvent, s16 x, s16 y, u8 direction)
+static bool8 IsMetatileDirectionallyImpassable(u8 sourceBehavior, s16 x, s16 y, u8 direction)
 {
-    if (gOppositeDirectionBlockedMetatileFuncs[direction - 1](objectEvent->currentMetatileBehavior)
+    if (gOppositeDirectionBlockedMetatileFuncs[direction - 1](sourceBehavior)
         || gDirectionBlockedMetatileFuncs[direction - 1](MapGridGetMetatileBehaviorAt(x, y)))
         return TRUE;
 
     return FALSE;
 }
 
-static bool8 DoesObjectCollideWithObjectAt(struct ObjectEvent *objectEvent, s16 x, s16 y)
+static bool8 DoesObjectCollideWithObjectAt(struct ObjectEvent *objectEvent, s16 x, s16 y, u8 elevation)
 {
     u8 i;
     struct ObjectEvent *curObject;
@@ -4733,7 +4941,7 @@ static bool8 DoesObjectCollideWithObjectAt(struct ObjectEvent *objectEvent, s16 
         {
             if ((curObject->currentCoords.x == x && curObject->currentCoords.y == y) || (curObject->previousCoords.x == x && curObject->previousCoords.y == y))
             {
-                if (AreElevationsCompatible(objectEvent->currentElevation, curObject->currentElevation))
+                if (AreElevationsCompatible(elevation, curObject->currentElevation))
                     return TRUE;
             }
         }
@@ -4792,8 +5000,8 @@ static void MoveCoordsInDirection(u32 dir, s16 *x, s16 *y, s16 deltaX, s16 delta
 
 void GetMapCoordsFromSpritePos(s16 x, s16 y, s16 *destX, s16 *destY)
 {
-    *destX = (x - gSaveBlock1Ptr->pos.x) << 4;
-    *destY = (y - gSaveBlock1Ptr->pos.y) << 4;
+    *destX = (x - gSaveBlock1Ptr->pos.x) * 16;
+    *destY = (y - gSaveBlock1Ptr->pos.y) * 16;
     *destX -= gTotalCameraPixelOffsetX;
     *destY -= gTotalCameraPixelOffsetY;
 }
@@ -7441,11 +7649,8 @@ static void GetGroundEffectFlags_Reflection(struct ObjectEvent *objEvent, u32 *f
 
     if (reflType)
     {
-        if (objEvent->hasReflection == 0)
-        {
-            objEvent->hasReflection++;
+        if (!objEvent->hasReflection)
             *flags |= reflectionFlags[reflType - 1];
-        }
     }
     else
     {

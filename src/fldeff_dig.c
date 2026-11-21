@@ -30,33 +30,40 @@ bool8 SetUpFieldMove_Dig(void)
 
 static void FieldCallback_Dig(void)
 {
-    Overworld_ResetStateAfterDigEscRope();
-    FieldEffectStart(FLDEFF_USE_DIG);
     gFieldEffectArguments[0] = GetCursorSelectionMonId();
+    FieldEffectStart(FLDEFF_USE_DIG);
 }
 
 bool8 FldEff_UseDig(void)
 {
     u8 taskId = CreateFieldMoveTask();
 
+    if (taskId == TASK_NONE)
+    {
+        FieldEffectActiveListRemove(FLDEFF_USE_DIG);
+        RestoreFieldControlsAfterFailedMove();
+        return FALSE;
+    }
+
     gTasks[taskId].ptr.funcPtr = StartDigFieldEffect;
-    if (!ShouldDoBrailleDigEffect())
-        SetPlayerAvatarTransitionFlags(PLAYER_AVATAR_FLAG_ON_FOOT);
     return FALSE;
 }
 
 static void StartDigFieldEffect(void)
 {
-    u8 taskId;
-
     FieldEffectActiveListRemove(FLDEFF_USE_DIG);
     if (ShouldDoBrailleDigEffect())
     {
+        Overworld_ResetStateAfterDigEscRope();
         DoBrailleDigEffect();
+    }
+    else if (StartEscapeRopeFieldEffect())
+    {
+        Overworld_ResetStateAfterDigEscRope();
+        SetPlayerAvatarTransitionFlags(PLAYER_AVATAR_FLAG_ON_FOOT);
     }
     else
     {
-        taskId = CreateTask(Task_UseDigEscapeRopeOnField, 8);
-        gTasks[taskId].data[0] = 0;
+        RestoreFieldControlsAfterFailedMove();
     }
 }

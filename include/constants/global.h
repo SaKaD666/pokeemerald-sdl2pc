@@ -43,7 +43,11 @@
 // capacities of various saveblock objects
 #define DAYCARE_MON_COUNT 2
 #define POKEBLOCKS_COUNT 40
+#ifdef PLATFORM_SDL2
+#define OBJECT_EVENTS_COUNT 64
+#else
 #define OBJECT_EVENTS_COUNT 16
+#endif
 #define MAIL_COUNT (10 + PARTY_SIZE)
 #ifndef VER_64BIT
 #define SECRET_BASES_COUNT 20

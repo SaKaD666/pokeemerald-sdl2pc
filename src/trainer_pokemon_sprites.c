@@ -158,6 +158,7 @@ static u16 CreatePicSprite(u16 species, u32 otId, u32 personality, bool8 isFront
     struct SpriteFrameImage *images;
     int j;
     u8 spriteId;
+    bool8 paletteWasLoaded;
 
     for (i = 0; i < PICS_COUNT; i ++)
     {
@@ -179,7 +180,8 @@ static u16 CreatePicSprite(u16 species, u32 otId, u32 personality, bool8 isFront
     }
     if (DecompressPic(species, personality, isFrontPic, framePics, isTrainer, ignoreDeoxys))
     {
-        // debug trap?
+        Free(images);
+        Free(framePics);
         return 0xFFFF;
     }
     for (j = 0; j < MAX_PIC_FRAMES; j ++)
@@ -193,8 +195,24 @@ static u16 CreatePicSprite(u16 species, u32 otId, u32 personality, bool8 isFront
     sCreatingSpriteTemplate.images = images;
     sCreatingSpriteTemplate.affineAnims = gDummySpriteAffineAnimTable;
     sCreatingSpriteTemplate.callback = DummyPicSpriteCallback;
+    paletteWasLoaded = paletteTag != TAG_NONE && IndexOfSpritePaletteTag(paletteTag) != 0xFF;
     LoadPicPaletteByTagOrSlot(species, otId, personality, paletteSlot, paletteTag, isTrainer);
+    if (paletteTag != TAG_NONE && IndexOfSpritePaletteTag(paletteTag) == 0xFF)
+    {
+        Free(images);
+        Free(framePics);
+        return 0xFFFF;
+    }
+
     spriteId = CreateSprite(&sCreatingSpriteTemplate, x, y, 0);
+    if (spriteId == MAX_SPRITES)
+    {
+        if (paletteTag != TAG_NONE && !paletteWasLoaded)
+            FreeSpritePaletteByTag(paletteTag);
+        Free(images);
+        Free(framePics);
+        return MAX_SPRITES;
+    }
     if (paletteTag == TAG_NONE)
         gSprites[spriteId].oam.paletteNum = paletteSlot;
     sSpritePics[i].frames = framePics;

@@ -1,6 +1,7 @@
 #ifndef GUARD_BATTLE_PYRAMID_BAG_H
 #define GUARD_BATTLE_PYRAMID_BAG_H
 
+#include "item_menu.h"
 #include "list_menu.h"
 #include "main.h"
 #include "task.h"
@@ -32,7 +33,7 @@ enum {
 struct PyramidBagMenu
 {
     MainCallback newScreenCallback;
-    u8 tilemapBuffer[BG_SCREEN_SIZE];
+    u8 ALIGNED(4) tilemapBuffer[BAG_TILEMAP_SIZE];
     u8 spriteIds[PBAG_SPRITE_COUNT];
     u8 windowIds[5];
     u8 toSwapPos;

@@ -10,6 +10,7 @@
 #include "link.h"
 #include "link_rfu.h"
 #include "m4a.h"
+#include "menu.h"
 #include "palette.h"
 #include "minigame_countdown.h"
 #include "random.h"
@@ -21,6 +22,9 @@
 #include "task.h"
 #include "text_window.h"
 #include "window.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 #include "constants/items.h"
 #include "constants/songs.h"
 
@@ -1307,6 +1311,28 @@ static void EndLink(void)
     }
 }
 
+static void CB2_ExitDodrioGame(void)
+{
+    MainCallback exitCallback = sGame->exitCallback;
+
+    SetVBlankCallback(NULL);
+#ifdef PORTABLE
+    IsDma3ManagerBusyWithBgCopy();
+    ClearScheduledBgCopiesToVram();
+#endif
+    FreeAllWindowBuffers();
+    UnsetBgTilemapBuffer(BG_SCENERY);
+    UnsetBgTilemapBuffer(BG_TREE_LEFT);
+    UnsetBgTilemapBuffer(BG_TREE_RIGHT);
+    DestroyTask(sGame->taskId);
+    sGfx = NULL;
+    FREE_AND_SET_NULL(sGame);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
+    SetMainCallback2(exitCallback);
+}
+
 static void ExitGame(void)
 {
     switch (sGame->state)
@@ -1331,12 +1357,7 @@ static void ExitGame(void)
         break;
     default:
         if (!IsGfxFuncActive())
-        {
-            SetMainCallback2(sGame->exitCallback);
-            DestroyTask(sGame->taskId);
-            Free(sGame);
-            FreeAllWindowBuffers();
-        }
+            SetMainCallback2(CB2_ExitDodrioGame);
         break;
     }
 }
@@ -4542,7 +4563,7 @@ static const u8 *const sRankingTexts[MAX_RFU_PLAYERS] =
 };
 
 static const u16 sResultsXCoords[] = {92, 132, 172, 212};
-static const u16 sResultsYCoords[] = {33, 49, 65, 81, 97};
+static const u16 sResultsYCoords[] = {32, 48, 64, 80, 96};
 static const u16 sRankingYCoords[] = {17, 33, 49, 65, 81};
 
 struct
@@ -5169,6 +5190,9 @@ static u8 GetPlayAgainState(void)
 
 static void InitBgs(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
     DmaClear32(3,(void *)OAM, OAM_SIZE);
     DmaClear16(3, (void *)PLTT, PLTT_SIZE);

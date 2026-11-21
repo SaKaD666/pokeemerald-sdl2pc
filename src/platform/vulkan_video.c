@@ -608,15 +608,70 @@ static void GetAspectFitRect(VkExtent2D extent, VkOffset3D *topLeft, VkOffset3D 
 {
     uint32_t width = extent.width;
     uint32_t height = extent.height;
-    if ((uint64_t)width * DISPLAY_HEIGHT > (uint64_t)height * DISPLAY_WIDTH)
+    uint32_t scaleX = width / DISPLAY_WIDTH;
+    uint32_t scaleY = height / DISPLAY_HEIGHT;
+    uint32_t scale = scaleX < scaleY ? scaleX : scaleY;
+
+    if (scale != 0)
+    {
+        width = DISPLAY_WIDTH * scale;
+        height = DISPLAY_HEIGHT * scale;
+    }
+    else if ((uint64_t)width * DISPLAY_HEIGHT > (uint64_t)height * DISPLAY_WIDTH)
+    {
         width = (uint32_t)((uint64_t)height * DISPLAY_WIDTH / DISPLAY_HEIGHT);
+    }
     else
+    {
         height = (uint32_t)((uint64_t)width * DISPLAY_HEIGHT / DISPLAY_WIDTH);
+    }
+
+    if (width == 0)
+        width = 1;
+    if (height == 0)
+        height = 1;
 
     uint32_t x = (extent.width - width) / 2;
     uint32_t y = (extent.height - height) / 2;
     *topLeft = (VkOffset3D){ (int32_t)x, (int32_t)y, 0 };
     *bottomRight = (VkOffset3D){ (int32_t)(x + width), (int32_t)(y + height), 1 };
+}
+
+static void RecordFrameBlit(VkImage destination)
+{
+    VkOffset3D destinationOffsets[2];
+    GetAspectFitRect(sVulkan.swapchainExtent, &destinationOffsets[0], &destinationOffsets[1]);
+    if (destinationOffsets[0].x != 0 || destinationOffsets[0].y != 0
+        || (uint32_t)destinationOffsets[1].x != sVulkan.swapchainExtent.width
+        || (uint32_t)destinationOffsets[1].y != sVulkan.swapchainExtent.height)
+    {
+        VkClearColorValue background = { .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } };
+        VkImageSubresourceRange colorRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        vkCmdClearColorImage(sVulkan.commandBuffer, destination,
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &background, 1, &colorRange);
+
+        VkMemoryBarrier clearToBlit = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        };
+        vkCmdPipelineBarrier(sVulkan.commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &clearToBlit, 0, NULL, 0, NULL);
+    }
+
+    VkOffset3D sourceOffsets[2] = {
+        { 0, 0, 0 },
+        { DISPLAY_WIDTH, DISPLAY_HEIGHT, 1 },
+    };
+    VkImageBlit blit = {
+        .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        .srcOffsets = { sourceOffsets[0], sourceOffsets[1] },
+        .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        .dstOffsets = { destinationOffsets[0], destinationOffsets[1] },
+    };
+    vkCmdBlitImage(sVulkan.commandBuffer, sVulkan.frameImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1, &blit, VK_FILTER_NEAREST);
 }
 
 bool PlatformVulkan_RenderFrame(const uint16_t *pixels)
@@ -720,26 +775,7 @@ bool PlatformVulkan_RenderFrame(const uint16_t *pixels)
     vkCmdPipelineBarrier(sVulkan.commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &swapToBlit);
 
-    VkClearColorValue background = { .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } };
-    VkImageSubresourceRange colorRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-    vkCmdClearColorImage(sVulkan.commandBuffer, sVulkan.swapchainImages[imageIndex],
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &background, 1, &colorRange);
-
-    VkOffset3D sourceOffsets[2] = {
-        { 0, 0, 0 },
-        { DISPLAY_WIDTH, DISPLAY_HEIGHT, 1 },
-    };
-    VkOffset3D destinationOffsets[2];
-    GetAspectFitRect(sVulkan.swapchainExtent, &destinationOffsets[0], &destinationOffsets[1]);
-    VkImageBlit blit = {
-        .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-        .srcOffsets = { sourceOffsets[0], sourceOffsets[1] },
-        .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-        .dstOffsets = { destinationOffsets[0], destinationOffsets[1] },
-    };
-    vkCmdBlitImage(sVulkan.commandBuffer, sVulkan.frameImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   sVulkan.swapchainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                   1, &blit, VK_FILTER_NEAREST);
+    RecordFrameBlit(sVulkan.swapchainImages[imageIndex]);
 
     VkImageMemoryBarrier swapToPresent = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,

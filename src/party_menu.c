@@ -12,8 +12,10 @@
 #include "contest.h"
 #include "data.h"
 #include "decompress.h"
+#include "dma3.h"
 #include "easy_chat.h"
 #include "event_data.h"
+#include "event_object_lock.h"
 #include "evolution_scene.h"
 #include "field_control_avatar.h"
 #include "field_effect.h"
@@ -709,19 +711,40 @@ static void ResetPartyMenu(void)
     sPartyBgGfxTilemap = NULL;
 }
 
+#define PARTY_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
+#define PARTY_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
+#define PARTY_VIEW_BG_X (-PARTY_VIEW_X * 256)
+#define PARTY_VIEW_BG_Y (-PARTY_VIEW_Y * 256)
+
 static bool8 AllocPartyMenuBg(void)
 {
-    sPartyBgTilemapBuffer = Alloc(0x800);
+    u8 bg;
+    u16 display = DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP;
+
+    ResetBgsAndClearDma3BusyFlags(0);
+    InitBgsFromTemplates(0, sPartyMenuBgTemplates, ARRAY_COUNT(sPartyMenuBgTemplates));
+    sPartyBgTilemapBuffer = AllocZeroed(GetBgAttribute(1, BG_ATTR_METRIC));
     if (sPartyBgTilemapBuffer == NULL)
         return FALSE;
 
-    memset(sPartyBgTilemapBuffer, 0, 0x800);
-    ResetBgsAndClearDma3BusyFlags(0);
-    InitBgsFromTemplates(0, sPartyMenuBgTemplates, ARRAY_COUNT(sPartyMenuBgTemplates));
     SetBgTilemapBuffer(1, sPartyBgTilemapBuffer);
     ResetAllBgsCoordinates();
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, PARTY_VIEW_X, PARTY_VIEW_X + GBA_DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(PARTY_VIEW_Y, PARTY_VIEW_Y + GBA_DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
+    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    display |= DISPCNT_WIN0_ON;
+#endif
+    for (bg = 0; bg <= 2; bg++)
+    {
+        ChangeBgX(bg, PARTY_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgY(bg, PARTY_VIEW_BG_Y, BG_COORD_SET);
+    }
+    gSpriteCoordOffsetX = PARTY_VIEW_X;
+    gSpriteCoordOffsetY = PARTY_VIEW_Y;
     ScheduleBgCopyTilemapToVram(1);
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
+    SetGpuReg(REG_OFFSET_DISPCNT, display);
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
     ShowBg(0);
     ShowBg(1);
@@ -787,14 +810,24 @@ static void PartyPaletteBufferCopy(u8 palNum)
 
 static void FreePartyPointers(void)
 {
-    if (sPartyMenuInternal)
-        Free(sPartyMenuInternal);
-    if (sPartyBgTilemapBuffer)
-        Free(sPartyBgTilemapBuffer);
-    if (sPartyBgGfxTilemap)
-        Free(sPartyBgGfxTilemap);
-    if (sPartyMenuBoxes)
-        Free(sPartyMenuBoxes);
+    if (sPartyBgTilemapBuffer != NULL)
+    {
+        ClearScheduledBgCopiesToVram();
+        ClearDma3Requests();
+        ResetAllBgsCoordinates();
+#ifdef PLATFORM_SDL2
+        ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
+#endif
+        SetBgTilemapBuffer(0, NULL);
+        SetBgTilemapBuffer(1, NULL);
+        SetBgTilemapBuffer(2, NULL);
+        FREE_AND_SET_NULL(sPartyBgTilemapBuffer);
+    }
+    gSpriteCoordOffsetX = 0;
+    gSpriteCoordOffsetY = 0;
+    TRY_FREE_AND_SET_NULL(sPartyMenuInternal);
+    TRY_FREE_AND_SET_NULL(sPartyBgGfxTilemap);
+    TRY_FREE_AND_SET_NULL(sPartyMenuBoxes);
     FreeAllWindowBuffers();
 }
 
@@ -3859,10 +3892,19 @@ static void DisplayCantUseFlashMessage(void)
         DisplayPartyMenuStdMessage(PARTY_MSG_CANT_USE_HERE);
 }
 
-static void FieldCallback_Surf(void)
+static void StartWaterFieldMoveFromMenu(u8 effectId)
 {
     gFieldEffectArguments[0] = GetCursorSelectionMonId();
-    FieldEffectStart(FLDEFF_USE_SURF);
+    if (FieldEffectStart(effectId))
+    {
+        ScriptUnfreezeObjectEvents();
+        UnlockPlayerFieldControls();
+    }
+}
+
+static void FieldCallback_Surf(void)
+{
+    StartWaterFieldMoveFromMenu(FLDEFF_USE_SURF);
 }
 
 static bool8 SetUpFieldMove_Surf(void)
@@ -3899,8 +3941,7 @@ void CB2_ReturnToPartyMenuFromFlyMap(void)
 
 static void FieldCallback_Waterfall(void)
 {
-    gFieldEffectArguments[0] = GetCursorSelectionMonId();
-    FieldEffectStart(FLDEFF_USE_WATERFALL);
+    StartWaterFieldMoveFromMenu(FLDEFF_USE_WATERFALL);
 }
 
 static bool8 SetUpFieldMove_Waterfall(void)
@@ -3919,8 +3960,7 @@ static bool8 SetUpFieldMove_Waterfall(void)
 
 static void FieldCallback_Dive(void)
 {
-    gFieldEffectArguments[0] = GetCursorSelectionMonId();
-    FieldEffectStart(FLDEFF_USE_DIVE);
+    StartWaterFieldMoveFromMenu(FLDEFF_USE_DIVE);
 }
 
 static bool8 SetUpFieldMove_Dive(void)
@@ -3949,11 +3989,18 @@ static void CreatePartyMonIconSprite(struct Pokemon *mon, struct PartyMenuBox *m
     UpdatePartyMonHPBar(menuBox->monSpriteId, mon);
 }
 
+static u8 UsePartySpriteOffset(u8 spriteId)
+{
+    if (spriteId < MAX_SPRITES)
+        gSprites[spriteId].coordOffsetEnabled = TRUE;
+    return spriteId;
+}
+
 static void CreatePartyMonIconSpriteParameterized(u16 species, u32 pid, struct PartyMenuBox *menuBox, u8 priority, bool32 handleDeoxys)
 {
     if (species != SPECIES_NONE)
     {
-        menuBox->monSpriteId = CreateMonIcon(species, SpriteCB_MonIcon, menuBox->spriteCoords[0], menuBox->spriteCoords[1], 4, pid, handleDeoxys);
+        menuBox->monSpriteId = UsePartySpriteOffset(CreateMonIcon(species, SpriteCB_MonIcon, menuBox->spriteCoords[0], menuBox->spriteCoords[1], 4, pid, handleDeoxys));
         gSprites[menuBox->monSpriteId].oam.priority = priority;
     }
 }
@@ -4032,7 +4079,7 @@ static void CreatePartyMonHeldItemSprite(struct Pokemon *mon, struct PartyMenuBo
 {
     if (GetMonData(mon, MON_DATA_SPECIES) != SPECIES_NONE)
     {
-        menuBox->itemSpriteId = CreateSprite(&sSpriteTemplate_HeldItem, menuBox->spriteCoords[2], menuBox->spriteCoords[3], 0);
+        menuBox->itemSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_HeldItem, menuBox->spriteCoords[2], menuBox->spriteCoords[3], 0));
         UpdatePartyMonHeldItemSprite(mon, menuBox);
     }
 }
@@ -4041,7 +4088,7 @@ static void CreatePartyMonHeldItemSpriteParameterized(u16 species, u16 item, str
 {
     if (species != SPECIES_NONE)
     {
-        menuBox->itemSpriteId = CreateSprite(&sSpriteTemplate_HeldItem, menuBox->spriteCoords[2], menuBox->spriteCoords[3], 0);
+        menuBox->itemSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_HeldItem, menuBox->spriteCoords[2], menuBox->spriteCoords[3], 0));
         gSprites[menuBox->itemSpriteId].oam.priority = 0;
         ShowOrHideHeldItemSprite(item, menuBox);
     }
@@ -4132,14 +4179,14 @@ static void SpriteCB_HeldItem(struct Sprite *sprite)
 static void CreatePartyMonPokeballSprite(struct Pokemon *mon, struct PartyMenuBox *menuBox)
 {
     if (GetMonData(mon, MON_DATA_SPECIES) != SPECIES_NONE)
-        menuBox->pokeballSpriteId = CreateSprite(&sSpriteTemplate_MenuPokeball, menuBox->spriteCoords[6], menuBox->spriteCoords[7], 8);
+        menuBox->pokeballSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeball, menuBox->spriteCoords[6], menuBox->spriteCoords[7], 8));
 }
 
 static void CreatePartyMonPokeballSpriteParameterized(u16 species, struct PartyMenuBox *menuBox)
 {
     if (species != SPECIES_NONE)
     {
-        menuBox->pokeballSpriteId = CreateSprite(&sSpriteTemplate_MenuPokeball, menuBox->spriteCoords[6], menuBox->spriteCoords[7], 8);
+        menuBox->pokeballSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeball, menuBox->spriteCoords[6], menuBox->spriteCoords[7], 8));
         gSprites[menuBox->pokeballSpriteId].oam.priority = 0;
     }
 }
@@ -4147,7 +4194,7 @@ static void CreatePartyMonPokeballSpriteParameterized(u16 species, struct PartyM
 // For Cancel when Confirm isnt present
 static u8 CreatePokeballButtonSprite(u8 x, u8 y)
 {
-    u8 spriteId = CreateSprite(&sSpriteTemplate_MenuPokeball, x, y, 8);
+    u8 spriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeball, x, y, 8));
 
     gSprites[spriteId].oam.priority = 2;
     return spriteId;
@@ -4156,7 +4203,7 @@ static u8 CreatePokeballButtonSprite(u8 x, u8 y)
 // For Confirm and Cancel when both are present
 static u8 CreateSmallPokeballButtonSprite(u8 x, u8 y)
 {
-    return CreateSprite(&sSpriteTemplate_MenuPokeballSmall, x, y, 8);
+    return UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeballSmall, x, y, 8));
 }
 
 static void PartyMenuStartSpriteAnim(u8 spriteId, u8 animNum)
@@ -4195,7 +4242,7 @@ static void CreatePartyMonStatusSprite(struct Pokemon *mon, struct PartyMenuBox 
 {
     if (GetMonData(mon, MON_DATA_SPECIES) != SPECIES_NONE)
     {
-        menuBox->statusSpriteId = CreateSprite(&sSpriteTemplate_StatusIcons, menuBox->spriteCoords[4], menuBox->spriteCoords[5], 0);
+        menuBox->statusSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_StatusIcons, menuBox->spriteCoords[4], menuBox->spriteCoords[5], 0));
         SetPartyMonAilmentGfx(mon, menuBox);
     }
 }
@@ -4204,7 +4251,7 @@ static void CreatePartyMonStatusSpriteParameterized(u16 species, u8 status, stru
 {
     if (species != SPECIES_NONE)
     {
-        menuBox->statusSpriteId = CreateSprite(&sSpriteTemplate_StatusIcons, menuBox->spriteCoords[4], menuBox->spriteCoords[5], 0);
+        menuBox->statusSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_StatusIcons, menuBox->spriteCoords[4], menuBox->spriteCoords[5], 0));
         UpdatePartyMonAilmentGfx(status, menuBox);
         gSprites[menuBox->statusSpriteId].oam.priority = 0;
     }
@@ -6143,7 +6190,7 @@ static void Task_InitMultiPartnerPartySlideIn(u8 taskId)
     // The first slide step also sets the sprites offscreen
     gTasks[taskId].tXPos = 256;
     SlideMultiPartyMenuBoxSpritesOneStep(taskId);
-    ChangeBgX(2, 0x10000, BG_COORD_SET);
+    ChangeBgX(2, PARTY_VIEW_BG_X + 0x10000, BG_COORD_SET);
     gTasks[taskId].func = Task_MultiPartnerPartySlideIn;
 }
 

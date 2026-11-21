@@ -257,6 +257,8 @@ bool8 Rfu_IsMaster(void);
 void Rfu_SetCloseLinkCallback(void);
 void Rfu_SetLinkStandbyCallback(void);
 void ResetLinkRfuGFLayer(void);
+#define WIRELESS_STATUS_OAM_INDEX 125
+bool8 IsWirelessStatusIndicatorActive(void);
 void UpdateWirelessStatusIndicatorSprite(void);
 void InitRFU(void);
 bool32 RfuMain1(void);
@@ -325,7 +327,7 @@ bool8 RfuSendQueue_Dequeue(struct RfuSendQueue *queue, u8 *src);
 void RfuBackupQueue_Enqueue(struct RfuBackupQueue *queue, const u8 *data);
 bool8 RfuBackupQueue_Dequeue(struct RfuBackupQueue *queue, u8 *src);
 void InitHostRfuGameData(struct RfuGameData *data, u8 activity, bool32 startedActivity, s32 partnerInfo);
-void CreateWirelessStatusIndicatorSprite(u8 x, u8 y);
+void CreateWirelessStatusIndicatorSprite(s16 x, s16 y);
 void DestroyWirelessStatusIndicatorSprite(void);
 void LoadWirelessStatusIndicatorSpriteGfx(void);
 

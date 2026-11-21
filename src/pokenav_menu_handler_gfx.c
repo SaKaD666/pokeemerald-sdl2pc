@@ -33,7 +33,7 @@
 
 #define OPTION_DEFAULT_X   140
 #define OPTION_SELECTED_X  130
-#define OPTION_EXIT_X      (DISPLAY_WIDTH + 16)
+#define OPTION_EXIT_X      (GBA_DISPLAY_WIDTH + 16)
 
 struct Pokenav_MenuGfx
 {
@@ -1319,9 +1319,9 @@ static void SetupPokenavMenuScanlineEffects(void)
     // BUGFIX: Use full register write instead of |=.
     // SetGpuRegBits left leftover window values from the Party screen,
     // causing partial/missing glow highlights. SetGpuReg clears them fully.
-    SetGpuReg(REG_OFFSET_WIN0V, DISPLAY_HEIGHT);
+    SetGpuReg(REG_OFFSET_WIN0V, GBA_DISPLAY_HEIGHT);
 #else
-    SetGpuRegBits(REG_OFFSET_WIN0V, DISPLAY_HEIGHT);
+    SetGpuRegBits(REG_OFFSET_WIN0V, GBA_DISPLAY_HEIGHT);
 #endif
     ScanlineEffect_Stop();
     SetMenuOptionGlow();
@@ -1368,10 +1368,10 @@ static void SetMenuOptionGlow(void)
     int menuType = GetPokenavMenuType();
     int cursorPos = GetPokenavCursorPos();
     int r4 = sPokenavMenuOptionLabelGfx[menuType].deltaY * cursorPos + sPokenavMenuOptionLabelGfx[menuType].yStart - 8;
-    CpuFill16(0, gScanlineEffectRegBuffers[0], DISPLAY_HEIGHT * 2);
-    CpuFill16(0, gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
-    CpuFill16(RGB(16, 23, 28), &gScanlineEffectRegBuffers[0][r4], 0x20);
-    CpuFill16(RGB(16, 23, 28), &gScanlineEffectRegBuffers[1][r4], 0x20);
+    CpuFill16(0, gScanlineEffectRegBuffers[0], (DISPLAY_HEIGHT + 2) * sizeof(u16));
+    CpuFill16(0, gScanlineEffectRegBuffers[1], (DISPLAY_HEIGHT + 2) * sizeof(u16));
+    CpuFill16(WIN_RANGE(114, GBA_DISPLAY_WIDTH), &gScanlineEffectRegBuffers[0][r4], 0x20);
+    CpuFill16(WIN_RANGE(114, GBA_DISPLAY_WIDTH), &gScanlineEffectRegBuffers[1][r4], 0x20);
 }
 
 void ResetBldCnt_(void)

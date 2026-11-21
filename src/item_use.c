@@ -186,8 +186,8 @@ u8 CheckIfItemIsTMHMOrEvolutionStone(u16 itemId)
 // Mail in the bag menu can't have a message but it can be checked (view the mail background, no message)
 static void CB2_CheckMail(void)
 {
-    struct Mail mail;
-    mail.itemId = gSpecialVar_ItemId;
+    struct Mail mail = { .itemId = gSpecialVar_ItemId };
+
     ReadMail(&mail, CB2_ReturnToBagMenuPocket, FALSE);
 }
 
@@ -893,19 +893,27 @@ void ItemUseOutOfBattle_BlackWhiteFlute(u8 taskId)
     gTasks[taskId].func = Task_UsedBlackWhiteFlute;
 }
 
-void Task_UseDigEscapeRopeOnField(u8 taskId)
+static void Task_UseEscapeRopeOnField(u8 taskId)
 {
-    ResetInitialPlayerAvatarState();
-    StartEscapeRopeFieldEffect();
+    if (StartEscapeRopeFieldEffect())
+    {
+        Overworld_ResetStateAfterDigEscRope();
+        RemoveUsedItem();
+    }
+    else
+    {
+        ScriptUnfreezeObjectEvents();
+        UnlockPlayerFieldControls();
+    }
     DestroyTask(taskId);
 }
 
 static void ItemUseOnFieldCB_EscapeRope(u8 taskId)
 {
-    Overworld_ResetStateAfterDigEscRope();
-    RemoveUsedItem();
+    CopyItemName(gSpecialVar_ItemId, gStringVar2);
+    StringExpandPlaceholders(gStringVar4, gText_PlayerUsedVar2);
     gTasks[taskId].data[0] = 0;
-    DisplayItemMessageOnField(taskId, gStringVar4, Task_UseDigEscapeRopeOnField);
+    DisplayItemMessageOnField(taskId, gStringVar4, Task_UseEscapeRopeOnField);
 }
 
 bool8 CanUseDigOrEscapeRopeOnCurMap(void)

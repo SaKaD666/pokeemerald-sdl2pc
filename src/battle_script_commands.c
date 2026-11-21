@@ -1,5 +1,6 @@
 #include "global.h"
 #include "battle.h"
+#include "battle_bg.h"
 #include "battle_message.h"
 #include "battle_anim.h"
 #include "battle_ai_script_commands.h"
@@ -10152,7 +10153,12 @@ static void Cmd_displaydexinfo(void)
     case 3:
         InitBattleBgsVideo();
         LoadBattleTextboxAndBackground();
+#ifdef PLATFORM_SDL2
+        DrawCaughtMonBattleBackground();
+        gBattle_BG3_X = 0;
+#else
         gBattle_BG3_X = 256;
+#endif
         gBattleCommunication[0]++;
         break;
     case 4:

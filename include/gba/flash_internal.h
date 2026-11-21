@@ -4,7 +4,9 @@
 #ifndef PORTABLE
 #define FLASH_BASE ((u8 *)0xE000000)
 #else
-extern unsigned char FLASH_BASE[131072];
+#define PORTABLE_FLASH_SECTOR_COUNT 34
+#define PORTABLE_FLASH_SIZE (PORTABLE_FLASH_SECTOR_COUNT * 0x1000)
+extern unsigned char FLASH_BASE[PORTABLE_FLASH_SIZE];
 #endif
 
 #define FLASH_WRITE(addr, data) ((*(vu8 *)(FLASH_BASE + (addr))) = (data))

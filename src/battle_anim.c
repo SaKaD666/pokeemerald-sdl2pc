@@ -1,6 +1,7 @@
 #include "global.h"
 #include "battle.h"
 #include "battle_anim.h"
+#include "battle_bg.h"
 #include "battle_controllers.h"
 #include "battle_interface.h"
 #include "bg.h"
@@ -1192,6 +1193,13 @@ static void LoadMoveBg(u16 bgId)
 
         LZDecompressWram(tilemap, gDecompressionBuffer);
         RelocateBattleBgPal(GetBattleBgPaletteNum(), (void *)gDecompressionBuffer, 0x100, FALSE);
+#ifdef PLATFORM_SDL2
+        // Some move maps contain only 20 rows. Clear the rest of the audience block.
+        const u32 tilemapSize = *tilemap >> 8;
+
+        if (tilemapSize < BG_SCREEN_SIZE)
+            memset((u8 *)gDecompressionBuffer + tilemapSize, 0, BG_SCREEN_SIZE - tilemapSize);
+#endif
         dmaSrc = gDecompressionBuffer;
         dmaDest = (void *)BG_SCREEN_ADDR(26);
         DmaCopy32(3, dmaSrc, dmaDest, 0x800);
@@ -1200,7 +1208,19 @@ static void LoadMoveBg(u16 bgId)
     }
     else
     {
-        LZDecompressVram(gBattleAnimBackgroundTable[bgId].tilemap, (void *)BG_SCREEN_ADDR(26));
+        const u32 *tilemap = gBattleAnimBackgroundTable[bgId].tilemap;
+        void *destination = (void *)BG_SCREEN_ADDR(BATTLE_TERRAIN_MAP_BASE);
+#ifdef PLATFORM_SDL2
+        u32 size = *tilemap >> 8;
+
+        // Short maps leave the lower rows and the second horizontal block unwritten.
+        CpuFill32(0, destination, 2 * BG_SCREEN_SIZE);
+#endif
+        LZDecompressVram(tilemap, destination);
+#ifdef PLATFORM_SDL2
+        if (size <= BG_SCREEN_SIZE)
+            CpuCopy16(destination, (void *)BG_SCREEN_ADDR(BATTLE_TERRAIN_MAP_BASE + 1), BG_SCREEN_SIZE);
+#endif
         LZDecompressVram(gBattleAnimBackgroundTable[bgId].image, (void *)BG_CHAR_ADDR(2));
         LoadCompressedPalette(gBattleAnimBackgroundTable[bgId].palette, BG_PLTT_ID(2), PLTT_SIZE_4BPP);
     }

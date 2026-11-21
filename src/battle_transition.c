@@ -27,7 +27,7 @@
 
 #define PALTAG_UNUSED_MUGSHOT 0x100A
 
-#define B_TRANS_DMA_FLAGS (1 | ((DMA_SRC_INC | DMA_DEST_FIXED | DMA_REPEAT | DMA_16BIT | DMA_START_HBLANK | DMA_ENABLE) << 16))
+#define B_TRANS_DMA_FLAGS (1 | ((u32)(DMA_SRC_INC | DMA_DEST_FIXED | DMA_REPEAT | DMA_16BIT | DMA_START_HBLANK | DMA_ENABLE) << 16))
 
 // Used by each transition task to determine which of its functions to call
 #define tState          data[0]
@@ -46,10 +46,24 @@
 #define tWipeYDist  data[9]
 #define tWipeTemp   data[10]
 
-#define SET_TILE(ptr, posY, posX, tile) \
-{                                       \
-    u32 index = (posY) * 32 + posX;     \
-    ptr[index] = tile | (0xF0 << 8);    \
+static void SetTransitionTile(u16 *tilemap, s16 y, s16 x, u16 tile)
+{
+#ifdef PLATFORM_SDL2
+    if ((u16)y >= 32 || (u16)x >= (IsWideFieldUi() ? 64 : 32))
+        return;
+    tilemap[(x / 32) * 1024 + y * 32 + x % 32] = tile | 0xF000;
+#else
+    tilemap[y * 32 + x] = tile | 0xF000;
+#endif
+}
+
+static u16 GetTransitionBg0MapBytes(void)
+{
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        return 2 * BG_SCREEN_SIZE;
+#endif
+    return BG_SCREEN_SIZE;
 }
 
 struct TransitionData
@@ -143,6 +157,7 @@ static void VBlankCB_FrontierLogoWave(void);
 static void HBlankCB_FrontierLogoWave(void);
 static void VBlankCB_Wave(void);
 static void VBlankCB_Slice(void);
+static void VBlankCB_ShredSplit(void);
 static void HBlankCB_Slice(void);
 static void VBlankCB_WhiteBarsFade(void);
 static void VBlankCB_WhiteBarsFade_Blend(void);
@@ -267,7 +282,8 @@ static void HBlankCB_Mugshots(void);
 static void InitTransitionData(void);
 static void FadeScreenBlack(void);
 static void CreateIntroTask(s16, s16, s16, s16, s16);
-static void SetCircularMask(u16 *, s16, s16, s16);
+static void SetCircularMask(s16, s16, s16);
+static s16 GetCircularTransitionRadius(void);
 static void SetSinWave(s16 *, s16, s16, s16, s16, s16);
 static void GetBg0TilemapDst(u16 **);
 static void InitBlackWipe(s16 *, s16, s16, s16, s16, s16, s16);
@@ -294,6 +310,70 @@ static u8 sTestingTransitionState;
 static struct RectangularSpiralLine sRectangularSpiralLines[4];
 
 EWRAM_DATA static struct TransitionData *sTransitionData = NULL;
+
+#ifdef PLATFORM_SDL2
+typedef u32 TransitionWindowScanline;
+static TransitionWindowScanline sTransitionWindowBuffers[2][DISPLAY_HEIGHT + 2];
+static bool8 sTransitionWindowActive;
+#else
+typedef u16 TransitionWindowScanline;
+#endif
+
+static TransitionWindowScanline *GetTransitionWindowBuffer(u8 buffer)
+{
+#ifdef PLATFORM_SDL2
+    return sTransitionWindowBuffers[buffer];
+#else
+    return gScanlineEffectRegBuffers[buffer];
+#endif
+}
+
+#ifdef PLATFORM_SDL2
+#define TRANSITION_WINDOW_SHIFT 16
+#else
+#define TRANSITION_WINDOW_SHIFT 8
+#endif
+
+static TransitionWindowScanline PackTransitionWindow(u16 left, u16 right)
+{
+#ifdef PLATFORM_SDL2
+    return GPU_WINDOW_H_RANGE(left, right);
+#else
+    return WIN_RANGE(left, right);
+#endif
+}
+
+#ifdef PLATFORM_SDL2
+static void StartTransitionWindowDma(void)
+{
+    vu32 *dest = GetGpuWindowHorizontalDmaDest(GPU_WINDOW_0);
+
+    if (sTransitionData->VBlank_DMA)
+        DmaCopy32(3, sTransitionWindowBuffers[0], sTransitionWindowBuffers[1], sizeof(sTransitionWindowBuffers[0]));
+    *dest = sTransitionWindowBuffers[1][0];
+    DmaSet(0, sTransitionWindowBuffers[1] + 1, dest, B_TRANS_DMA_FLAGS | ((u32)DMA_32BIT << 16));
+    sTransitionWindowActive = TRUE;
+}
+#endif
+
+static TransitionWindowScanline *GetMixedTransitionWindowBuffer(u8 buffer)
+{
+#ifdef PLATFORM_SDL2
+    return GetTransitionWindowBuffer(buffer);
+#else
+    return gScanlineEffectRegBuffers[buffer] + DISPLAY_HEIGHT;
+#endif
+}
+
+static void ClearCircularMaskDisplayedBuffer(void)
+{
+#ifdef PLATFORM_SDL2
+    memset(sTransitionWindowBuffers[1], 0, sizeof(sTransitionWindowBuffers[1]));
+#else
+    memset(gScanlineEffectRegBuffers[1], 0, DISPLAY_HEIGHT * sizeof(u16));
+#endif
+}
+
 
 static const u32 sBigPokeball_Tileset[] = INCGFX_U32("graphics/battle_transitions/big_pokeball.png", ".4bpp");
 static const u32 sPokeballTrail_Tileset[] = INCGFX_U32("graphics/battle_transitions/pokeball_trail.png", ".4bpp");
@@ -960,9 +1040,11 @@ static const TransitionStateFunc sFrontierSquaresScroll_Funcs[] =
 };
 
 #define SQUARE_SIZE 4
+#define SCROLL_SQUARES_PER_AXIS (32 / SQUARE_SIZE)
+#define SQUARES_RIGHT_EDGE (MARGIN_SIZE + NUM_SQUARES_PER_ROW * SQUARE_SIZE)
 #define MARGIN_SIZE 1 // Squares do not fit evenly across the width, so there is a margin on either side.
 #define NUM_SQUARES_PER_ROW ((DISPLAY_WIDTH - (MARGIN_SIZE * 8 * 2)) / (SQUARE_SIZE * 8))
-#define NUM_SQUARES_PER_COL (DISPLAY_HEIGHT / (SQUARE_SIZE * 8))
+#define NUM_SQUARES_PER_COL ((DISPLAY_HEIGHT + SQUARE_SIZE * 8 - 1) / (SQUARE_SIZE * 8))
 #define NUM_SQUARES         (NUM_SQUARES_PER_ROW * NUM_SQUARES_PER_COL)
 
 // The order in which the squares should appear/disappear to create
@@ -970,11 +1052,20 @@ static const TransitionStateFunc sFrontierSquaresScroll_Funcs[] =
 // and spiraling outward starts with the last. The positions are the
 // squares numbered left-to-right top-to-bottom.
 static const u8 sFrontierSquaresSpiral_Positions[NUM_SQUARES] = {
+#ifdef PLATFORM_SDL2
+    45, 46, 47, 48, 49, 50, 51, 52, 53,
+    44, 35, 26, 17,  8,  7,  6,  5,  4,
+     3,  2,  1,  0,  9, 18, 27, 36, 37,
+    38, 39, 40, 41, 42, 43, 34, 25, 16,
+    15, 14, 13, 12, 11, 10, 19, 28, 29,
+    30, 31, 32, 33, 24, 23, 22, 21, 20
+#else
     28, 29, 30, 31, 32, 33, 34,
     27, 20, 13,  6,  5,  4,  3,
      2,  1,  0,  7, 14, 21, 22,
     23, 24, 25, 26, 19, 12, 11,
     10,  9,  8, 15, 16, 17, 18
+#endif
 };
 
 // In the scrolling version the squares appear/disappear in a "random" order
@@ -1071,7 +1162,7 @@ static void Task_BattleTransition(u8 taskId)
 static bool8 Transition_StartIntro(struct Task *task)
 {
     SetWeatherScreenFadeOut();
-    CpuCopy32(gPlttBufferFaded, gPlttBufferUnfaded, PLTT_SIZE);
+    CopyFadedPaletteToUnfaded();
     if (sTasks_Intro[task->tTransitionId] != NULL)
     {
         CreateTask(sTasks_Intro[task->tTransitionId], 4);
@@ -1113,6 +1204,14 @@ static bool8 Transition_WaitForMain(struct Task *task)
         task->tTransitionDone = TRUE;
 #ifdef PORTABLE
         SetVBlankCallback(NULL); // Fixes use-after-free of sTransitionData in callbacks
+#endif
+#ifdef PLATFORM_SDL2
+        if (sTransitionWindowActive)
+        {
+            DmaStop(0);
+            ResetGpuWindowHorizontalBounds(GPU_WINDOW_0);
+            sTransitionWindowActive = FALSE;
+        }
 #endif
     }
     return FALSE;
@@ -1202,6 +1301,9 @@ static void Task_Swirl(u8 taskId)
 static bool8 Swirl_Init(struct Task *task)
 {
     InitTransitionData();
+#ifdef PLATFORM_SDL2
+    FillFieldTilemapForBattleTransition();
+#endif
     ScanlineEffect_Clear();
     BeginNormalPaletteFade(PALETTES_ALL, 4, 0, 16, RGB_BLACK);
     SetSinWave(gScanlineEffectRegBuffers[1], sTransitionData->cameraX, 0, 2, 0, DISPLAY_HEIGHT);
@@ -1233,19 +1335,48 @@ static bool8 Swirl_End(struct Task *task)
     return FALSE;
 }
 
+static void SetTransitionBgHorizontalOffset(u16 line)
+{
+    u16 offset = gScanlineEffectRegBuffers[1][line];
+    REG_BG1HOFS = offset;
+    REG_BG2HOFS = offset;
+    REG_BG3HOFS = offset;
+}
+
+static void SetTransitionBgVerticalOffset(u16 line)
+{
+    u16 offset = gScanlineEffectRegBuffers[1][line];
+    REG_BG1VOFS = offset;
+    REG_BG2VOFS = offset;
+    REG_BG3VOFS = offset;
+}
+
+static u16 GetTransitionHBlankLine(void)
+{
+    u16 line = REG_VCOUNT;
+#ifdef PLATFORM_SDL2
+    // SDL2 calls HBlank after rendering the current line.
+    line++;
+#endif
+    return line;
+}
+
 static void VBlankCB_Swirl(void)
 {
     VBlankCB_BattleTransition();
     if (sTransitionData->VBlank_DMA)
         DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
+#ifdef PLATFORM_SDL2
+    SetTransitionBgHorizontalOffset(0);
+#endif
 }
 
 static void HBlankCB_Swirl(void)
 {
-    u16 var = gScanlineEffectRegBuffers[1][REG_VCOUNT];
-    REG_BG1HOFS = var;
-    REG_BG2HOFS = var;
-    REG_BG3HOFS = var;
+    u16 line = GetTransitionHBlankLine();
+
+    if (line < DISPLAY_HEIGHT)
+        SetTransitionBgHorizontalOffset(line);
 }
 
 #undef tSinIndex
@@ -1266,10 +1397,13 @@ static void Task_Shuffle(u8 taskId)
 static bool8 Shuffle_Init(struct Task *task)
 {
     InitTransitionData();
+#ifdef PLATFORM_SDL2
+    FillFieldTilemapForBattleTransition();
+#endif
     ScanlineEffect_Clear();
 
     BeginNormalPaletteFade(PALETTES_ALL, 4, 0, 16, RGB_BLACK);
-    memset(gScanlineEffectRegBuffers[1], sTransitionData->cameraY, DISPLAY_HEIGHT * 2);
+    CpuFill16(sTransitionData->cameraY, gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * sizeof(u16));
 
     SetVBlankCallback(VBlankCB_Shuffle);
     SetHBlankCallback(HBlankCB_Shuffle);
@@ -1309,14 +1443,17 @@ static void VBlankCB_Shuffle(void)
     VBlankCB_BattleTransition();
     if (sTransitionData->VBlank_DMA)
         DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
+#ifdef PLATFORM_SDL2
+    SetTransitionBgVerticalOffset(0);
+#endif
 }
 
 static void HBlankCB_Shuffle(void)
 {
-    u16 var = gScanlineEffectRegBuffers[1][REG_VCOUNT];
-    REG_BG1VOFS = var;
-    REG_BG2VOFS = var;
-    REG_BG3VOFS = var;
+    u16 line = GetTransitionHBlankLine();
+
+    if (line < DISPLAY_HEIGHT)
+        SetTransitionBgVerticalOffset(line);
 }
 
 #undef tSinVal
@@ -1411,7 +1548,7 @@ static bool8 Aqua_Init(struct Task *task)
     task->tEndDelay = 60;
     InitPatternWeaveTransition(task);
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     LZ77UnCompVram(sTeamAqua_Tileset, tileset);
     LoadPalette(sEvilTeam_Palette, BG_PLTT_ID(15), sizeof(sEvilTeam_Palette));
 
@@ -1426,7 +1563,7 @@ static bool8 Magma_Init(struct Task *task)
     task->tEndDelay = 60;
     InitPatternWeaveTransition(task);
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     LZ77UnCompVram(sTeamMagma_Tileset, tileset);
     LoadPalette(sEvilTeam_Palette, BG_PLTT_ID(15), sizeof(sEvilTeam_Palette));
 
@@ -1441,7 +1578,7 @@ static bool8 Regi_Init(struct Task *task)
     task->tEndDelay = 60;
     InitPatternWeaveTransition(task);
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     CpuCopy16(sRegis_Tileset, tileset, 0x2000);
 
     task->tState++;
@@ -1454,7 +1591,7 @@ static bool8 BigPokeball_Init(struct Task *task)
 
     InitPatternWeaveTransition(task);
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     CpuCopy16(sBigPokeball_Tileset, tileset, sizeof(sBigPokeball_Tileset));
     LoadPalette(sFieldEffectPal_Pokeball, BG_PLTT_ID(15), sizeof(sFieldEffectPal_Pokeball));
 
@@ -1473,7 +1610,7 @@ static bool8 BigPokeball_SetGfx(struct Task *task)
     for (i = 0; i < 20; i++)
     {
         for (j = 0; j < 30; j++, bigPokeballMap++)
-            SET_TILE(tilemap, i, j, *bigPokeballMap);
+            SetTransitionTile(tilemap, i, j, *bigPokeballMap);
     }
 
     SetSinWave(gScanlineEffectRegBuffers[0], 0, task->tSinIndex, 132, task->tAmplitude, DISPLAY_HEIGHT);
@@ -1552,7 +1689,7 @@ static bool8 Kyogre_Init(struct Task *task)
     u16 *tilemap, *tileset;
 
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     LZ77UnCompVram(sKyogre_Tileset, tileset);
     LZ77UnCompVram(sKyogre_Tilemap, tilemap);
 
@@ -1668,7 +1805,7 @@ static bool8 PatternWeave_FinishAppear(struct Task *task)
     if (task->tAmplitude <= 0)
     {
         task->tState++;
-        task->tRadius = DISPLAY_HEIGHT;
+        task->tRadius = GetCircularTransitionRadius();
         task->tRadiusDelta = 1 << 8;
         task->tVBlankSet = FALSE;
     }
@@ -1710,7 +1847,7 @@ static bool8 PatternWeave_CircularMask(struct Task *task)
         if (task->tRadius < 0)
             task->tRadius = 0;
     }
-    SetCircularMask(gScanlineEffectRegBuffers[0], DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
+    SetCircularMask(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
     if (task->tRadius == 0)
     {
         SetVBlankCallback(NULL);
@@ -1734,8 +1871,6 @@ static void VBlankCB_SetWinAndBlend(void)
 {
     DmaStop(0);
     VBlankCB_BattleTransition();
-    if (sTransitionData->VBlank_DMA)
-        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     REG_WININ = sTransitionData->WININ;
     REG_WINOUT = sTransitionData->WINOUT;
     REG_WIN0V = sTransitionData->WIN0V;
@@ -1746,13 +1881,25 @@ static void VBlankCB_SetWinAndBlend(void)
 static void VBlankCB_PatternWeave(void)
 {
     VBlankCB_SetWinAndBlend();
+    if (sTransitionData->VBlank_DMA)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * sizeof(u16));
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalBounds(GPU_WINDOW_0, 0, DISPLAY_WIDTH);
+    sTransitionWindowActive = TRUE;
+#endif
     DmaSet(0, gScanlineEffectRegBuffers[1], &REG_BG0HOFS, B_TRANS_DMA_FLAGS);
 }
 
 static void VBlankCB_CircularMask(void)
 {
     VBlankCB_SetWinAndBlend();
+#ifdef PLATFORM_SDL2
+    StartTransitionWindowDma();
+#else
+    if (sTransitionData->VBlank_DMA)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * sizeof(u16));
     DmaSet(0, gScanlineEffectRegBuffers[1], &REG_WIN0H, B_TRANS_DMA_FLAGS);
+#endif
 }
 
 #undef tAmplitude
@@ -1782,7 +1929,7 @@ static bool8 PokeballsTrail_Init(struct Task *task)
 
     GetBg0TilesDst(&tilemap, &tileset);
     CpuSet(sPokeballTrail_Tileset, tileset, 0x20);
-    CpuFill32(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill32(0, tilemap, GetTransitionBg0MapBytes());
     LoadPalette(sFieldEffectPal_Pokeball, BG_PLTT_ID(15), sizeof(sFieldEffectPal_Pokeball));
 
     task->tState++;
@@ -1826,14 +1973,36 @@ static bool8 PokeballsTrail_End(struct Task *task)
 
 bool8 FldEff_PokeballTrail(void)
 {
-    u8 spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Pokeball, gFieldEffectArguments[0], gFieldEffectArguments[1], 0);
-    gSprites[spriteId].oam.priority = 0;
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[spriteId].sSide = gFieldEffectArguments[2];
-    gSprites[spriteId].sDelay = gFieldEffectArguments[3];
-    gSprites[spriteId].sPrevX = -1;
-    InitSpriteAffineAnim(&gSprites[spriteId]);
-    StartSpriteAffineAnim(&gSprites[spriteId], gFieldEffectArguments[2]);
+    u8 paletteNum = IndexOfSpritePaletteTag(FLDEFF_PAL_TAG_POKEBALL_TRAIL);
+    u8 spriteId;
+    struct Sprite *sprite;
+
+    if (paletteNum == 0xFF)
+        goto fail;
+
+    spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Pokeball, gFieldEffectArguments[0], gFieldEffectArguments[1], 0);
+    if (spriteId == MAX_SPRITES)
+        goto fail;
+
+    sprite = &gSprites[spriteId];
+    sprite->oam.priority = 0;
+    sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
+    if (!InitSpriteAffineAnim(sprite))
+    {
+        DestroySprite(sprite);
+        goto fail;
+    }
+
+    sprite->sSide = gFieldEffectArguments[2];
+    sprite->sDelay = gFieldEffectArguments[3];
+    sprite->sPrevX = -1;
+    StartSpriteAffineAnim(sprite, gFieldEffectArguments[2]);
+    return FALSE;
+
+fail:
+    if (paletteNum != 0xFF)
+        FieldEffectFreePaletteIfUnused(paletteNum);
+    FieldEffectActiveListRemove(FLDEFF_POKEBALL_TRAIL);
     return FALSE;
 }
 
@@ -1864,15 +2033,18 @@ static void SpriteCB_FldEffPokeballTrail(struct Sprite *sprite)
                 var = ((REG_BG0CNT >> 8) & 0x1F) << 11;
                 ptr = (u16 *)(BG_VRAM + var);
 
-                SET_TILE(ptr, posY - 2, posX, 1);
-                SET_TILE(ptr, posY - 1, posX, 1);
-                SET_TILE(ptr, posY - 0, posX, 1);
-                SET_TILE(ptr, posY + 1, posX, 1);
+                SetTransitionTile(ptr, posY - 2, posX, 1);
+                SetTransitionTile(ptr, posY - 1, posX, 1);
+                SetTransitionTile(ptr, posY - 0, posX, 1);
+                SetTransitionTile(ptr, posY + 1, posX, 1);
             }
         }
         sprite->x += speeds[sprite->sSide];
         if (sprite->x < -15 || sprite->x > DISPLAY_WIDTH + 15)
+        {
+            FreeSpriteOamMatrix(sprite);
             FieldEffectStop(sprite, FLDEFF_POKEBALL_TRAIL);
+        }
     }
 }
 
@@ -1895,14 +2067,16 @@ static bool8 ClockwiseWipe_Init(struct Task *task)
 
     InitTransitionData();
     ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+    memset(sTransitionWindowBuffers, 0, sizeof(sTransitionWindowBuffers));
+#endif
 
     sTransitionData->WININ = 0;
     sTransitionData->WINOUT = WINOUT_WIN01_ALL;
-    sTransitionData->WIN0H = WIN_RANGE(DISPLAY_WIDTH, DISPLAY_WIDTH + 1);
     sTransitionData->WIN0V = DISPLAY_HEIGHT;
 
     for (i = 0; i < DISPLAY_HEIGHT; i++)
-        gScanlineEffectRegBuffers[1][i] = ((DISPLAY_WIDTH + 3) << 8) | (DISPLAY_WIDTH + 4);
+        GetTransitionWindowBuffer(1)[i] = PackTransitionWindow(DISPLAY_WIDTH + 3, DISPLAY_WIDTH + 4);
 
     SetVBlankCallback(VBlankCB_ClockwiseWipe);
     sTransitionData->tWipeEndX = DISPLAY_WIDTH / 2;
@@ -1922,7 +2096,7 @@ static bool8 ClockwiseWipe_TopRight(struct Task *task)
 #endif
     do
     {
-        gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] = (sTransitionData->tWipeCurrX + 1) | ((DISPLAY_WIDTH / 2) << 8);
+        GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] = PackTransitionWindow(DISPLAY_WIDTH / 2, sTransitionData->tWipeCurrX + 1);
     } while (!UpdateBlackWipe(sTransitionData->data, TRUE, TRUE));
 
     sTransitionData->tWipeEndX += 16;
@@ -1950,7 +2124,7 @@ static bool8 ClockwiseWipe_Right(struct Task *task)
         start = DISPLAY_WIDTH / 2, end = sTransitionData->tWipeCurrX + 1;
         if (sTransitionData->tWipeEndY >= DISPLAY_HEIGHT / 2)
             start = sTransitionData->tWipeCurrX, end = DISPLAY_WIDTH;
-        gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] = end | (start << 8);
+        GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] = PackTransitionWindow(start, end);
         if (finished)
             break;
         finished = UpdateBlackWipe(sTransitionData->data, TRUE, TRUE);
@@ -1965,7 +2139,7 @@ static bool8 ClockwiseWipe_Right(struct Task *task)
     else
     {
         while (sTransitionData->tWipeCurrY < sTransitionData->tWipeEndY)
-            gScanlineEffectRegBuffers[0][++sTransitionData->tWipeCurrY] = end | (start << 8);
+            GetTransitionWindowBuffer(0)[++sTransitionData->tWipeCurrY] = PackTransitionWindow(start, end);
     }
 
     sTransitionData->VBlank_DMA++;
@@ -1979,7 +2153,7 @@ static bool8 ClockwiseWipe_Bottom(struct Task *task)
     InitBlackWipe(sTransitionData->data, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, sTransitionData->tWipeEndX, DISPLAY_HEIGHT, 1, 1);
     do
     {
-        gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] = (sTransitionData->tWipeCurrX << 8) | DISPLAY_WIDTH;
+        GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] = PackTransitionWindow(sTransitionData->tWipeCurrX, DISPLAY_WIDTH);
     } while (!UpdateBlackWipe(sTransitionData->data, TRUE, TRUE));
 
     sTransitionData->tWipeEndX -= 16;
@@ -1995,7 +2169,7 @@ static bool8 ClockwiseWipe_Bottom(struct Task *task)
 
 static bool8 ClockwiseWipe_Left(struct Task *task)
 {
-    s16 end, start, temp;
+    s16 end, start;
     vu8 finished = FALSE;
 
     sTransitionData->VBlank_DMA = FALSE;
@@ -2004,12 +2178,11 @@ static bool8 ClockwiseWipe_Left(struct Task *task)
 
     while (1)
     {
-        end = (gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY]) & 0xFF;
+        end = (GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY]) & ((1u << TRANSITION_WINDOW_SHIFT) - 1);
         start = sTransitionData->tWipeCurrX;
         if (sTransitionData->tWipeEndY <= DISPLAY_HEIGHT / 2)
             start = DISPLAY_WIDTH / 2, end = sTransitionData->tWipeCurrX;
-        temp = end | (start << 8);
-        gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] = temp;
+        GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] = PackTransitionWindow(start, end);
         if (finished)
             break;
         finished = UpdateBlackWipe(sTransitionData->data, TRUE, TRUE);
@@ -2024,7 +2197,7 @@ static bool8 ClockwiseWipe_Left(struct Task *task)
     else
     {
         while (sTransitionData->tWipeCurrY > sTransitionData->tWipeEndY)
-            gScanlineEffectRegBuffers[0][--sTransitionData->tWipeCurrY] = end | (start << 8);
+            GetTransitionWindowBuffer(0)[--sTransitionData->tWipeCurrY] = PackTransitionWindow(start, end);
     }
 
     sTransitionData->VBlank_DMA++;
@@ -2042,7 +2215,7 @@ static bool8 ClockwiseWipe_TopLeft(struct Task *task)
         start = DISPLAY_WIDTH / 2, end = sTransitionData->tWipeCurrX;
         if (sTransitionData->tWipeCurrX >= DISPLAY_WIDTH / 2)
             start = 0, end = DISPLAY_WIDTH;
-        gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] = end | (start << 8);
+        GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] = PackTransitionWindow(start, end);
     } while (!UpdateBlackWipe(sTransitionData->data, TRUE, TRUE));
 
     sTransitionData->tWipeEndX += 16;
@@ -2065,13 +2238,17 @@ static void VBlankCB_ClockwiseWipe(void)
 {
     DmaStop(0);
     VBlankCB_BattleTransition();
-    if (sTransitionData->VBlank_DMA != 0)
-        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     REG_WININ = sTransitionData->WININ;
     REG_WINOUT = sTransitionData->WINOUT;
     REG_WIN0V = sTransitionData->WIN0V;
+#ifdef PLATFORM_SDL2
+    StartTransitionWindowDma();
+#else
+    if (sTransitionData->VBlank_DMA != 0)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     REG_WIN0H = gScanlineEffectRegBuffers[1][0];
     DmaSet(0, gScanlineEffectRegBuffers[1], &REG_WIN0H, B_TRANS_DMA_FLAGS);
+#endif
 }
 
 //---------------------
@@ -2093,6 +2270,9 @@ static bool8 Ripple_Init(struct Task *task)
     u8 i;
 
     InitTransitionData();
+#ifdef PLATFORM_SDL2
+    FillFieldTilemapForBattleTransition();
+#endif
     ScanlineEffect_Clear();
 
     for (i = 0; i < DISPLAY_HEIGHT; i++)
@@ -2146,14 +2326,17 @@ static void VBlankCB_Ripple(void)
     VBlankCB_BattleTransition();
     if (sTransitionData->VBlank_DMA)
         DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
+#ifdef PLATFORM_SDL2
+    SetTransitionBgVerticalOffset(0);
+#endif
 }
 
 static void HBlankCB_Ripple(void)
 {
-    u16 var = gScanlineEffectRegBuffers[1][REG_VCOUNT];
-    REG_BG1VOFS = var;
-    REG_BG2VOFS = var;
-    REG_BG3VOFS = var;
+    u16 line = GetTransitionHBlankLine();
+
+    if (line < DISPLAY_HEIGHT)
+        SetTransitionBgVerticalOffset(line);
 }
 
 #undef tSinVal
@@ -2179,14 +2362,16 @@ static bool8 Wave_Init(struct Task *task)
 
     InitTransitionData();
     ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+    memset(sTransitionWindowBuffers, 0, sizeof(sTransitionWindowBuffers));
+#endif
 
     sTransitionData->WININ = WININ_WIN0_ALL;
     sTransitionData->WINOUT = 0;
-    sTransitionData->WIN0H = DISPLAY_WIDTH;
     sTransitionData->WIN0V = DISPLAY_HEIGHT;
 
     for (i = 0; i < DISPLAY_HEIGHT; i++)
-        gScanlineEffectRegBuffers[1][i] = DISPLAY_WIDTH + 2;
+        GetTransitionWindowBuffer(1)[i] = PackTransitionWindow(0, DISPLAY_WIDTH + 2);
 
     SetVBlankCallback(VBlankCB_Wave);
 
@@ -2197,11 +2382,11 @@ static bool8 Wave_Init(struct Task *task)
 static bool8 Wave_Main(struct Task *task)
 {
     u8 i, sinIndex;
-    u16 *toStore;
+    TransitionWindowScanline *toStore;
     bool8 finished;
 
     sTransitionData->VBlank_DMA = FALSE;
-    toStore = gScanlineEffectRegBuffers[0];
+    toStore = GetTransitionWindowBuffer(0);
     sinIndex = task->tSinIndex;
     task->tSinIndex += 16;
     task->tX += 8;
@@ -2213,7 +2398,7 @@ static bool8 Wave_Main(struct Task *task)
             x = 0;
         if (x > DISPLAY_WIDTH)
             x = DISPLAY_WIDTH;
-        *toStore = (x << 8) | (DISPLAY_WIDTH + 1);
+        *toStore = PackTransitionWindow(x, DISPLAY_WIDTH + 1);
         if (x < DISPLAY_WIDTH)
             finished = FALSE;
     }
@@ -2236,12 +2421,16 @@ static void VBlankCB_Wave(void)
 {
     DmaStop(0);
     VBlankCB_BattleTransition();
-    if (sTransitionData->VBlank_DMA != 0)
-        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     REG_WININ = sTransitionData->WININ;
     REG_WINOUT = sTransitionData->WINOUT;
     REG_WIN0V = sTransitionData->WIN0V;
+#ifdef PLATFORM_SDL2
+    StartTransitionWindowDma();
+#else
+    if (sTransitionData->VBlank_DMA != 0)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     DmaSet(0, gScanlineEffectRegBuffers[1], &REG_WIN0H, B_TRANS_DMA_FLAGS);
+#endif
 }
 
 #undef tX
@@ -2312,6 +2501,9 @@ static bool8 Mugshot_Init(struct Task *task)
 
     InitTransitionData();
     ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+    memset(sTransitionWindowBuffers, 0, sizeof(sTransitionWindowBuffers));
+#endif
     Mugshots_CreateTrainerPics(task);
 
     task->tSinIndex = 0;
@@ -2322,7 +2514,7 @@ static bool8 Mugshot_Init(struct Task *task)
     sTransitionData->WIN0V = DISPLAY_HEIGHT;
 
     for (i = 0; i < DISPLAY_HEIGHT; i++)
-        gScanlineEffectRegBuffers[1][i] = (DISPLAY_WIDTH << 8) | (DISPLAY_WIDTH + 1);
+        GetTransitionWindowBuffer(1)[i] = PackTransitionWindow(DISPLAY_WIDTH, DISPLAY_WIDTH + 1);
 
     SetVBlankCallback(VBlankCB_Mugshots);
 
@@ -2338,6 +2530,10 @@ static bool8 Mugshot_SetGfx(struct Task *task)
 
     mugshotsMap = sMugshotsTilemap;
     GetBg0TilesDst(&tilemap, &tileset);
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
+#endif
     CpuSet(sEliteFour_Tileset, tileset, 0xF0);
     LoadPalette(sOpponentMugshotsPals[task->tMugshotId], BG_PLTT_ID(15), PLTT_SIZE_4BPP);
     LoadPalette(sPlayerMugshotsPals[gSaveBlock2Ptr->playerGender], BG_PLTT_ID(15) + 10, PLTT_SIZEOF(6));
@@ -2345,9 +2541,14 @@ static bool8 Mugshot_SetGfx(struct Task *task)
     for (i = 0; i < 20; i++)
     {
         for (j = 0; j < 32; j++, mugshotsMap++)
-            SET_TILE(tilemap, i, j, *mugshotsMap);
+            SetTransitionTile(tilemap, i, j, *mugshotsMap);
     }
 
+#ifdef PLATFORM_SDL2
+    // Keep the banner's horizontal wrap when it slides across both BG0 blocks.
+    if (IsWideFieldUi())
+        CpuCopy16(tilemap, tilemap + BG_SCREEN_SIZE / sizeof(*tilemap), BG_SCREEN_SIZE);
+#endif
     EnableInterrupts(INTR_FLAG_HBLANK);
 
     SetHBlankCallback(HBlankCB_Mugshots);
@@ -2358,12 +2559,12 @@ static bool8 Mugshot_SetGfx(struct Task *task)
 static bool8 Mugshot_ShowBanner(struct Task *task)
 {
     u8 i, sinIndex;
-    u16 *toStore;
+    TransitionWindowScanline *toStore;
     s16 x;
 
     sTransitionData->VBlank_DMA = FALSE;
 
-    toStore = gScanlineEffectRegBuffers[0];
+    toStore = GetTransitionWindowBuffer(0);
     sinIndex = task->tSinIndex;
     task->tSinIndex += 16;
 
@@ -2375,7 +2576,7 @@ static bool8 Mugshot_ShowBanner(struct Task *task)
             x = 1;
         if (x > DISPLAY_WIDTH)
             x = DISPLAY_WIDTH;
-        *toStore = x;
+        *toStore = PackTransitionWindow(0, x);
     }
 
     // Update bottom banner
@@ -2386,7 +2587,7 @@ static bool8 Mugshot_ShowBanner(struct Task *task)
             x = 0;
         if (x > DISPLAY_WIDTH - 1)
             x = DISPLAY_WIDTH - 1;
-        *toStore = (x << 8) | DISPLAY_WIDTH;
+        *toStore = PackTransitionWindow(x, DISPLAY_WIDTH);
     }
 
     // Slide banners across screen
@@ -2410,12 +2611,12 @@ static bool8 Mugshot_ShowBanner(struct Task *task)
 static bool8 Mugshot_StartOpponentSlide(struct Task *task)
 {
     u8 i;
-    u16 *toStore;
+    TransitionWindowScanline *toStore;
 
     sTransitionData->VBlank_DMA = FALSE;
 
-    for (i = 0, toStore = gScanlineEffectRegBuffers[0]; i < DISPLAY_HEIGHT; i++, toStore++)
-        *toStore = DISPLAY_WIDTH;
+    for (i = 0, toStore = GetTransitionWindowBuffer(0); i < DISPLAY_HEIGHT; i++, toStore++)
+        *toStore = PackTransitionWindow(0, DISPLAY_WIDTH);
 
     task->tState++;
 
@@ -2465,7 +2666,12 @@ static bool8 Mugshot_WaitPlayerSlide(struct Task *task)
         DmaStop(0);
         memset(gScanlineEffectRegBuffers[0], 0, DISPLAY_HEIGHT * 2);
         memset(gScanlineEffectRegBuffers[1], 0, DISPLAY_HEIGHT * 2);
+#ifdef PLATFORM_SDL2
+        SetGpuWindowHorizontalBounds(GPU_WINDOW_0, 0, DISPLAY_WIDTH);
+        sTransitionWindowActive = TRUE;
+#else
         SetGpuReg(REG_OFFSET_WIN0H, DISPLAY_WIDTH);
+#endif
         SetGpuReg(REG_OFFSET_BLDY, 0);
         task->tState++;
         task->tTimer = 0;
@@ -2557,13 +2763,18 @@ static void VBlankCB_Mugshots(void)
 {
     DmaStop(0);
     VBlankCB_BattleTransition();
-    if (sTransitionData->VBlank_DMA != 0)
-        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     REG_BG0VOFS = sTransitionData->BG0VOFS;
     REG_WININ = sTransitionData->WININ;
     REG_WINOUT = sTransitionData->WINOUT;
     REG_WIN0V = sTransitionData->WIN0V;
+#ifdef PLATFORM_SDL2
+    REG_BG0HOFS = sTransitionData->BG0HOFS_Lower;
+    StartTransitionWindowDma();
+#else
+    if (sTransitionData->VBlank_DMA != 0)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     DmaSet(0, gScanlineEffectRegBuffers[1], &REG_WIN0H, B_TRANS_DMA_FLAGS);
+#endif
 }
 
 static void VBlankCB_MugshotsFadeOut(void)
@@ -2578,7 +2789,11 @@ static void VBlankCB_MugshotsFadeOut(void)
 
 static void HBlankCB_Mugshots(void)
 {
+#ifdef PLATFORM_SDL2
+    if (REG_VCOUNT + 1 < DISPLAY_HEIGHT / 2)
+#else
     if (REG_VCOUNT < DISPLAY_HEIGHT / 2)
+#endif
         REG_BG0HOFS = sTransitionData->BG0HOFS_Lower;
     else
         REG_BG0HOFS = sTransitionData->BG0HOFS_Upper;
@@ -2736,7 +2951,13 @@ static bool8 Slice_Init(struct Task *task)
     u16 i;
 
     InitTransitionData();
+#ifdef PLATFORM_SDL2
+    FillFieldTilemapForBattleTransition();
+#endif
     ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+    memset(sTransitionWindowBuffers, 0, sizeof(sTransitionWindowBuffers));
+#endif
 
     task->tSpeed = 1 << 8;
     task->tAccel = 1;
@@ -2748,7 +2969,7 @@ static bool8 Slice_Init(struct Task *task)
     for (i = 0; i < DISPLAY_HEIGHT; i++)
     {
         gScanlineEffectRegBuffers[1][i] = sTransitionData->cameraX;
-        gScanlineEffectRegBuffers[1][DISPLAY_HEIGHT + i] = DISPLAY_WIDTH;
+        GetMixedTransitionWindowBuffer(1)[i] = PackTransitionWindow(0, DISPLAY_WIDTH);
     }
 
     EnableInterrupts(INTR_FLAG_HBLANK);
@@ -2778,18 +2999,18 @@ static bool8 Slice_Main(struct Task *task)
     for (i = 0; i < DISPLAY_HEIGHT; i++)
     {
         u16 *storeLoc1 = &gScanlineEffectRegBuffers[0][i];
-        u16 *storeLoc2 = &gScanlineEffectRegBuffers[0][i + DISPLAY_HEIGHT];
+        TransitionWindowScanline *storeLoc2 = &GetMixedTransitionWindowBuffer(0)[i];
 
         // Alternate rows
         if (i % 2)
         {
             *storeLoc1 = sTransitionData->cameraX + task->tEffectX;
-            *storeLoc2 = DISPLAY_WIDTH - task->tEffectX;
+            *storeLoc2 = PackTransitionWindow(0, DISPLAY_WIDTH - task->tEffectX);
         }
         else
         {
             *storeLoc1 = sTransitionData->cameraX - task->tEffectX;
-            *storeLoc2 = (task->tEffectX << 8) | (DISPLAY_WIDTH + 1);
+            *storeLoc2 = PackTransitionWindow(task->tEffectX, DISPLAY_WIDTH + 1);
         }
     }
 
@@ -2808,7 +3029,27 @@ static bool8 Slice_End(struct Task *task)
     return FALSE;
 }
 
+#ifdef PLATFORM_SDL2
 static void VBlankCB_Slice(void)
+{
+    DmaStop(0);
+    VBlankCB_BattleTransition();
+    REG_WININ = sTransitionData->WININ;
+    REG_WINOUT = sTransitionData->WINOUT;
+    REG_WIN0V = sTransitionData->WIN0V;
+    if (sTransitionData->VBlank_DMA)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * sizeof(u16));
+    REG_BG1HOFS = REG_BG2HOFS = REG_BG3HOFS = gScanlineEffectRegBuffers[1][0];
+    StartTransitionWindowDma();
+}
+#else
+static void VBlankCB_Slice(void)
+{
+    VBlankCB_ShredSplit();
+}
+#endif
+
+static void VBlankCB_ShredSplit(void)
 {
     DmaStop(0);
     VBlankCB_BattleTransition();
@@ -2822,9 +3063,14 @@ static void VBlankCB_Slice(void)
 
 static void HBlankCB_Slice(void)
 {
-    if (REG_VCOUNT < DISPLAY_HEIGHT)
+    u16 line = REG_VCOUNT;
+#ifdef PLATFORM_SDL2
+    if (sTransitionWindowActive)
+        line++;
+#endif
+    if (line < DISPLAY_HEIGHT)
     {
-        u16 var = gScanlineEffectRegBuffers[1][REG_VCOUNT];
+        u16 var = gScanlineEffectRegBuffers[1][line];
         REG_BG1HOFS = var;
         REG_BG2HOFS = var;
         REG_BG3HOFS = var;
@@ -2878,7 +3124,7 @@ static bool8 ShredSplit_Init(struct Task *task)
 
     EnableInterrupts(INTR_FLAG_HBLANK);
 
-    SetVBlankCallback(VBlankCB_Slice);
+    SetVBlankCallback(VBlankCB_ShredSplit);
     SetHBlankCallback(HBlankCB_Slice);
 
     task->tState++;
@@ -3051,8 +3297,6 @@ static void Task_BlackholePulsate(u8 taskId)
 // Init is shared by both transitions
 static bool8 Blackhole_Init(struct Task *task)
 {
-    s32 i;
-
     InitTransitionData();
     ScanlineEffect_Clear();
 
@@ -3061,9 +3305,7 @@ static bool8 Blackhole_Init(struct Task *task)
     sTransitionData->WIN0H = DISPLAY_WIDTH;
     sTransitionData->WIN0V = DISPLAY_HEIGHT;
 
-    for (i = 0; i < DISPLAY_HEIGHT; i++)
-        gScanlineEffectRegBuffers[1][i] = 0;
-
+    ClearCircularMaskDisplayedBuffer();
     SetVBlankCallback(VBlankCB_CircularMask);
 
     task->tState++;
@@ -3076,6 +3318,8 @@ static bool8 Blackhole_Init(struct Task *task)
 
 static bool8 Blackhole_GrowEnd(struct Task *task)
 {
+    s16 maxRadius = GetCircularTransitionRadius();
+
     if (task->tFlag == TRUE)
     {
         DmaStop(0);
@@ -3087,12 +3331,12 @@ static bool8 Blackhole_GrowEnd(struct Task *task)
         sTransitionData->VBlank_DMA = FALSE;
         if (task->tGrowSpeed < 1024)
             task->tGrowSpeed += 128;
-        if (task->tRadius < DISPLAY_HEIGHT)
+        if (task->tRadius < maxRadius)
             task->tRadius += task->tGrowSpeed >> 8;
-        if (task->tRadius > DISPLAY_HEIGHT)
-            task->tRadius = DISPLAY_HEIGHT;
-        SetCircularMask(gScanlineEffectRegBuffers[0], DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
-        if (task->tRadius == DISPLAY_HEIGHT)
+        if (task->tRadius > maxRadius)
+            task->tRadius = maxRadius;
+        SetCircularMask(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
+        if (task->tRadius == maxRadius)
         {
             task->tFlag = TRUE;
             FadeScreenBlack();
@@ -3117,7 +3361,7 @@ static bool8 Blackhole_Vibrate(struct Task *task)
     }
     task->tRadius += sBlackhole_Vibrations[task->tVibrateId];
     task->tVibrateId = (task->tVibrateId + 1) % (int)ARRAY_COUNT(sBlackhole_Vibrations);
-    SetCircularMask(gScanlineEffectRegBuffers[0], DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
+    SetCircularMask(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
     if (task->tRadius < 9)
     {
         task->tState++;
@@ -3132,6 +3376,7 @@ static bool8 BlackholePulsate_Main(struct Task *task)
 {
     u16 index; // should be s16 I think
     s16 amplitude;
+    s16 maxRadius = GetCircularTransitionRadius();
 
     sTransitionData->VBlank_DMA = FALSE;
     if (task->tFlag == FALSE)
@@ -3141,11 +3386,11 @@ static bool8 BlackholePulsate_Main(struct Task *task)
         task->tAmplitude = 2;
     }
 
-    if (task->tRadius > DISPLAY_HEIGHT)
-        task->tRadius = DISPLAY_HEIGHT;
+    if (task->tRadius > maxRadius)
+        task->tRadius = maxRadius;
 
-    SetCircularMask(gScanlineEffectRegBuffers[0], DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
-    if (task->tRadius == DISPLAY_HEIGHT)
+    SetCircularMask(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, task->tRadius);
+    if (task->tRadius == maxRadius)
     {
         DmaStop(0);
         FadeScreenBlack();
@@ -3201,7 +3446,7 @@ static bool8 RectangularSpiral_Init(struct Task *task)
     GetBg0TilesDst(&tilemap, &tileset);
     CpuCopy16(sShrinkingBoxTileset, tileset, 0x20);
     CpuCopy16(&sShrinkingBoxTileset[0x70], &tileset[0x20], 0x20);
-    CpuFill16(0xF0 << 8, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0xF0 << 8, tilemap, GetTransitionBg0MapBytes());
     LoadPalette(sFieldEffectPal_Pokeball, BG_PLTT_ID(15), sizeof(sFieldEffectPal_Pokeball));
 
     task->data[3] = 1;
@@ -3238,6 +3483,24 @@ static bool8 RectangularSpiral_Init(struct Task *task)
     return FALSE;
 }
 
+#ifdef PLATFORM_SDL2
+static void DrawWideRectangularSpiralTile(u16 *tilemap, s16 x, s16 y)
+{
+    // The movement tables address a 30×20 visible area in a 32-tile row.
+    enum { NATIVE_WIDTH = 30, NATIVE_HEIGHT = 20 };
+    const u16 width = DISPLAY_WIDTH / 8;
+    const u16 height = (DISPLAY_HEIGHT + 7) / 8;
+    s16 row, column;
+
+    if ((u16)x >= NATIVE_WIDTH || (u16)y >= NATIVE_HEIGHT)
+        return;
+
+    for (row = y * height / NATIVE_HEIGHT; row < (y + 1) * height / NATIVE_HEIGHT; row++)
+        for (column = x * width / NATIVE_WIDTH; column < (x + 1) * width / NATIVE_WIDTH; column++)
+            SetTransitionTile(tilemap, row, column, 2);
+}
+#endif
+
 static bool8 RectangularSpiral_Main(struct Task *task)
 {
     u16 *tilemap, *tileset;
@@ -3268,7 +3531,12 @@ static bool8 RectangularSpiral_Main(struct Task *task)
                 x = position % 32;
                 y = position / 32;
 
-                SET_TILE(tilemap, y, x, 2);
+#ifdef PLATFORM_SDL2
+                if (IsWideFieldUi())
+                    DrawWideRectangularSpiralTile(tilemap, x, y);
+                else
+#endif
+                    SetTransitionTile(tilemap, y, x, 2);
             }
         }
     }
@@ -3384,7 +3652,7 @@ static bool8 Groudon_Init(struct Task *task)
     u16 *tilemap, *tileset;
 
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     LZ77UnCompVram(sGroudon_Tileset, tileset);
     LZ77UnCompVram(sGroudon_Tilemap, tilemap);
 
@@ -3442,17 +3710,42 @@ static void Task_Rayquaza(u8 taskId)
     while (sRayquaza_Funcs[gTasks[taskId].tState](&gTasks[taskId]));
 }
 
+#ifdef PLATFORM_SDL2
+static void CopyRayquazaPanel(u16 *tilemap, u16 panel)
+{
+    const u16 *src = (const u16 *)sRayquaza_Tilemap + panel * 1024;
+    const u16 margin = (DISPLAY_WIDTH - 256) / 16;
+    u16 y;
+
+    // Place one native 256px panel in the two horizontal BG0 blocks.
+    for (y = 0; y < 32; y++)
+    {
+        CpuCopy16(src, tilemap + y * 32 + margin, (32 - margin) * sizeof(*src));
+        CpuCopy16(src + 32 - margin, tilemap + 1024 + y * 32, margin * sizeof(*src));
+        src += 32;
+    }
+}
+#endif
+
 static bool8 Rayquaza_Init(struct Task *task)
 {
     u16 *tilemap, *tileset;
     u16 i;
+    u16 screenBase;
 
     InitTransitionData();
     ScanlineEffect_Clear();
 
-    SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_CHARBASE(2) | BGCNT_SCREENBASE(26) | BGCNT_TXT256x512);
+    // The wide overworld BG2 uses blocks 26 and 27; the transition takes over BG0.
+    screenBase = GetBgAttribute(2, BG_ATTR_MAPBASEINDEX) == 26 ? 30 : 26;
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_CHARBASE(2) | BGCNT_SCREENBASE(screenBase) | BGCNT_TXT512x256);
+    else
+#endif
+        SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_CHARBASE(2) | BGCNT_SCREENBASE(screenBase) | BGCNT_TXT256x512);
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     CpuCopy16(sRayquaza_Tileset, tileset, 0x2000);
 
     sTransitionData->counter = 0;
@@ -3474,7 +3767,12 @@ static bool8 Rayquaza_SetGfx(struct Task *task)
     u16 *tilemap, *tileset;
 
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuCopy16(sRayquaza_Tilemap, tilemap, sizeof(sRayquaza_Tilemap));
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        CopyRayquazaPanel(tilemap, 0);
+    else
+#endif
+        CpuCopy16(sRayquaza_Tilemap, tilemap, sizeof(sRayquaza_Tilemap));
     task->tState++;
     return FALSE;
 }
@@ -3537,16 +3835,12 @@ static bool8 Rayquaza_TriRing(struct Task *task)
     }
     if (++task->tTimer >= 40)
     {
-        u16 i;
-
         sTransitionData->WININ = 0;
         sTransitionData->WINOUT = WINOUT_WIN01_ALL;
         sTransitionData->WIN0H = DISPLAY_WIDTH;
         sTransitionData->WIN0V = DISPLAY_HEIGHT;
 
-        for (i = 0; i < DISPLAY_HEIGHT; i++)
-            gScanlineEffectRegBuffers[1][i] = 0;
-
+        ClearCircularMaskDisplayedBuffer();
         SetVBlankCallback(VBlankCB_CircularMask);
         task->tState++;
         task->tGrowSpeed = 1 << 8;
@@ -3567,7 +3861,22 @@ static void VBlankCB_Rayquaza(void)
     if (sTransitionData->counter == 0)
         dmaSrc = gScanlineEffectRegBuffers[0];
     else if (sTransitionData->counter == 1)
-        dmaSrc = gScanlineEffectRegBuffers[1];
+    {
+#ifdef PLATFORM_SDL2
+        if (IsWideFieldUi())
+        {
+            // The previous fade has finished. Replace the first panel before this frame.
+            u16 *tilemap, *tileset;
+
+            GetBg0TilesDst(&tilemap, &tileset);
+            CopyRayquazaPanel(tilemap, 1);
+            sTransitionData->counter = 2;
+            dmaSrc = gScanlineEffectRegBuffers[0];
+        }
+        else
+#endif
+            dmaSrc = gScanlineEffectRegBuffers[1];
+    }
     else
         dmaSrc = gScanlineEffectRegBuffers[0];
 
@@ -3585,6 +3894,7 @@ static void VBlankCB_Rayquaza(void)
 #define sFade            data[0]
 #define sFinished        data[1]
 #define sDestroyAttempts data[2]
+#define sRowCount        data[3]
 #define sDelay           data[5]
 #define sIsMainSprite    data[6]
 
@@ -3601,6 +3911,9 @@ static bool8 WhiteBarsFade_Init(struct Task *task)
 
     InitTransitionData();
     ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+    memset(sTransitionWindowBuffers, 0, sizeof(sTransitionWindowBuffers));
+#endif
 
     sTransitionData->BLDCNT = BLDCNT_TGT1_ALL | BLDCNT_EFFECT_LIGHTEN;
     sTransitionData->BLDY = 0;
@@ -3611,7 +3924,8 @@ static bool8 WhiteBarsFade_Init(struct Task *task)
     for (i = 0; i < DISPLAY_HEIGHT; i++)
     {
         gScanlineEffectRegBuffers[1][i] = 0;
-        gScanlineEffectRegBuffers[1][i + DISPLAY_HEIGHT] = DISPLAY_WIDTH;
+        GetMixedTransitionWindowBuffer(0)[i] = PackTransitionWindow(0, DISPLAY_WIDTH);
+        GetMixedTransitionWindowBuffer(1)[i] = PackTransitionWindow(0, DISPLAY_WIDTH);
     }
 
     EnableInterrupts(INTR_FLAG_HBLANK);
@@ -3624,16 +3938,17 @@ static bool8 WhiteBarsFade_Init(struct Task *task)
 
 static bool8 WhiteBarsFade_StartBars(struct Task *task)
 {
-    s16 i, posY;
+    s16 i;
     s16 delays[ARRAY_COUNT(sWhiteBarsFade_StartDelays)];
     struct Sprite *sprite;
     memcpy(delays, sWhiteBarsFade_StartDelays, sizeof(sWhiteBarsFade_StartDelays));
 
-    for (i = 0, posY = 0; i < NUM_WHITE_BARS; i++, posY += DISPLAY_HEIGHT / NUM_WHITE_BARS)
+    for (i = 0; i < NUM_WHITE_BARS; i++)
     {
         sprite = &gSprites[CreateInvisibleSprite(SpriteCB_WhiteBarFade)];
         sprite->x = DISPLAY_WIDTH;
-        sprite->y = posY;
+        sprite->y = i * DISPLAY_HEIGHT / NUM_WHITE_BARS;
+        sprite->sRowCount = (i + 1) * DISPLAY_HEIGHT / NUM_WHITE_BARS - sprite->y;
         sprite->sDelay = delays[i];
     }
 
@@ -3693,9 +4008,16 @@ static void VBlankCB_WhiteBarsFade(void)
     REG_WININ = sTransitionData->WININ;
     REG_WINOUT = sTransitionData->WINOUT;
     REG_WIN0V = sTransitionData->WIN0V;
+#ifdef PLATFORM_SDL2
+    if (sTransitionData->VBlank_DMA)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * sizeof(u16));
+    REG_BLDY = gScanlineEffectRegBuffers[1][0];
+    StartTransitionWindowDma();
+#else
     if (sTransitionData->VBlank_DMA)
         DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 4);
     DmaSet(0, &gScanlineEffectRegBuffers[1][DISPLAY_HEIGHT], &REG_WIN0H, B_TRANS_DMA_FLAGS);
+#endif
 }
 
 static void VBlankCB_WhiteBarsFade_Blend(void)
@@ -3705,13 +4027,24 @@ static void VBlankCB_WhiteBarsFade_Blend(void)
     REG_BLDCNT = sTransitionData->BLDCNT;
     REG_WININ = sTransitionData->WININ;
     REG_WINOUT = sTransitionData->WINOUT;
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalBounds(GPU_WINDOW_0, 0, DISPLAY_WIDTH);
+    sTransitionWindowActive = TRUE;
+#else
     REG_WIN0H = sTransitionData->WIN0H;
+#endif
     REG_WIN0V = sTransitionData->WIN0V;
 }
 
 static void HBlankCB_WhiteBarsFade(void)
 {
+#ifdef PLATFORM_SDL2
+    u16 line = REG_VCOUNT + 1;
+    if (line < DISPLAY_HEIGHT)
+        REG_BLDY = gScanlineEffectRegBuffers[1][line];
+#else
     REG_BLDY = gScanlineEffectRegBuffers[1][REG_VCOUNT];
+#endif
 }
 
 static void SpriteCB_WhiteBarFade(struct Sprite *sprite)
@@ -3726,11 +4059,11 @@ static void SpriteCB_WhiteBarFade(struct Sprite *sprite)
     {
         u16 i;
         u16 *ptr1 = &gScanlineEffectRegBuffers[0][sprite->y];
-        u16 *ptr2 = &gScanlineEffectRegBuffers[0][sprite->y + DISPLAY_HEIGHT];
-        for (i = 0; i < DISPLAY_HEIGHT / NUM_WHITE_BARS; i++)
+        TransitionWindowScanline *ptr2 = &GetMixedTransitionWindowBuffer(0)[sprite->y];
+        for (i = 0; i < sprite->sRowCount; i++)
         {
             ptr1[i] = sprite->sFade >> 8;
-            ptr2[i] = (u8)sprite->x;
+            ptr2[i] = PackTransitionWindow(0, sprite->x);
         }
         if (sprite->x == 0 && sprite->sFade == FADE_TARGET)
             sprite->sFinished = TRUE;
@@ -3762,6 +4095,7 @@ static void SpriteCB_WhiteBarFade(struct Sprite *sprite)
 #undef sFade
 #undef sFinished
 #undef sDestroyAttempts
+#undef sRowCount
 #undef sDelay
 #undef sIsMainSprite
 
@@ -3783,7 +4117,7 @@ static bool8 GridSquares_Init(struct Task *task)
 
     GetBg0TilesDst(&tilemap, &tileset);
     CpuSet(sShrinkingBoxTileset, tileset, 16);
-    CpuFill16(0xF0 << 8, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0xF0 << 8, tilemap, GetTransitionBg0MapBytes());
     LoadPalette(sFieldEffectPal_Pokeball, BG_PLTT_ID(15), sizeof(sFieldEffectPal_Pokeball));
 
     task->tState++;
@@ -3843,15 +4177,18 @@ static bool8 AngledWipes_Init(struct Task *task)
 
     InitTransitionData();
     ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+    memset(sTransitionWindowBuffers, 0, sizeof(sTransitionWindowBuffers));
+#endif
 
     sTransitionData->WININ = WININ_WIN0_ALL;
     sTransitionData->WINOUT = 0;
     sTransitionData->WIN0V = DISPLAY_HEIGHT;
 
     for (i = 0; i < DISPLAY_HEIGHT; i++)
-        gScanlineEffectRegBuffers[0][i] = DISPLAY_WIDTH;
+        GetTransitionWindowBuffer(0)[i] = PackTransitionWindow(0, DISPLAY_WIDTH);
 
-    CpuSet(gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT);
+    memcpy(GetTransitionWindowBuffer(1), GetTransitionWindowBuffer(0), DISPLAY_HEIGHT * sizeof(TransitionWindowScanline));
     SetVBlankCallback(VBlankCB_AngledWipes);
 
     task->tState++;
@@ -3880,8 +4217,8 @@ static bool8 AngledWipes_DoWipe(struct Task *task)
 
     for (i = 0, finished = FALSE; i < 16; i++)
     {
-        s16 r3 = gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] >> 8;
-        s16 r4 = gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] & 0xFF;
+        s16 r3 = GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] >> TRANSITION_WINDOW_SHIFT;
+        s16 r4 = GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] & ((1u << TRANSITION_WINDOW_SHIFT) - 1);
         if (task->tDir == 0)
         {
             // Moving down
@@ -3898,7 +4235,7 @@ static bool8 AngledWipes_DoWipe(struct Task *task)
             if (r4 <= r3)
                 r4 = r3;
         }
-        gScanlineEffectRegBuffers[0][sTransitionData->tWipeCurrY] = (r4) | (r3 << 8);
+        GetTransitionWindowBuffer(0)[sTransitionData->tWipeCurrY] = PackTransitionWindow(r3, r4);
         if (finished)
         {
             task->tState++;
@@ -3946,13 +4283,17 @@ static void VBlankCB_AngledWipes(void)
 {
     DmaStop(0);
     VBlankCB_BattleTransition();
-    if (sTransitionData->VBlank_DMA)
-        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     REG_WININ = sTransitionData->WININ;
     REG_WINOUT = sTransitionData->WINOUT;
     REG_WIN0V = sTransitionData->WIN0V;
+#ifdef PLATFORM_SDL2
+    StartTransitionWindowDma();
+#else
+    if (sTransitionData->VBlank_DMA)
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
     REG_WIN0H = gScanlineEffectRegBuffers[1][0];
     DmaSet(0, gScanlineEffectRegBuffers[1], &REG_WIN0H, B_TRANS_DMA_FLAGS);
+#endif
 }
 
 #undef tWipeId
@@ -4097,11 +4438,26 @@ static void SetSinWave(s16 *array, s16 sinAdd, s16 index, s16 indexIncrementer, 
         array[i] = sinAdd + Sin(index & 0xFF, amplitude);
 }
 
-static void SetCircularMask(u16 *buffer, s16 centerX, s16 centerY, s16 radius)
+static s16 GetCircularTransitionRadius(void)
+{
+    const u32 cornerSquared = (DISPLAY_WIDTH / 2) * (DISPLAY_WIDTH / 2)
+                            + (DISPLAY_HEIGHT / 2) * (DISPLAY_HEIGHT / 2);
+
+    if (cornerSquared > DISPLAY_HEIGHT * DISPLAY_HEIGHT)
+        return Sqrt(cornerSquared) + 1;
+    return DISPLAY_HEIGHT;
+}
+
+static void SetCircularMask(s16 centerX, s16 centerY, s16 radius)
 {
     s16 i;
-
-    memset(buffer, 10, DISPLAY_HEIGHT * sizeof(u16));
+#ifdef PLATFORM_SDL2
+    TransitionWindowScanline *buffer = sTransitionWindowBuffers[0];
+    memset(buffer, 0, sizeof(sTransitionWindowBuffers[0]));
+#else
+    TransitionWindowScanline *buffer = gScanlineEffectRegBuffers[0];
+    memset(buffer, 10, DISPLAY_HEIGHT * sizeof(*buffer));
+#endif
     for (i = 0; i < 64; i++)
     {
         s16 sinResult, cosResult;
@@ -4124,9 +4480,13 @@ static void SetCircularMask(u16 *buffer, s16 centerX, s16 centerY, s16 radius)
         if (drawYBott > DISPLAY_HEIGHT - 1)
             drawYBott = DISPLAY_HEIGHT - 1;
 
-        drawX |= (drawXLeft << 8);
-        buffer[drawYTop] = drawX;
-        buffer[drawYBott] = drawX;
+#ifdef PLATFORM_SDL2
+        TransitionWindowScanline range = GPU_WINDOW_H_RANGE(drawXLeft, drawX);
+#else
+        TransitionWindowScanline range = WIN_RANGE(drawXLeft, drawX);
+#endif
+        buffer[drawYTop] = range;
+        buffer[drawYBott] = range;
 
         cosResult = Cos(i + 1, radius);
         drawYTopNext = centerY - cosResult;
@@ -4138,14 +4498,14 @@ static void SetCircularMask(u16 *buffer, s16 centerX, s16 centerY, s16 radius)
             drawYBottNext = DISPLAY_HEIGHT - 1;
 
         while (drawYTop > drawYTopNext)
-            buffer[--drawYTop] = drawX;
+            buffer[--drawYTop] = range;
         while (drawYTop < drawYTopNext)
-            buffer[++drawYTop] = drawX;
+            buffer[++drawYTop] = range;
 
         while (drawYBott > drawYBottNext)
-            buffer[--drawYBott] = drawX;
+            buffer[--drawYBott] = range;
         while (drawYBott < drawYBottNext)
-            buffer[++drawYBott] = drawX;
+            buffer[++drawYBott] = range;
     }
 }
 
@@ -4249,7 +4609,7 @@ static bool8 FrontierLogoWiggle_Init(struct Task *task)
 
     InitPatternWeaveTransition(task);
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     LZ77UnCompVram(sFrontierLogo_Tileset, tileset);
     LoadPalette(sFrontierLogo_Palette, BG_PLTT_ID(15), sizeof(sFrontierLogo_Palette));
 
@@ -4311,7 +4671,7 @@ static bool8 FrontierLogoWave_Init(struct Task *task)
     REG_BLDCNT = sTransitionData->BLDCNT;
     REG_BLDALPHA = sTransitionData->BLDALPHA;
     GetBg0TilesDst(&tilemap, &tileset);
-    CpuFill16(0, tilemap, BG_SCREEN_SIZE);
+    CpuFill16(0, tilemap, GetTransitionBg0MapBytes());
     LZ77UnCompVram(sFrontierLogo_Tileset, tileset);
     LoadPalette(sFrontierLogo_Palette, BG_PLTT_ID(15), sizeof(sFrontierLogo_Palette));
     sTransitionData->cameraY = 0;
@@ -4409,12 +4769,17 @@ static void VBlankCB_FrontierLogoWave(void)
 
     if (sTransitionData->VBlank_DMA)
         DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * 2);
+#ifdef PLATFORM_SDL2
+    REG_BG0VOFS = gScanlineEffectRegBuffers[1][0];
+#endif
 }
 
 static void HBlankCB_FrontierLogoWave(void)
 {
-    u16 var = gScanlineEffectRegBuffers[1][REG_VCOUNT];
-    REG_BG0VOFS = var;
+    u16 line = GetTransitionHBlankLine();
+
+    if (line < DISPLAY_HEIGHT)
+        REG_BG0VOFS = gScanlineEffectRegBuffers[1][line];
 }
 
 #undef tSinVal
@@ -4459,9 +4824,9 @@ static bool8 FrontierSquares_Init(struct Task *task)
     GetBg0TilesDst(&tilemap, &tileset);
     LZ77UnCompVram(sFrontierSquares_FilledBg_Tileset, tileset);
 
-    FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 32, 32);
+    FillBgTilemapBufferRect(0, 0, 0, 0, GetTransitionBg0MapBytes() / BG_SCREEN_SIZE * 32, 32, 0);
     FillBgTilemapBufferRect(0, 1, 0, 0, MARGIN_SIZE, 32, 15);
-    FillBgTilemapBufferRect(0, 1, 30 - MARGIN_SIZE, 0, MARGIN_SIZE, 32, 15);
+    FillBgTilemapBufferRect(0, 1, SQUARES_RIGHT_EDGE, 0, DISPLAY_WIDTH / 8 - SQUARES_RIGHT_EDGE, 32, 15);
     CopyBgTilemapBufferToVram(0);
     LoadPalette(sFrontierSquares_Palette, BG_PLTT_ID(15), sizeof(sFrontierSquares_Palette));
 
@@ -4554,9 +4919,9 @@ static bool8 FrontierSquaresSpiral_Init(struct Task *task)
     GetBg0TilesDst(&tilemap, &tileset);
     LZ77UnCompVram(sFrontierSquares_FilledBg_Tileset, tileset);
 
-    FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 32, 32);
+    FillBgTilemapBufferRect(0, 0, 0, 0, GetTransitionBg0MapBytes() / BG_SCREEN_SIZE * 32, 32, 0);
     FillBgTilemapBufferRect(0, 1, 0, 0, MARGIN_SIZE, 32, 15);
-    FillBgTilemapBufferRect(0, 1, 30 - MARGIN_SIZE, 0, MARGIN_SIZE, 32, 15);
+    FillBgTilemapBufferRect(0, 1, SQUARES_RIGHT_EDGE, 0, DISPLAY_WIDTH / 8 - SQUARES_RIGHT_EDGE, 32, 15);
     CopyBgTilemapBufferToVram(0);
     LoadPalette(sFrontierSquares_Palette, BG_PLTT_ID(14), sizeof(sFrontierSquares_Palette));
     LoadPalette(sFrontierSquares_Palette, BG_PLTT_ID(15), sizeof(sFrontierSquares_Palette));
@@ -4671,7 +5036,7 @@ static bool8 FrontierSquaresScroll_Init(struct Task *task)
 
     GetBg0TilesDst(&tilemap, &tileset);
     LZ77UnCompVram(sFrontierSquares_FilledBg_Tileset, tileset);
-    FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 32, 32);
+    FillBgTilemapBufferRect(0, 0, 0, 0, GetTransitionBg0MapBytes() / BG_SCREEN_SIZE * 32, 32, 0);
     CopyBgTilemapBufferToVram(0);
     LoadPalette(sFrontierSquares_Palette, BG_PLTT_ID(15), sizeof(sFrontierSquares_Palette));
 
@@ -4711,14 +5076,27 @@ static bool8 FrontierSquaresScroll_Init(struct Task *task)
 static bool8 FrontierSquaresScroll_Draw(struct Task *task)
 {
     u8 pos = sFrontierSquaresScroll_Positions[task->tSquareNum];
-    u8 x = pos / (NUM_SQUARES_PER_ROW + 1); // +1 because during scroll an additional column covers the margin.
-    u8 y = pos % (NUM_SQUARES_PER_ROW + 1);
+    u8 x = pos / SCROLL_SQUARES_PER_AXIS;
+    u8 y = pos % SCROLL_SQUARES_PER_AXIS;
+    u8 column = SQUARE_SIZE * x;
+
+#ifndef PLATFORM_SDL2
+    column += MARGIN_SIZE;
+#endif
 
     CopyRectToBgTilemapBufferRect(0, &sFrontierSquares_Tilemap, 0, 0,
                                   SQUARE_SIZE, SQUARE_SIZE,
-                                  SQUARE_SIZE * x + MARGIN_SIZE, SQUARE_SIZE * y,
+                                  column, SQUARE_SIZE * y,
                                   SQUARE_SIZE, SQUARE_SIZE,
                                   15, 0, 0);
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        CopyRectToBgTilemapBufferRect(0, &sFrontierSquares_Tilemap, 0, 0,
+                                      SQUARE_SIZE, SQUARE_SIZE,
+                                      column + 32, SQUARE_SIZE * y,
+                                      SQUARE_SIZE, SQUARE_SIZE,
+                                      15, 0, 0);
+#endif
     CopyBgTilemapBufferToVram(0);
 
     if (++task->tSquareNum >= (int)ARRAY_COUNT(sFrontierSquaresScroll_Positions))
@@ -4741,13 +5119,25 @@ static bool8 FrontierSquaresScroll_SetBlack(struct Task *task)
 static bool8 FrontierSquaresScroll_Erase(struct Task *task)
 {
     u8 pos = sFrontierSquaresScroll_Positions[task->tSquareNum];
-    u8 x = pos / (NUM_SQUARES_PER_ROW + 1);
-    u8 y = pos % (NUM_SQUARES_PER_ROW + 1);
+    u8 x = pos / SCROLL_SQUARES_PER_AXIS;
+    u8 y = pos % SCROLL_SQUARES_PER_AXIS;
+    u8 column = SQUARE_SIZE * x;
+
+#ifndef PLATFORM_SDL2
+    column += MARGIN_SIZE;
+#endif
 
     FillBgTilemapBufferRect(0, 1,
-                            SQUARE_SIZE * x + MARGIN_SIZE, SQUARE_SIZE * y,
+                            column, SQUARE_SIZE * y,
                             SQUARE_SIZE, SQUARE_SIZE,
                             15);
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        FillBgTilemapBufferRect(0, 1,
+                                column + 32, SQUARE_SIZE * y,
+                                SQUARE_SIZE, SQUARE_SIZE,
+                                15);
+#endif
     CopyBgTilemapBufferToVram(0);
 
     if (++task->tSquareNum >= (int)ARRAY_COUNT(sFrontierSquaresScroll_Positions))

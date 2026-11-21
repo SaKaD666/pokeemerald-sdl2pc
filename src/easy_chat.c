@@ -4,6 +4,8 @@
 #include "bg.h"
 #include "data.h"
 #include "decompress.h"
+#include "dma3.h"
+#include "platform/framedraw.h"
 #include "dewford_trend.h"
 #include "dynamic_placeholder_text_util.h"
 #include "easy_chat.h"
@@ -1336,7 +1338,8 @@ static void Task_InitEasyChatScreen(u8 taskId)
         if (InitEasyChatScreen(taskId) == TRUE)
             return;
     }
-    StartEasyChatScreen(taskId, Task_EasyChatScreen);
+    if (gMain.callback2 == CB2_EasyChatScreen)
+        StartEasyChatScreen(taskId, Task_EasyChatScreen);
 }
 
 // After loading, this is the 'main' Easy Chat task
@@ -1405,6 +1408,9 @@ static bool8 InitEasyChatScreen(u8 taskId)
     switch (tState)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetVBlankCallback(NULL);
         ResetSpriteData();
         FreeAllSpritePalettes();
@@ -1415,6 +1421,8 @@ static bool8 InitEasyChatScreen(u8 taskId)
         {
             // Alloc failed, exit
             ExitEasyChatScreen((MainCallback)GetWordTaskArg(taskId, TASKIDX_EXIT_CALLBACK));
+            DestroyTask(taskId);
+            return FALSE;
         }
         break;
     case 2:
@@ -1422,6 +1430,8 @@ static bool8 InitEasyChatScreen(u8 taskId)
         {
             // Alloc failed, exit
             ExitEasyChatScreen((MainCallback)GetWordTaskArg(taskId, TASKIDX_EXIT_CALLBACK));
+            DestroyTask(taskId);
+            return FALSE;
         }
         break;
     case 3:
@@ -1429,6 +1439,8 @@ static bool8 InitEasyChatScreen(u8 taskId)
         {
             // Alloc failed, exit
             ExitEasyChatScreen((MainCallback)GetWordTaskArg(taskId, TASKIDX_EXIT_CALLBACK));
+            DestroyTask(taskId);
+            return FALSE;
         }
         break;
     case 4:
@@ -1446,10 +1458,24 @@ static bool8 InitEasyChatScreen(u8 taskId)
 
 static void ExitEasyChatScreen(MainCallback callback)
 {
+    u8 bg;
+
+    SetVBlankCallback(NULL);
+    ResetSpriteData();
+    ClearScheduledBgCopiesToVram();
+    ClearDma3Requests();
+    FreeAllWindowBuffers();
+    if (sScreenControl != NULL)
+    {
+        for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+            SetBgTilemapBuffer(bg, NULL);
+    }
     FreeEasyChatScreenControl();
     FreeEasyChatScreenStruct();
     FreeEasyChatScreenWordData();
-    FreeAllWindowBuffers();
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
     SetMainCallback2(callback);
 }
 

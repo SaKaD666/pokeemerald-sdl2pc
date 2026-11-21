@@ -129,9 +129,9 @@ EWRAM_DATA u16 gBattle_BG2_X = 0;
 EWRAM_DATA u16 gBattle_BG2_Y = 0;
 EWRAM_DATA u16 gBattle_BG3_X = 0;
 EWRAM_DATA u16 gBattle_BG3_Y = 0;
-EWRAM_DATA u16 gBattle_WIN0H = 0;
+EWRAM_DATA u32 gBattle_WIN0H = 0;
 EWRAM_DATA u16 gBattle_WIN0V = 0;
-EWRAM_DATA u16 gBattle_WIN1H = 0;
+EWRAM_DATA u32 gBattle_WIN1H = 0;
 EWRAM_DATA u16 gBattle_WIN1V = 0;
 EWRAM_DATA u8 gDisplayedStringBattle[300] = {0};
 EWRAM_DATA u8 gBattleTextBuff1[TEXT_BUFF_ARRAY_COUNT] = {0};
@@ -626,7 +626,7 @@ static void CB2_InitBattleInternal(void)
     CpuFill32(0, (void *)(VRAM), VRAM_SIZE);
 
     SetGpuReg(REG_OFFSET_MOSAIC, 0);
-    SetGpuReg(REG_OFFSET_WIN0H, DISPLAY_WIDTH);
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, DISPLAY_WIDTH);
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(DISPLAY_HEIGHT / 2, DISPLAY_HEIGHT / 2 + 1));
     SetGpuReg(REG_OFFSET_WININ, 0);
     SetGpuReg(REG_OFFSET_WINOUT, 0);
@@ -2081,13 +2081,22 @@ static void UNUSED HBlankCB_Battle(void)
         SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_SCREENBASE(24) | BGCNT_TXT256x512);
 }
 
+void SetBattleWindowHorizontal(u8 regOffset, u32 bounds)
+{
+    SetGpuWindowHorizontalRange(regOffset, bounds >> 16, (u16)bounds);
+}
+
 void VBlankCB_Battle(void)
 {
     // Change gRngSeed every vblank unless the battle could be recorded.
     if (!(gBattleTypeFlags & (BATTLE_TYPE_LINK | BATTLE_TYPE_FRONTIER | BATTLE_TYPE_RECORDED)))
         Random();
 
+#ifdef PLATFORM_SDL2
+    SetGpuReg(REG_OFFSET_BG0HOFS, gBattle_BG0_X - BATTLE_TEXTBOX_X_OFFSET);
+#else
     SetGpuReg(REG_OFFSET_BG0HOFS, gBattle_BG0_X);
+#endif
     SetGpuReg(REG_OFFSET_BG0VOFS, gBattle_BG0_Y);
     SetGpuReg(REG_OFFSET_BG1HOFS, gBattle_BG1_X);
     SetGpuReg(REG_OFFSET_BG1VOFS, gBattle_BG1_Y);
@@ -2095,9 +2104,9 @@ void VBlankCB_Battle(void)
     SetGpuReg(REG_OFFSET_BG2VOFS, gBattle_BG2_Y);
     SetGpuReg(REG_OFFSET_BG3HOFS, gBattle_BG3_X);
     SetGpuReg(REG_OFFSET_BG3VOFS, gBattle_BG3_Y);
-    SetGpuReg(REG_OFFSET_WIN0H, gBattle_WIN0H);
+    SetBattleWindowHorizontal(REG_OFFSET_WIN0H, gBattle_WIN0H);
     SetGpuReg(REG_OFFSET_WIN0V, gBattle_WIN0V);
-    SetGpuReg(REG_OFFSET_WIN1H, gBattle_WIN1H);
+    SetBattleWindowHorizontal(REG_OFFSET_WIN1H, gBattle_WIN1H);
     SetGpuReg(REG_OFFSET_WIN1V, gBattle_WIN1V);
     LoadOam();
     ProcessSpriteCopyRequests();
@@ -2194,7 +2203,7 @@ void CB2_InitEndLinkBattle(void)
     {
         CpuFill32(0, (void *)(VRAM), VRAM_SIZE);
         SetGpuReg(REG_OFFSET_MOSAIC, 0);
-        SetGpuReg(REG_OFFSET_WIN0H, DISPLAY_WIDTH);
+        SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, DISPLAY_WIDTH);
         SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(DISPLAY_HEIGHT / 2, DISPLAY_HEIGHT / 2 + 1));
         SetGpuReg(REG_OFFSET_WININ, 0);
         SetGpuReg(REG_OFFSET_WINOUT, 0);

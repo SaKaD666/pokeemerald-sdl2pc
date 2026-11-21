@@ -97,6 +97,22 @@ static const struct WindowTemplate sStandardTextBox_WindowTemplates[] =
     DUMMY_WIN_TEMPLATE
 };
 
+#ifdef PLATFORM_SDL2
+static const struct WindowTemplate sWideFieldTextBoxTemplates[] =
+{
+    {
+        .bg = 0,
+        .tilemapLeft = (DISPLAY_WIDTH / TILE_WIDTH - 27 + 1) / 2,
+        .tilemapTop = DISPLAY_HEIGHT / TILE_HEIGHT - 5,
+        .width = 27,
+        .height = 4,
+        .paletteNum = 15,
+        .baseBlock = 0x300,
+    },
+    DUMMY_WIN_TEMPLATE
+};
+#endif
+
 static const struct WindowTemplate sYesNo_WindowTemplates =
 {
     .bg = 0,
@@ -144,7 +160,12 @@ static const struct MenuInfoIcon sMenuInfoIcons[] =
 
 void InitStandardTextBoxWindows(void)
 {
-    InitWindows(sStandardTextBox_WindowTemplates);
+    const struct WindowTemplate *templates = sStandardTextBox_WindowTemplates;
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        templates = sWideFieldTextBoxTemplates;
+#endif
+    InitWindows(templates);
     sStartMenuWindowId = WINDOW_NONE;
     sMapNamePopupWindowId = WINDOW_NONE;
 }
@@ -465,12 +486,20 @@ void DisplayItemMessageOnField(u8 taskId, const u8 *string, TaskFunc callback)
 
 void DisplayYesNoMenuDefaultYes(void)
 {
-    CreateYesNoMenu(&sYesNo_WindowTemplates, STD_WINDOW_BASE_TILE_NUM, STD_WINDOW_PALETTE_NUM, 0);
+    DisplayYesNoMenuWithDefault(0);
 }
 
 void DisplayYesNoMenuWithDefault(u8 initialCursorPos)
 {
-    CreateYesNoMenu(&sYesNo_WindowTemplates, STD_WINDOW_BASE_TILE_NUM, STD_WINDOW_PALETTE_NUM, initialCursorPos);
+    struct WindowTemplate window = sYesNo_WindowTemplates;
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+    {
+        window.tilemapLeft = DISPLAY_WIDTH / TILE_WIDTH - window.width - 2;
+        window.tilemapTop += DISPLAY_HEIGHT / TILE_HEIGHT - DISPLAY_TILE_HEIGHT;
+    }
+#endif
+    CreateYesNoMenu(&window, STD_WINDOW_BASE_TILE_NUM, STD_WINDOW_PALETTE_NUM, initialCursorPos);
 }
 
 u32 GetPlayerTextSpeed(void)
@@ -492,7 +521,18 @@ u8 GetPlayerTextSpeedDelay(void)
 u8 AddStartMenuWindow(u8 numActions)
 {
     if (sStartMenuWindowId == WINDOW_NONE)
-        sStartMenuWindowId = AddWindowParameterized(0, 22, 1, 7, (numActions * 2) + 2, 15, 0x139);
+    {
+        u8 left = 22;
+        u16 baseBlock = 0x139;
+#ifdef PLATFORM_SDL2
+        if (IsWideFieldUi())
+        {
+            left = DISPLAY_WIDTH / TILE_WIDTH - 8;
+            baseBlock = 0x240;
+        }
+#endif
+        sStartMenuWindowId = AddWindowParameterized(0, left, 1, 7, (numActions * 2) + 2, 15, baseBlock);
+    }
     return sStartMenuWindowId;
 }
 

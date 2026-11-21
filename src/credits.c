@@ -22,6 +22,9 @@
 #include "pokedex.h"
 #include "event_data.h"
 #include "random.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 #define COLOR_DARK_GREEN RGB(7, 11, 6)
 #define COLOR_LIGHT_GREEN RGB(13, 20, 12)
@@ -283,7 +286,7 @@ static const struct SpritePalette sSpritePalette_MonBg[] = {
 
 static const struct OamData sOamData_MonBg =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -375,11 +378,16 @@ static void InitCreditsBgsAndWindows(void)
 
 static void FreeCreditsBgsAndWindows(void)
 {
-    void *ptr;
+    void *tilemap = GetBgTilemapBuffer(0);
+
+#ifdef PORTABLE
+    IsDma3ManagerBusyWithBgCopy();
+    ClearScheduledBgCopiesToVram();
+#endif
     FreeAllWindowBuffers();
-    ptr = GetBgTilemapBuffer(0);
-    if (ptr)
-        Free(ptr);
+    UnsetBgTilemapBuffer(0);
+    if (tilemap)
+        Free(tilemap);
 }
 
 static void PrintCreditsText(const u8 *string, u8 y, bool8 isTitle)
@@ -400,7 +408,7 @@ static void PrintCreditsText(const u8 *string, u8 y, bool8 isTitle)
         color[2] = TEXT_COLOR_DARK_GRAY;
     }
 
-    x = GetStringCenterAlignXOffsetWithLetterSpacing(FONT_NORMAL, string, DISPLAY_WIDTH, 1);
+    x = GetStringCenterAlignXOffsetWithLetterSpacing(FONT_NORMAL, string, GBA_DISPLAY_WIDTH, 1);
     AddTextPrinterParameterized4(0, FONT_NORMAL, x, y, 1, 0, color, TEXT_SKIP_DRAW, string);
 }
 
@@ -412,8 +420,11 @@ void CB2_StartCreditsSequence(void)
     s16 bikeTaskId;
     u8 pageTaskId;
 
-    ResetGpuAndVram();
     SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
+    ResetGpuAndVram();
     InitHeap(gHeap, HEAP_SIZE);
     ResetPaletteFade();
     ResetTasks();
@@ -759,7 +770,7 @@ static void Task_UpdatePage(u8 taskId)
                 for (i = 0; i < ENTRIES_PER_PAGE; i++)
                     PrintCreditsText(
                         sCreditsEntryPointerTable[gTasks[taskId].tCurrentPage][i]->text,
-                         5 + i * 16,
+                         4 + i * 16,
                          sCreditsEntryPointerTable[gTasks[taskId].tCurrentPage][i]->isTitle);
                 CopyWindowToVram(0, COPYWIN_GFX);
 
@@ -1103,8 +1114,8 @@ static void SetBikeScene(u8 scene, u8 taskId)
     case SCENE_OCEAN_MORNING:
         gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
         gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tPlayerSpriteId].x = DISPLAY_WIDTH + 32;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = DISPLAY_WIDTH + 32;
+        gSprites[gTasks[taskId].tPlayerSpriteId].x = GBA_DISPLAY_WIDTH + 32;
+        gSprites[gTasks[taskId].tRivalSpriteId].x = GBA_DISPLAY_WIDTH + 32;
         gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
         gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
         gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
@@ -1115,7 +1126,7 @@ static void SetBikeScene(u8 scene, u8 taskId)
         gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
         gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
         gSprites[gTasks[taskId].tPlayerSpriteId].x = 120;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = DISPLAY_WIDTH + 32;
+        gSprites[gTasks[taskId].tRivalSpriteId].x = GBA_DISPLAY_WIDTH + 32;
         gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
         gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
         gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
@@ -1126,7 +1137,7 @@ static void SetBikeScene(u8 scene, u8 taskId)
         gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
         gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
         gSprites[gTasks[taskId].tPlayerSpriteId].x = 120;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = DISPLAY_WIDTH + 32;
+        gSprites[gTasks[taskId].tRivalSpriteId].x = GBA_DISPLAY_WIDTH + 32;
         gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
         gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
         gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
@@ -1219,7 +1230,7 @@ static bool8 LoadBikeScene(u8 scene, u8 taskId)
             gSprites[spriteId].callback = SpriteCB_Player;
             gSprites[spriteId].anims = sAnims_Player;
 
-            spriteId = CreateIntroMaySprite(DISPLAY_WIDTH + 32, 46);
+            spriteId = CreateIntroMaySprite(GBA_DISPLAY_WIDTH + 32, 46);
             gTasks[taskId].tRivalSpriteId = spriteId;
             gSprites[spriteId].callback = SpriteCB_Rival;
             gSprites[spriteId].anims = sAnims_Rival;
@@ -1236,7 +1247,7 @@ static bool8 LoadBikeScene(u8 scene, u8 taskId)
             gSprites[spriteId].callback = SpriteCB_Player;
             gSprites[spriteId].anims = sAnims_Player;
 
-            spriteId = CreateIntroBrendanSprite(DISPLAY_WIDTH + 32, 46);
+            spriteId = CreateIntroBrendanSprite(GBA_DISPLAY_WIDTH + 32, 46);
             gTasks[taskId].tRivalSpriteId = spriteId;
             gSprites[spriteId].callback = SpriteCB_Rival;
             gSprites[spriteId].anims = sAnims_Rival;
@@ -1370,7 +1381,7 @@ static void SpriteCB_Player(struct Sprite *sprite)
         break;
     case 4:
         StartSpriteAnimIfDifferent(sprite, 0);
-        if (sprite->x > DISPLAY_WIDTH / 2)
+        if (sprite->x > GBA_DISPLAY_WIDTH / 2)
             sprite->x--;
         break;
     case 5:

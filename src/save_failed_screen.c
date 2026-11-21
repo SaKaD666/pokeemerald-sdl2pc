@@ -14,6 +14,9 @@
 #include "gba/flash_internal.h"
 #include "text_window.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 #define MSG_WIN_TOP 12
 #define CLOCK_WIN_TOP (MSG_WIN_TOP - 4)
@@ -47,7 +50,7 @@ static EWRAM_DATA u8 UNUSED sUnused2[4] = {0};
 
 static const struct OamData sClockOamData =
 {
-    .y = DISPLAY_HEIGHT,
+    .y = GBA_DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
@@ -143,7 +146,7 @@ static void CB2_FadeAndReturnToTitleScreen(void);
 static void CB2_ReturnToTitleScreen(void);
 static void VBlankCB_UpdateClockGraphics(void);
 static bool8 VerifySectorWipe(u16 sector);
-static bool8 WipeSectors(u32);
+static bool8 WipeSectors(SaveSectorMask);
 
 // Although this is a general text printer, it's only used in this file.
 static void SaveFailedScreenTextPrint(const u8 *text, u8 x, u8 y)
@@ -180,6 +183,9 @@ static void CB2_SaveFailedScreen(void)
     case 0:
     default:
         SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetGpuReg(REG_OFFSET_DISPCNT, 0);
         SetGpuReg(REG_OFFSET_BG3CNT, 0);
         SetGpuReg(REG_OFFSET_BG2CNT, 0);
@@ -320,6 +326,19 @@ static void CB2_ReturnToTitleScreen(void)
 {
     if (!UpdatePaletteFade())
     {
+        SetVBlankCallback(NULL);
+#ifdef PORTABLE
+        IsDma3ManagerBusyWithBgCopy();
+        ClearScheduledBgCopiesToVram();
+#endif
+        // These windows borrow pixel data from gDecompressionBuffer.
+        SetWindowTileData(sWindowIds[TEXT_WIN_ID], NULL);
+        SetWindowTileData(sWindowIds[CLOCK_WIN_ID], NULL);
+        FreeAllWindowBuffers();
+        UnsetBgTilemapBuffer(0);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         if (gGameContinueCallback == NULL) // no callback exists, so do a soft reset.
         {
             DoSoftReset();
@@ -388,13 +407,13 @@ static bool8 WipeSector(u16 sector)
     return failed;
 }
 
-static bool8 WipeSectors(u32 sectorBits)
+static bool8 WipeSectors(SaveSectorMask sectorBits)
 {
     u16 i;
 
     for (i = 0; i < SECTORS_COUNT; i++)
-        if ((sectorBits & (1 << i)) && !WipeSector(i))
-            sectorBits &= ~(1 << i);
+        if ((sectorBits & SAVE_SECTOR_BIT(i)) && !WipeSector(i))
+            sectorBits &= ~SAVE_SECTOR_BIT(i);
 
     if (sectorBits == 0)
         return FALSE;

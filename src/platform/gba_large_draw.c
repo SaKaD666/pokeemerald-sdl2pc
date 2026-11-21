@@ -1,7 +1,13 @@
 #ifdef RENDERER_LARGE_DRAW
 #include "global.h"
+#include "bg.h"
 #include <stdbool.h>
+#include "field_camera.h"
+#include "fieldmap.h"
+#include "field_weather.h"
+#include "gpu_regs.h"
 #include "platform/dma.h"
+#include "platform/framedraw.h"
 
 #define mosaicBGEffectX (REG_MOSAIC & 0xF)
 #define mosaicBGEffectY ((REG_MOSAIC >> 4) & 0xF)
@@ -25,8 +31,6 @@
 #define WINMASK_OBJ    (1 << 4)
 #define WINMASK_CLR    (1 << 5)
 #define WINMASK_WINOUT  (1 << 6)
-
-extern void (*const gIntrTable[])(void);
 
 struct scanlineData {
     uint16_t layers[4][DISPLAY_WIDTH];
@@ -59,11 +63,19 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
     unsigned int bitsPerPixel = ((control >> 7) & 1) ? 8 : 4;
     unsigned int mapWidth = bgMapSizes[control >> 14][0];
     unsigned int mapHeight = bgMapSizes[control >> 14][1];
-    unsigned int mapWidthInPixels = mapWidth * 8;
-    unsigned int mapHeightInPixels = mapHeight * 8;
-
+    const uint16_t *bgmap = (const uint16_t *)BG_SCREEN_ADDR(screenBaseBlock);
     uint8_t *bgtiles = (uint8_t *)BG_CHAR_ADDR(charBaseBlock);
     uint16_t *pal = (uint16_t *)PLTT;
+    const struct FieldTileSource *const *fieldSources = NULL;
+#ifdef PLATFORM_SDL2
+    bool fieldUi = bgNum == 0 && screenBaseBlock == FIELD_UI_MAP_BASE
+                && charBaseBlock == FIELD_UI_CHAR_BASE && (control >> 14) == FIELD_UI_SCREEN_SIZE
+                && bitsPerPixel == 4 && IsWideFieldUi();
+#endif
+
+    if ((control >> 14) == 1 && bitsPerPixel == 4)
+        fieldSources = GetDisplayedFieldTileSources(bgNum, screenBaseBlock);
+
      
     if (control & BGCNT_MOSAIC)
         lineNum = applyBGVerticalMosaicEffect(lineNum);
@@ -73,7 +85,6 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
 
     for (unsigned int x = 0; x < DISPLAY_WIDTH; x++)
     {
-        uint16_t *bgmap = (uint16_t *)BG_SCREEN_ADDR(screenBaseBlock);
         // adjust for scroll
         unsigned int xx;
         if (control & BGCNT_MOSAIC)
@@ -83,23 +94,12 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
         
         unsigned int yy = (lineNum + voffs) & 0x1FF;
         
-        //if x or y go above 255 pixels it goes to the next screen base which are 0x400 WORDs long
-        if (xx > 255 && mapWidthInPixels > 256) {
-            bgmap += 0x400;
-        }
-        
-        if (yy > 255 && mapHeightInPixels > 256) {
-            //the width check is for 512x512 mode support, it jumps by two screen bases instead
-            bgmap += (mapWidthInPixels > 256) ? 0x800 : 0x400;
-        }
-        
-        //maximum width for bgtile block is 256
-        xx &= 0xFF;
-        yy &= 0xFF;
-
-        unsigned int mapX = xx / 8;
-        unsigned int mapY = yy / 8;
-        uint16_t entry = bgmap[mapY * 32 + mapX];
+        // Text maps are stored in 32x32 blocks, ordered left to right then top to bottom.
+        unsigned int blockX = mapWidth == 64 ? xx / 256 : 0;
+        unsigned int blockY = mapHeight == 64 ? yy / 256 : 0;
+        unsigned int block = blockY * (mapWidth / 32) + blockX;
+        unsigned int tileIndex = block * 0x400 + ((yy & 0xFF) / 8) * 32 + (xx & 0xFF) / 8;
+        uint16_t entry = bgmap[tileIndex];
 
         unsigned int tileNum = entry & 0x3FF;
         unsigned int paletteNum = (entry >> 12) & 0xF;
@@ -119,7 +119,16 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
         if (bitsPerPixel == 4)
             tileLocX /= 2;
 
-        uint8_t pixel = bgtiles[tileLoc + tileLocY + tileLocX];
+        const struct FieldTileSource *source = fieldSources == NULL ? NULL : GetDisplayedFieldTileSource(fieldSources, tileIndex);
+        const uint8_t *tileData = bgtiles + tileLoc;
+#ifdef PLATFORM_SDL2
+        if (fieldUi && tileLoc >= BG_CHAR_SIZE)
+            tileData = gFieldUiUpperTiles + tileLoc - BG_CHAR_SIZE;
+#endif
+        if (source != NULL && tileNum >= NUM_TILES_IN_PRIMARY)
+            tileData = source->tiles + (tileNum - NUM_TILES_IN_PRIMARY) * TILE_SIZE_4BPP;
+
+        uint8_t pixel = tileData[tileLocY + tileLocX];
 
         if (bitsPerPixel == 4) {
             if (tileX & 1)
@@ -128,7 +137,12 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
                 pixel &= 0xF;
 
             if (pixel != 0)
-                line[x] = pal[16 * paletteNum + pixel] | 0x8000;
+            {
+                if (source != NULL && paletteNum >= NUM_PALS_IN_PRIMARY && paletteNum < NUM_PALS_TOTAL)
+                    line[x] = GetDisplayedFieldPaletteWeatherColor(paletteNum, source->tileset->palettes[paletteNum][pixel]) | 0x8000;
+                else
+                    line[x] = pal[16 * paletteNum + pixel] | 0x8000;
+            }
         }
         else {
             line[x] = pal[pixel] | 0x8000;
@@ -449,16 +463,34 @@ static bool winCheckHorizontalBounds(u16 left, u16 right, u16 xpos)
 }
 
 // Parts of this code heavily borrowed from NanoboyAdvance.
-static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool windowsEnabled)
+#ifdef PLATFORM_SDL2
+static bool8 sGbaSizedFrameView;
+
+void SetFrameViewToGbaSize(bool8 enabled)
+{
+    sGbaSizedFrameView = enabled;
+}
+#endif
+
+static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool windowsEnabled, bool drawObjWindow)
 {
     int i;
+    int viewWidth = DISPLAY_WIDTH;
+    int viewHeight = DISPLAY_HEIGHT;
+#ifdef PLATFORM_SDL2
+    if (sGbaSizedFrameView)
+    {
+        viewWidth = GBA_DISPLAY_WIDTH;
+        viewHeight = GBA_DISPLAY_HEIGHT;
+    }
+#endif
     void *objtiles = VRAM_ + 0x10000;
     unsigned int blendMode = (REG_BLDCNT >> 6) & 3;
     bool winShouldBlendPixel = true;
 
     int16_t matrix[2][2] = {};
 
-    if (!(REG_DISPCNT & (1 << 6)))
+    if (!drawObjWindow && !(REG_DISPCNT & (1 << 6)))
     {
         puts("2-D OBJ Character mapping not supported.");
     }
@@ -473,7 +505,8 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
         bool isAffine  = oam->affineMode & 1;
         bool doubleSizeOrDisabled = (oam->affineMode >> 1) & 1;
         bool isSemiTransparent = (oam->objMode == 1);
-        bool isObjWin = (oam->objMode == 2);
+        if ((oam->objMode == 2) != drawObjWindow)
+            continue;
 
         if (!(isAffine) && doubleSizeOrDisabled) // disable for non-affine
         {
@@ -508,9 +541,9 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
         int32_t x = oam->x;
         int32_t y = oam->y;
 
-        if (x >= DISPLAY_WIDTH)
+        if (x >= viewWidth)
             x -= 512;
-        if (y >= DISPLAY_HEIGHT)
+        if (y >= viewHeight)
             y -= 256;
 
         if (isAffine)
@@ -564,7 +597,7 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
 
                 unsigned int global_x = local_x + x;
 
-                if (global_x < 0 || global_x >= DISPLAY_WIDTH)
+                if (global_x >= viewWidth)
                     continue;
 
                 if (oam->mosaic == 1)
@@ -614,10 +647,10 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
                     uint16_t color = palette[pixel];;
                     
                     //if sprite mode is 2 then write to the window mask instead
-                    if (isObjWin)
+                    if (drawObjWindow)
                     {
                         if (scanline->winMask[global_x] & WINMASK_WINOUT)
-                        scanline->winMask[global_x] = (REG_WINOUT >> 8) & 0x3F;
+                            scanline->winMask[global_x] = (REG_WINOUT >> 8) & 0x3F;
                         continue;
                     }
                     //this code runs if pixel is to be drawn
@@ -736,11 +769,17 @@ static void DrawScanline(uint16_t *pixels, uint16_t vcount)
     //figure out if WIN0 masks on this scanline
     if (REG_DISPCNT & DISPCNT_WIN0_ON)
     {
+#ifdef PLATFORM_SDL2
+        u32 horizontalBounds = GetGpuWindowHorizontalBounds(GPU_WINDOW_0);
+        WIN0left = horizontalBounds >> 16;
+        WIN0right = horizontalBounds & 0xFFFF;
+#else
+        WIN0left = REG_WIN0H >> 8;
+        WIN0right = REG_WIN0H & 0xFF;
+#endif
         //acquire the window coordinates
         WIN0bottom = (REG_WIN0V & 0xFF); //y2;
         WIN0top = (REG_WIN0V & 0xFF00) >> 8; //y1;
-        WIN0right = (REG_WIN0H & 0xFF); //x2
-        WIN0left = (REG_WIN0H & 0xFF00) >> 8; //x1
         
         //figure out WIN Y wraparound and check bounds accordingly
         if (WIN0top > WIN0bottom) {
@@ -756,10 +795,16 @@ static void DrawScanline(uint16_t *pixels, uint16_t vcount)
     //figure out if WIN1 masks on this scanline
     if (REG_DISPCNT & DISPCNT_WIN1_ON)
     {
-        WIN1bottom = (REG_WIN0V & 0xFF); //y2;
-        WIN1top = (REG_WIN0V & 0xFF00) >> 8; //y1;
-        WIN1right = (REG_WIN0H & 0xFF); //x2
-        WIN1left = (REG_WIN0H & 0xFF00) >> 8; //x1
+#ifdef PLATFORM_SDL2
+        u32 horizontalBounds = GetGpuWindowHorizontalBounds(GPU_WINDOW_1);
+        WIN1left = horizontalBounds >> 16;
+        WIN1right = horizontalBounds & 0xFFFF;
+#else
+        WIN1left = REG_WIN1H >> 8;
+        WIN1right = REG_WIN1H & 0xFF;
+#endif
+        WIN1bottom = (REG_WIN1V & 0xFF); //y2;
+        WIN1top = (REG_WIN1V & 0xFF00) >> 8; //y1;
         
         if (WIN1top > WIN1bottom) {
             if (vcount >= WIN1top || vcount < WIN1bottom)
@@ -794,7 +839,11 @@ static void DrawScanline(uint16_t *pixels, uint16_t vcount)
     }
 
     if (REG_DISPCNT & DISPCNT_OBJ_ON)
-        DrawSprites(&scanline, vcount, windowsEnabled);
+    {
+        if (REG_DISPCNT & DISPCNT_OBJWIN_ON)
+            DrawSprites(&scanline, vcount, windowsEnabled, true);
+        DrawSprites(&scanline, vcount, windowsEnabled, false);
+    }
 
     //iterate trough every priority in order
     for (prnum = 3; prnum >= 0; prnum--)
@@ -869,7 +918,7 @@ static void DrawScanline(uint16_t *pixels, uint16_t vcount)
     }
 }
 
-uint16_t *memsetu16(uint16_t *dst, uint16_t fill, size_t count)
+static void memsetu16(uint16_t *dst, uint16_t fill, size_t count)
 {
     for (int i = 0; i < count; i++)
     {
@@ -880,9 +929,19 @@ uint16_t *memsetu16(uint16_t *dst, uint16_t fill, size_t count)
 void DrawFrame(uint16_t *pixels)
 {
     int i;
+#ifdef PLATFORM_SDL2
+    const bool8 gbaView = sGbaSizedFrameView;
+    const int viewX = (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
+    const int viewY = (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
+    uint16_t scanlinePixels[DISPLAY_WIDTH];
+
+    if (gbaView)
+        memset(pixels, 0, DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(*pixels));
+#endif
 
     for (i = 0; i < DISPLAY_HEIGHT; i++)
     {
+        uint16_t *row = &pixels[i * DISPLAY_WIDTH];
         REG_VCOUNT = i;
         if(((REG_DISPSTAT >> 8) & 0xFF) == REG_VCOUNT)
         {
@@ -908,8 +967,23 @@ void DrawFrame(uint16_t *pixels)
             }
         }
 
-        memsetu16(&pixels[i * DISPLAY_WIDTH], backdropColor, DISPLAY_WIDTH);
-        DrawScanline(&pixels[i * DISPLAY_WIDTH], i);
+#ifdef PLATFORM_SDL2
+        if (gbaView)
+        {
+            if (i < GBA_DISPLAY_HEIGHT)
+            {
+                memsetu16(scanlinePixels, backdropColor, DISPLAY_WIDTH);
+                DrawScanline(scanlinePixels, i);
+                memcpy(&pixels[(i + viewY) * DISPLAY_WIDTH + viewX], scanlinePixels,
+                       GBA_DISPLAY_WIDTH * sizeof(*pixels));
+            }
+        }
+        else
+#endif
+        {
+            memsetu16(row, backdropColor, DISPLAY_WIDTH);
+            DrawScanline(row, i);
+        }
         
         REG_DISPSTAT |= INTR_FLAG_HBLANK;
 

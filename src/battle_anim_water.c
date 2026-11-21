@@ -481,7 +481,8 @@ const struct SpriteTemplate gWeatherBallWaterDownSpriteTemplate =
 
 void AnimTask_CreateRaindrops(u8 taskId)
 {
-    u8 x, y;
+    u16 x;
+    u8 y;
 
     if (gTasks[taskId].tRaindropSpawnTimer == 0)
     {

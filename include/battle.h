@@ -620,9 +620,11 @@ extern u16 gBattle_BG2_X;
 extern u16 gBattle_BG2_Y;
 extern u16 gBattle_BG3_X;
 extern u16 gBattle_BG3_Y;
-extern u16 gBattle_WIN0H;
+// Horizontal bounds use GPU_WINDOW_H_RANGE. Vertical bounds use WIN_RANGE.
+void SetBattleWindowHorizontal(u8 regOffset, u32 bounds);
+extern u32 gBattle_WIN0H;
 extern u16 gBattle_WIN0V;
-extern u16 gBattle_WIN1H;
+extern u32 gBattle_WIN1H;
 extern u16 gBattle_WIN1V;
 extern u8 gDisplayedStringBattle[300];
 extern u8 gBattleTextBuff1[TEXT_BUFF_ARRAY_COUNT];

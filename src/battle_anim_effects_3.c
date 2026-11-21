@@ -1544,7 +1544,7 @@ static void AnimSpotlight(struct Sprite *sprite)
     SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_OBJWIN_ON);
     gBattle_WIN0H = 0;
     gBattle_WIN0V = 0;
-    SetGpuReg(REG_OFFSET_WIN0H, gBattle_WIN0H);
+    SetBattleWindowHorizontal(REG_OFFSET_WIN0H, gBattle_WIN0H);
     SetGpuReg(REG_OFFSET_WIN0V, gBattle_WIN0V);
 
     InitSpritePosToAnimTarget(sprite, FALSE);
@@ -1676,17 +1676,17 @@ void AnimTask_CreateSpotlight(u8 taskId)
     if (IsContest())
     {
         SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ);
-        gBattle_WIN1H = WIN_RANGE(152, DISPLAY_WIDTH);
+        gBattle_WIN1H = GPU_WINDOW_H_RANGE(152, DISPLAY_WIDTH);
         gBattle_WIN1V = WIN_RANGE(0, DISPLAY_HEIGHT);
-        SetGpuReg(REG_OFFSET_WIN1H, gBattle_WIN0H);
-        SetGpuReg(REG_OFFSET_WIN1V, gBattle_WIN0V);
+        SetBattleWindowHorizontal(REG_OFFSET_WIN1H, gBattle_WIN1H);
+        SetGpuReg(REG_OFFSET_WIN1V, gBattle_WIN1V);
     }
     else
     {
         SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ);
-        gBattle_WIN1H = WIN_RANGE(0, DISPLAY_WIDTH);
+        gBattle_WIN1H = GPU_WINDOW_H_RANGE(0, DISPLAY_WIDTH);
         gBattle_WIN1V = WIN_RANGE(120, DISPLAY_HEIGHT);
-        SetGpuReg(REG_OFFSET_WIN1H, gBattle_WIN1H);
+        SetBattleWindowHorizontal(REG_OFFSET_WIN1H, gBattle_WIN1H);
         SetGpuReg(REG_OFFSET_WIN1V, gBattle_WIN1V);
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
     }
@@ -3093,7 +3093,7 @@ static void AnimFlatterSpotlight(struct Sprite *sprite)
     SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_OBJWIN_ON);
     gBattle_WIN0H = 0;
     gBattle_WIN0V = 0;
-    SetGpuReg(REG_OFFSET_WIN0H, gBattle_WIN0H);
+    SetBattleWindowHorizontal(REG_OFFSET_WIN0H, gBattle_WIN0H);
     SetGpuReg(REG_OFFSET_WIN0V, gBattle_WIN0V);
 
     sprite->data[0] = gBattleAnimArgs[2];

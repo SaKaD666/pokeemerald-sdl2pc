@@ -8,11 +8,71 @@
 
 #define EMPTY_SLOT 0xFF
 
+#ifdef PLATFORM_SDL2
+#define GPU_REG_WRITE_START_LINE DISPLAY_HEIGHT
+#else
+#define GPU_REG_WRITE_START_LINE 161
+#endif
+
 static ALIGNED(2) u8 sGpuRegBuffer[GPU_REG_BUF_SIZE]; // sGpuRegBuffer is read as u16 so it needs to be properly aligned
 static u8 sGpuRegWaitingList[GPU_REG_BUF_SIZE];
 static vbool8 sGpuRegBufferLocked;
 static vbool8 sShouldSyncRegIE;
 static vu16 sRegIE;
+
+#ifdef PLATFORM_SDL2
+#define GPU_WINDOW_H_LEGACY 0xFFFFFFFFu
+
+static vu32 sGpuWindowHorizontalBounds[GPU_WINDOW_COUNT] =
+{
+    [GPU_WINDOW_0] = GPU_WINDOW_H_LEGACY,
+    [GPU_WINDOW_1] = GPU_WINDOW_H_LEGACY,
+};
+static u32 sBufferedGpuWindowHorizontalBounds[GPU_WINDOW_COUNT];
+
+static u8 GetWindowIndexForOffset(u8 regOffset)
+{
+    if (regOffset == REG_OFFSET_WIN0H)
+        return GPU_WINDOW_0;
+    if (regOffset == REG_OFFSET_WIN1H)
+        return GPU_WINDOW_1;
+    return GPU_WINDOW_COUNT;
+}
+
+static void SetBufferedLegacyWindowBounds(u8 regOffset)
+{
+    u8 window = GetWindowIndexForOffset(regOffset);
+    if (window != GPU_WINDOW_COUNT)
+        sBufferedGpuWindowHorizontalBounds[window] = GPU_WINDOW_H_LEGACY;
+}
+
+vu32 *GetGpuWindowHorizontalDmaDest(u8 window)
+{
+    return &sGpuWindowHorizontalBounds[window];
+}
+
+u32 GetGpuWindowHorizontalBounds(u8 window)
+{
+    u32 bounds = sGpuWindowHorizontalBounds[window];
+    u16 legacy;
+
+    if (bounds != GPU_WINDOW_H_LEGACY)
+        return bounds;
+
+    legacy = window == GPU_WINDOW_0 ? REG_WIN0H : REG_WIN1H;
+    return GPU_WINDOW_H_RANGE(legacy >> 8, legacy & 0xFF);
+}
+
+void SetGpuWindowHorizontalBounds(u8 window, u16 left, u16 right)
+{
+    sGpuWindowHorizontalBounds[window] = GPU_WINDOW_H_RANGE(left, right);
+}
+
+void ResetGpuWindowHorizontalBounds(u8 window)
+{
+    sGpuWindowHorizontalBounds[window] = GPU_WINDOW_H_LEGACY;
+}
+#endif
 
 static void CopyBufferedValueToGpuReg(u8 regOffset);
 static void SyncRegIE(void);
@@ -31,6 +91,12 @@ void InitGpuRegManager(void)
     sGpuRegBufferLocked = FALSE;
     sShouldSyncRegIE = FALSE;
     sRegIE = 0;
+#ifdef PLATFORM_SDL2
+    ResetGpuWindowHorizontalBounds(GPU_WINDOW_0);
+    ResetGpuWindowHorizontalBounds(GPU_WINDOW_1);
+    SetBufferedLegacyWindowBounds(REG_OFFSET_WIN0H);
+    SetBufferedLegacyWindowBounds(REG_OFFSET_WIN1H);
+#endif
 }
 
 static void CopyBufferedValueToGpuReg(u8 regOffset)
@@ -43,6 +109,11 @@ static void CopyBufferedValueToGpuReg(u8 regOffset)
     else
     {
         GPU_REG(regOffset) = GPU_REG_BUF(regOffset);
+#ifdef PLATFORM_SDL2
+        u8 window = GetWindowIndexForOffset(regOffset);
+        if (window != GPU_WINDOW_COUNT)
+            sGpuWindowHorizontalBounds[window] = sBufferedGpuWindowHorizontalBounds[window];
+#endif
     }
 }
 
@@ -63,7 +134,7 @@ void CopyBufferedValuesToGpuRegs(void)
     }
 }
 
-void SetGpuReg(u8 regOffset, u16 value)
+static void SetGpuRegValue(u8 regOffset, u16 value)
 {
     if (regOffset < GPU_REG_BUF_SIZE)
     {
@@ -72,7 +143,7 @@ void SetGpuReg(u8 regOffset, u16 value)
         GPU_REG_BUF(regOffset) = value;
         vcount = REG_VCOUNT & 0xFF;
 
-        if ((vcount >= 161 && vcount <= 225) || (REG_DISPCNT & DISPCNT_FORCED_BLANK))
+        if ((vcount >= GPU_REG_WRITE_START_LINE && vcount < DISPLAY_SCANLINE_COUNT - 2) || (REG_DISPCNT & DISPCNT_FORCED_BLANK))
         {
             CopyBufferedValueToGpuReg(regOffset);
         }
@@ -97,10 +168,39 @@ void SetGpuReg(u8 regOffset, u16 value)
     }
 }
 
+void SetGpuReg(u8 regOffset, u16 value)
+{
+#ifdef PLATFORM_SDL2
+    SetBufferedLegacyWindowBounds(regOffset);
+#endif
+    SetGpuRegValue(regOffset, value);
+}
+
+void SetGpuWindowHorizontalRange(u8 regOffset, u16 left, u16 right)
+{
+    if (regOffset != REG_OFFSET_WIN0H && regOffset != REG_OFFSET_WIN1H)
+        return;
+
+#ifdef PLATFORM_SDL2
+    if (left > 255 || right > 255)
+    {
+        u8 window = GetWindowIndexForOffset(regOffset);
+
+        sBufferedGpuWindowHorizontalBounds[window] = GPU_WINDOW_H_RANGE(left, right);
+        SetGpuRegValue(regOffset, WIN_RANGE(min(left, 255), min(right, 255)));
+        return;
+    }
+#endif
+    SetGpuReg(regOffset, WIN_RANGE(left, right));
+}
+
 void SetGpuReg_ForcedBlank(u8 regOffset, u16 value)
 {
     if (regOffset < GPU_REG_BUF_SIZE)
     {
+#ifdef PLATFORM_SDL2
+        SetBufferedLegacyWindowBounds(regOffset);
+#endif
         GPU_REG_BUF(regOffset) = value;
 
         if (REG_DISPCNT & DISPCNT_FORCED_BLANK)

@@ -109,37 +109,6 @@ static void PrintItemQuantity(u8 windowId, u32 itemId, u8 y);
 static void TossItem(u8);
 static void DontTossItem(u8);
 
-static const struct BgTemplate sBgTemplates[] =
-{
-    {
-        .bg = 0,
-        .charBaseIndex = 0,
-        .mapBaseIndex = 31,
-        .screenSize = 0,
-        .paletteMode = 0,
-        .priority = 1,
-        .baseTile = 0
-    },
-    {
-        .bg = 1,
-        .charBaseIndex = 0,
-        .mapBaseIndex = 30,
-        .screenSize = 0,
-        .paletteMode = 0,
-        .priority = 0,
-        .baseTile = 0
-    },
-    {
-        .bg = 2,
-        .charBaseIndex = 3,
-        .mapBaseIndex = 29,
-        .screenSize = 0,
-        .paletteMode = 0,
-        .priority = 2,
-        .baseTile = 0
-    },
-};
-
 static const struct ListMenuTemplate sListMenuTemplate =
 {
     .items = NULL,
@@ -416,6 +385,12 @@ void CB2_ReturnToPyramidBagMenu(void)
 void GoToBattlePyramidBagMenu(u8 location, MainCallback exitCallback)
 {
     gPyramidBagMenu = AllocZeroed(sizeof(*gPyramidBagMenu));
+    if (gPyramidBagMenu == NULL)
+    {
+        SetMainCallback2(exitCallback != NULL ? exitCallback : gPyramidBagMenuState.exitCallback);
+        return;
+    }
+
 
     if (location != PYRAMIDBAG_LOC_PREV)
         gPyramidBagMenuState.location = location;
@@ -545,19 +520,7 @@ static bool8 LoadPyramidBagMenu(void)
 
 static void InitPyramidBagBgs(void)
 {
-    ResetVramOamAndBgCntRegs();
-    ResetBgsAndClearDma3BusyFlags(0);
-    InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
-    SetBgTilemapBuffer(2, gPyramidBagMenu->tilemapBuffer);
-    ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(2);
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 |
-                                  DISPCNT_OBJ_1D_MAP |
-                                  DISPCNT_OBJ_ON);
-    ShowBg(0);
-    ShowBg(1);
-    ShowBg(2);
-    SetGpuReg(REG_OFFSET_BLDCNT, 0);
+    InitBagBgs(gPyramidBagMenu->tilemapBuffer);
 }
 
 static bool8 LoadPyramidBagGfx(void)
@@ -695,7 +658,8 @@ static void PrintItemDescription(s32 listMenuId)
 static void AddScrollArrows(void)
 {
     if (gPyramidBagMenu->scrollIndicatorsTaskId == TASK_NONE)
-        gPyramidBagMenu->scrollIndicatorsTaskId = AddScrollIndicatorArrowPairParameterized(SCROLL_ARROW_UP, 172, 12, 148,
+        gPyramidBagMenu->scrollIndicatorsTaskId = AddScrollIndicatorArrowPairParameterized(SCROLL_ARROW_UP,
+                                                                                            172 + BAG_VIEW_X, 12 + BAG_VIEW_Y, 148 + BAG_VIEW_Y,
                                                                                             gPyramidBagMenu->listMenuCount - gPyramidBagMenu->listMenuMaxShown,
                                                                                             TAG_SCROLL_ARROW, TAG_SCROLL_ARROW,
                                                                                             &gPyramidBagMenuState.scrollPosition);
@@ -875,8 +839,8 @@ static void Task_ClosePyramidBag(u8 taskId)
         RemoveScrollArrow();
         ResetSpriteData();
         FreeAllSpritePalettes();
-        FreeAllWindowBuffers();
-        Free(gPyramidBagMenu);
+        FreeBagWindowBuffers();
+        FREE_AND_SET_NULL(gPyramidBagMenu);
         DestroyTask(taskId);
     }
 }
@@ -1547,7 +1511,7 @@ static void LoadPyramidBagPalette(void)
 static void CreatePyramidBagSprite(void)
 {
     u8 *spriteId = &gPyramidBagMenu->spriteIds[PBAG_SPRITE_BAG];
-    *spriteId = CreateSprite(&sSpriteTemplate_PyramidBag, 68, 56, 0);
+    *spriteId = CreateSprite(&sSpriteTemplate_PyramidBag, 68 + BAG_VIEW_X, 56 + BAG_VIEW_Y, 0);
 }
 
 static void ShakePyramidBag(void)
@@ -1581,8 +1545,8 @@ static void ShowItemIcon(u16 itemId, bool8 isAlt)
         if (itemSpriteId != MAX_SPRITES)
         {
             *spriteId = itemSpriteId;
-            gSprites[itemSpriteId].x2 = 24;
-            gSprites[itemSpriteId].y2 = 88;
+            gSprites[itemSpriteId].x2 = 24 + BAG_VIEW_X;
+            gSprites[itemSpriteId].y2 = 88 + BAG_VIEW_Y;
         }
     }
 }
@@ -1604,5 +1568,5 @@ static void SetSwapLineInvisibility(bool8 invisible)
 
 static void UpdateSwapLinePos(u8 y)
 {
-    UpdateSwapLineSpritesPos(&gPyramidBagMenu->spriteIds[PBAG_SPRITE_SWAP_LINE_START], NUM_SWAP_LINE_SPRITES | SWAP_LINE_HAS_MARGIN, 120, (y + 1) * 16);
+    UpdateSwapLineSpritesPos(&gPyramidBagMenu->spriteIds[PBAG_SPRITE_SWAP_LINE_START], NUM_SWAP_LINE_SPRITES | SWAP_LINE_HAS_MARGIN, 120 + BAG_VIEW_X, (y + 1) * 16 + BAG_VIEW_Y);
 }

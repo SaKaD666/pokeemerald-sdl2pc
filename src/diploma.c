@@ -15,6 +15,9 @@
 #include "menu.h"
 #include "pokedex.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 extern const u8 gText_DexNational[];
 extern const u8 gText_DexHoenn[];
@@ -50,6 +53,9 @@ static const u32 sDiplomaTiles[] = INCGFX_U32("graphics/diploma/tiles.png", ".4b
 void CB2_ShowDiploma(void)
 {
     SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0);
     SetGpuReg(REG_OFFSET_BG3CNT, 0);
     SetGpuReg(REG_OFFSET_BG2CNT, 0);
@@ -118,9 +124,19 @@ static void Task_DiplomaFadeOut(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
-        Free(sDiplomaTilemapPtr);
+        SetVBlankCallback(NULL);
+#ifdef PORTABLE
+        IsDma3ManagerBusyWithBgCopy();
+        ClearScheduledBgCopiesToVram();
+#endif
         FreeAllWindowBuffers();
+        UnsetBgTilemapBuffer(0);
+        UnsetBgTilemapBuffer(1);
+        FREE_AND_SET_NULL(sDiplomaTilemapPtr);
         DestroyTask(taskId);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_ReturnToFieldFadeFromBlack);
     }
 }
@@ -129,7 +145,8 @@ static void DisplayDiplomaText(void)
 {
     if (HasAllMons())
     {
-        SetGpuReg(REG_OFFSET_BG1HOFS, DISPLAY_WIDTH + 16);
+        // The National diploma occupies the second 32-tile screen block.
+        SetGpuReg(REG_OFFSET_BG1HOFS, 32 * TILE_WIDTH);
         StringCopy(gStringVar1, gText_DexNational);
     }
     else
@@ -138,7 +155,7 @@ static void DisplayDiplomaText(void)
         StringCopy(gStringVar1, gText_DexHoenn);
     }
     StringExpandPlaceholders(gStringVar4, gText_PokedexDiploma);
-    PrintDiplomaText(gStringVar4, 0, 1);
+    PrintDiplomaText(gStringVar4, 0, 0);
     PutWindowTilemap(0);
     CopyWindowToVram(0, COPYWIN_FULL);
 }

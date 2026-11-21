@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "global.h"
 #include "overworld.h"
 #include "battle_pyramid.h"
@@ -116,7 +117,7 @@ static u16 KeyInterCB_SendNothing(u32);
 static void ResetMirageTowerAndSaveBlockPtrs(void);
 static void ResetScreenForMapLoad(void);
 static void OffsetCameraFocusByLinkPlayerId(void);
-static void SpawnLinkPlayers(void);
+static void SpawnLinkPlayerObjects(void);
 static void SetCameraToTrackGuestPlayer(void);
 static void ResumeMap(bool32);
 static void SetCameraToTrackPlayer(void);
@@ -267,9 +268,15 @@ static const struct BgTemplate sOverworldBgTemplates[] =
 {
     {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .charBaseIndex = FIELD_UI_CHAR_BASE,
+        .mapBaseIndex = FIELD_UI_MAP_BASE,
+        .screenSize = FIELD_UI_SCREEN_SIZE,
+#else
         .charBaseIndex = 2,
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -277,8 +284,8 @@ static const struct BgTemplate sOverworldBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 0,
-        .mapBaseIndex = 29,
-        .screenSize = 0,
+        .mapBaseIndex = 24,
+        .screenSize = 1,
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -286,8 +293,8 @@ static const struct BgTemplate sOverworldBgTemplates[] =
     {
         .bg = 2,
         .charBaseIndex = 0,
-        .mapBaseIndex = 28,
-        .screenSize = 0,
+        .mapBaseIndex = 26,
+        .screenSize = 1,
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
@@ -295,21 +302,18 @@ static const struct BgTemplate sOverworldBgTemplates[] =
     {
         .bg = 3,
         .charBaseIndex = 0,
-        .mapBaseIndex = 30,
-        .screenSize = 0,
+        .mapBaseIndex = 28,
+        .screenSize = 1,
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
     }
 };
 
-static const struct ScanlineEffectParams sFlashEffectParams =
+bool32 IsOverworldTilemapWide(void)
 {
-    &REG_WIN0H,
-    ((DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_DEST_RELOAD) << 16) | 1,
-    1,
-    0,
-};
+    return sOverworldBgTemplates[1].screenSize == 1;
+}
 
 static u8 MovementEventModeCB_Normal(struct LinkPlayerObjectEvent *, struct ObjectEvent *, u8);
 static u8 MovementEventModeCB_Ignored(struct LinkPlayerObjectEvent *, struct ObjectEvent *, u8);
@@ -466,8 +470,124 @@ void ApplyNewEncryptionKeyToGameStats(u32 newKey)
         ApplyNewEncryptionKeyToWord(&gSaveBlock1Ptr->gameStats[i], newKey);
 }
 
+#ifdef PLATFORM_SDL2
+struct ConnectedObjectTemplateChange
+{
+    struct ConnectedObjectTemplateChange *next;
+    u8 group, map, localId;
+    bool8 hasCoords, hasMovement;
+    s16 x, y;
+    u8 movementType;
+};
+
+static struct ConnectedObjectTemplateChange *sConnectedObjectTemplateChanges;
+
+static struct ConnectedObjectTemplateChange *FindConnectedObjectTemplateChange(u8 group, u8 map, u8 localId)
+{
+    struct ConnectedObjectTemplateChange *change;
+    for (change = sConnectedObjectTemplateChanges; change != NULL; change = change->next)
+        if (change->group == group && change->map == map && change->localId == localId)
+            return change;
+    return NULL;
+}
+
+static struct ConnectedObjectTemplateChange *GetConnectedObjectTemplateChange(u8 group, u8 map, u8 localId)
+{
+    const struct MapEvents *events;
+    struct ConnectedObjectTemplateChange *change = FindConnectedObjectTemplateChange(group, map, localId);
+    s16 originX = 0, originY = 0;
+    u32 i;
+
+    if (change != NULL)
+        return change;
+    if (!ProjectMapCoordsToCurrentMap(group, map, &originX, &originY))
+        return NULL;
+    events = Overworld_GetMapHeaderByGroupAndId(group, map)->events;
+    if (events == NULL)
+        return NULL;
+    for (i = 0; i < events->objectEventCount; i++)
+        if (events->objectEvents[i].localId == localId)
+            break;
+    if (i == events->objectEventCount)
+        return NULL;
+
+    change = calloc(1, sizeof(*change));
+    if (change != NULL)
+    {
+        change->group = group;
+        change->map = map;
+        change->localId = localId;
+        change->next = sConnectedObjectTemplateChanges;
+        sConnectedObjectTemplateChanges = change;
+    }
+    return change;
+}
+
+void SetConnectedObjectTemplateCoords(u8 group, u8 map, u8 localId, s16 x, s16 y)
+{
+    struct ConnectedObjectTemplateChange *change = GetConnectedObjectTemplateChange(group, map, localId);
+    if (change != NULL)
+    {
+        change->x = x;
+        change->y = y;
+        change->hasCoords = TRUE;
+    }
+}
+
+void SetConnectedObjectTemplateMovement(u8 group, u8 map, u8 localId, u8 movementType)
+{
+    struct ConnectedObjectTemplateChange *change = GetConnectedObjectTemplateChange(group, map, localId);
+    if (change != NULL)
+    {
+        change->movementType = movementType;
+        change->hasMovement = TRUE;
+    }
+}
+
+void ApplyConnectedObjectTemplateChanges(u8 group, u8 map, struct ObjectEventTemplate *template)
+{
+    const struct ConnectedObjectTemplateChange *change = FindConnectedObjectTemplateChange(group, map, template->localId);
+    if (change == NULL)
+        return;
+    if (change->hasCoords)
+    {
+        template->x = change->x;
+        template->y = change->y;
+    }
+    if (change->hasMovement)
+        template->movementType = change->movementType;
+}
+
+static void DiscardConnectedObjectTemplateChanges(bool8 all)
+{
+    struct ConnectedObjectTemplateChange **link = &sConnectedObjectTemplateChanges;
+    while (*link != NULL)
+    {
+        struct ConnectedObjectTemplateChange *change = *link;
+        if (all || (change->group == gSaveBlock1Ptr->location.mapGroup
+                 && change->map == gSaveBlock1Ptr->location.mapNum))
+        {
+            *link = change->next;
+            free(change);
+        }
+        else
+        {
+            link = &change->next;
+        }
+    }
+}
+
+void ClearConnectedObjectTemplateChanges(void)
+{
+    DiscardConnectedObjectTemplateChanges(TRUE);
+}
+#endif
+
 void LoadObjEventTemplatesFromHeader(void)
 {
+#ifdef PLATFORM_SDL2
+    u32 i;
+#endif
     // Clear map object templates
     CpuFill32(0, gSaveBlock1Ptr->objectEventTemplates, sizeof(gSaveBlock1Ptr->objectEventTemplates));
 
@@ -475,6 +595,12 @@ void LoadObjEventTemplatesFromHeader(void)
     CpuCopy32(gMapHeader.events->objectEvents,
               gSaveBlock1Ptr->objectEventTemplates,
               gMapHeader.events->objectEventCount * sizeof(struct ObjectEventTemplate));
+#ifdef PLATFORM_SDL2
+    for (i = 0; i < gMapHeader.events->objectEventCount; i++)
+        ApplyConnectedObjectTemplateChanges(gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum,
+                                            &gSaveBlock1Ptr->objectEventTemplates[i]);
+    DiscardConnectedObjectTemplateChanges(FALSE);
+#endif
 }
 
 void LoadSaveblockObjEventScripts(void)
@@ -793,6 +919,12 @@ bool8 SetDiveWarpDive(u16 x, u16 y)
 void LoadMapFromCameraTransition(u8 mapGroup, u8 mapNum)
 {
     s32 paletteIndex;
+    bool32 wideTilemap = IsOverworldTilemapWide();
+    bool32 animationPreserved = FALSE;
+    const struct Tileset *previousTileset = gMapHeader.mapLayout->secondaryTileset;
+
+    if (wideTilemap)
+        CacheActiveFieldTileset();
 
     SetWarpDestination(mapGroup, mapNum, WARP_ID_NONE, -1, -1);
 
@@ -815,13 +947,17 @@ void LoadMapFromCameraTransition(u8 mapGroup, u8 mapNum)
     Overworld_ClearSavedMusic();
     RunOnTransitionMapScript();
     InitMap();
-    CopySecondaryTilesetToVramUsingHeap(gMapHeader.mapLayout);
+    if (wideTilemap)
+        animationPreserved = previousTileset == gMapHeader.mapLayout->secondaryTileset || RestoreCachedFieldTileset();
+    if (!animationPreserved)
+        CopySecondaryTilesetToVramUsingHeap(gMapHeader.mapLayout);
     LoadSecondaryTilesetPalette(gMapHeader.mapLayout);
 
     for (paletteIndex = NUM_PALS_IN_PRIMARY; paletteIndex < NUM_PALS_TOTAL; paletteIndex++)
         ApplyWeatherColorMapToPal(paletteIndex);
 
-    InitSecondaryTilesetAnimation();
+    if (!animationPreserved)
+        InitSecondaryTilesetAnimation();
     UpdateLocationHistoryForRoamer();
     RoamerMove();
     DoCurrentWeather();
@@ -1413,9 +1549,9 @@ static void InitOverworldBgs(void)
     SetBgAttribute(1, BG_ATTR_MOSAIC, 1);
     SetBgAttribute(2, BG_ATTR_MOSAIC, 1);
     SetBgAttribute(3, BG_ATTR_MOSAIC, 1);
-    gOverworldTilemapBuffer_Bg1 = AllocZeroed(BG_SCREEN_SIZE);
-    gOverworldTilemapBuffer_Bg2 = AllocZeroed(BG_SCREEN_SIZE);
-    gOverworldTilemapBuffer_Bg3 = AllocZeroed(BG_SCREEN_SIZE);
+    gOverworldTilemapBuffer_Bg1 = AllocZeroed(GetBgAttribute(1, BG_ATTR_METRIC));
+    gOverworldTilemapBuffer_Bg2 = AllocZeroed(GetBgAttribute(2, BG_ATTR_METRIC));
+    gOverworldTilemapBuffer_Bg3 = AllocZeroed(GetBgAttribute(3, BG_ATTR_METRIC));
     SetBgTilemapBuffer(1, gOverworldTilemapBuffer_Bg1);
     SetBgTilemapBuffer(2, gOverworldTilemapBuffer_Bg2);
     SetBgTilemapBuffer(3, gOverworldTilemapBuffer_Bg3);
@@ -1819,12 +1955,12 @@ static void InitCurrentFlashLevelScanlineEffect(void)
     if (InBattlePyramid_())
     {
         WriteBattlePyramidViewScanlineEffectBuffer();
-        ScanlineEffect_SetParams(sFlashEffectParams);
+        StartFieldCircleScanlineEffect();
     }
     else if ((flashLevel = GetFlashLevel()))
     {
         WriteFlashScanlineEffectBuffer(flashLevel);
-        ScanlineEffect_SetParams(sFlashEffectParams);
+        StartFieldCircleScanlineEffect();
     }
 }
 
@@ -1851,7 +1987,8 @@ static bool32 LoadMapInStepsLink(u8 *state)
     case 3:
         OffsetCameraFocusByLinkPlayerId();
         InitObjectEventsLink();
-        SpawnLinkPlayers();
+        CreateLinkPlayerSprites();
+        ClearAllPlayerKeys();
         SetCameraToTrackGuestPlayer();
         (*state)++;
         break;
@@ -2121,7 +2258,7 @@ static void InitOverworldGraphicsRegisters(void)
     SetGpuReg(REG_OFFSET_MOSAIC, 0);
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ);
     SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG0 | WINOUT_WINOBJ_BG0);
-    SetGpuReg(REG_OFFSET_WIN0H, 0xFF);
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, DISPLAY_WIDTH);
     SetGpuReg(REG_OFFSET_WIN0V, 0xFF);
     SetGpuReg(REG_OFFSET_WIN1H, 0xFFFF);
     SetGpuReg(REG_OFFSET_WIN1V, 0xFFFF);
@@ -2153,6 +2290,9 @@ static void ResumeMap(bool32 a1)
 {
     ResetTasks();
     ResetSpriteData();
+#ifdef PLATFORM_SDL2
+    gOamLimit = ARRAY_COUNT(gMain.oamBuffer);
+#endif
     ResetPaletteFade();
     ScanlineEffect_Clear();
     ResetAllPicSprites();
@@ -2177,6 +2317,7 @@ static void InitObjectEventsLink(void)
     gTotalCameraPixelOffsetX = 0;
     gTotalCameraPixelOffsetY = 0;
     ResetObjectEvents();
+    SpawnLinkPlayerObjects();
     TrySpawnObjectEvents(0, 0);
     TryRunOnWarpIntoMapScript();
 }
@@ -2227,12 +2368,12 @@ static void OffsetCameraFocusByLinkPlayerId(void)
     u16 x, y;
     GetCameraFocusCoords(&x, &y);
 
-    // This is a hack of some kind; it's undone in SpawnLinkPlayers, which is called
+    // This is a hack of some kind; it's undone in SpawnLinkPlayerObjects, which is called
     // soon after this function.
     SetCameraFocusCoords(x + gLocalLinkPlayerId, y);
 }
 
-static void SpawnLinkPlayers(void)
+static void SpawnLinkPlayerObjects(void)
 {
     u16 i;
     u16 x, y;
@@ -2241,12 +2382,7 @@ static void SpawnLinkPlayers(void)
     x -= gLocalLinkPlayerId;
 
     for (i = 0; i < gFieldLinkPlayerCount; i++)
-    {
         SpawnLinkPlayerObjectEvent(i, i + x, y, gLinkPlayers[i].gender);
-        CreateLinkPlayerSprite(i, gLinkPlayers[i].version);
-    }
-
-    ClearAllPlayerKeys();
 }
 
 static void CreateLinkPlayerSprites(void)
@@ -3209,6 +3345,9 @@ static void CreateLinkPlayerSprite(u8 linkPlayerId, u8 gameVersion)
             break;
         }
 
+        if (objEvent->spriteId >= MAX_SPRITES)
+            return;
+
         sprite = &gSprites[objEvent->spriteId];
         sprite->coordOffsetEnabled = TRUE;
         sprite->data[0] = linkPlayerId;
@@ -3233,7 +3372,7 @@ static void SpriteCB_LinkPlayer(struct Sprite *sprite)
     UpdateObjectEventSpriteInvisibility(sprite, FALSE);
     if (objEvent->triggerGroundEffectsOnMove)
     {
-        sprite->invisible = ((sprite->data[7] & 4) >> 2);
+        sprite->invisible |= (sprite->data[7] & 4) != 0;
         sprite->data[7]++;
     }
 }

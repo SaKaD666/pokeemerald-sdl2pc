@@ -364,6 +364,24 @@ static void PlayerDescendMirageTower(u8 taskId)
     }
 }
 
+static s16 GetMirageViewOffsetX(void)
+{
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        return (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
+#endif
+    return 0;
+}
+
+static s16 GetMirageViewOffsetY(void)
+{
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+        return (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
+#endif
+    return 0;
+}
+
 #define tXShakeOffset data[0]
 #define tTimer        data[1]
 #define tNumShakes    data[2]
@@ -373,6 +391,12 @@ static void PlayerDescendMirageTower(u8 taskId)
 static void StartScreenShake(u8 yShakeOffset, u8 xShakeOffset, u8 numShakes, u8 shakeDelay)
 {
     u8 taskId = CreateTask(DoScreenShake, 9);
+
+    if (taskId == TASK_NONE)
+    {
+        IncrementCeilingCrumbleFinishedCount();
+        return;
+    }
     gTasks[taskId].tXShakeOffset = xShakeOffset;
     gTasks[taskId].tTimer = 0;
     gTasks[taskId].tNumShakes = numShakes;
@@ -419,9 +443,14 @@ static void IncrementCeilingCrumbleFinishedCount(void)
 
 void DoMirageTowerCeilingCrumble(void)
 {
+    if (CreateTask(WaitCeilingCrumble, 8) == TASK_NONE)
+    {
+        ScriptContext_Enable();
+        return;
+    }
+
     LoadSpriteSheets(sCeilingCrumbleSpriteSheets);
     CreateCeilingCrumbleSprites();
-    CreateTask(WaitCeilingCrumble, 8);
     StartScreenShake(2, 1, 16, 3);
 }
 
@@ -448,10 +477,17 @@ static void CreateCeilingCrumbleSprites(void)
 {
     u8 i;
     u8 spriteId;
+    s16 offsetX = GetMirageViewOffsetX();
+    s16 offsetY = GetMirageViewOffsetY();
 
     for (i = 0; i < ARRAY_COUNT(sCeilingCrumblePositions); i++)
     {
-        spriteId = CreateSprite(&sSpriteTemplate_CeilingCrumbleLarge, sCeilingCrumblePositions[i][0] + 120, sCeilingCrumblePositions[i][1], 8);
+        spriteId = CreateSprite(&sSpriteTemplate_CeilingCrumbleLarge, sCeilingCrumblePositions[i][0] + 120 + offsetX, sCeilingCrumblePositions[i][1] + offsetY, 8);
+        if (spriteId == MAX_SPRITES)
+        {
+            IncrementCeilingCrumbleFinishedCount();
+            continue;
+        }
         gSprites[spriteId].oam.priority = 0;
         // These sprites use color index 11 from the player's sprite palette. This probably wasn't intentional.
         // The palettes for Brendan and May have different shades of green at this index, so the color of these sprites changes
@@ -461,7 +497,12 @@ static void CreateCeilingCrumbleSprites(void)
     }
     for (i = 0; i < ARRAY_COUNT(sCeilingCrumblePositions); i++)
     {
-        spriteId = CreateSprite(&sSpriteTemplate_CeilingCrumbleSmall, sCeilingCrumblePositions[i][0] + 115, sCeilingCrumblePositions[i][1] - 3, 8);
+        spriteId = CreateSprite(&sSpriteTemplate_CeilingCrumbleSmall, sCeilingCrumblePositions[i][0] + 115 + offsetX, sCeilingCrumblePositions[i][1] - 3 + offsetY, 8);
+        if (spriteId == MAX_SPRITES)
+        {
+            IncrementCeilingCrumbleFinishedCount();
+            continue;
+        }
         gSprites[spriteId].oam.priority = 0;
         gSprites[spriteId].oam.paletteNum = PALSLOT_PLAYER;
         gSprites[spriteId].sIndex = i;
@@ -472,7 +513,7 @@ static void SpriteCB_CeilingCrumble(struct Sprite *sprite)
 {
     sprite->sYOffset += 2;
     sprite->y2 = sprite->sYOffset / 2;
-    if ((sprite->y + sprite->y2) >  sCeilingCrumblePositions[sprite->sIndex][2])
+    if ((sprite->y + sprite->y2) > sCeilingCrumblePositions[sprite->sIndex][2] + GetMirageViewOffsetY())
     {
         DestroySprite(sprite);
         IncrementCeilingCrumbleFinishedCount();
@@ -531,20 +572,19 @@ static void UpdateBgShake(u8 taskId)
 
 static void InitMirageTowerShake(u8 taskId)
 {
-    u8 zero;
-
     switch (gTasks[taskId].tState)
     {
     case 0:
         FreeAllWindowBuffers();
+        UnsetBgTilemapBuffer(0);
         SetBgAttribute(0, BG_ATTR_PRIORITY, 2);
         gTasks[taskId].tState++;
         break;
     case 1:
         sMirageTowerGfxBuffer = (u8 *)AllocZeroed(MIRAGE_TOWER_GFX_LENGTH);
-        sMirageTowerTilemapBuffer = (u8 *)AllocZeroed(BG_SCREEN_SIZE);
+        sMirageTowerTilemapBuffer = AllocZeroed(GetBgAttribute(0, BG_ATTR_METRIC));
         ChangeBgX(0, 0, BG_COORD_SET);
-        ChangeBgY(0, 0, BG_COORD_SET);
+        ChangeBgY(0, -GetMirageViewOffsetY() * 256, BG_COORD_SET);
         gTasks[taskId].tState++;
         break;
     case 2:
@@ -554,7 +594,8 @@ static void InitMirageTowerShake(u8 taskId)
         break;
     case 3:
         SetBgTilemapBuffer(0, sMirageTowerTilemapBuffer);
-        CopyToBgTilemapBufferRect_ChangePalette(0, &sMirageTowerTilemap, 12, 29, 6, 12, 17);
+        CopyToBgTilemapBufferRect_ChangePalette(0, sMirageTowerTilemap,
+                                               12 + GetMirageViewOffsetX() / TILE_WIDTH, 29, 6, 12, 17);
         CopyBgTilemapBufferToVram(0);
         gTasks[taskId].tState++;
         break;
@@ -568,9 +609,9 @@ static void InitMirageTowerShake(u8 taskId)
         break;
     case 6:
         sBgShakeOffsets = Alloc(sizeof(*sBgShakeOffsets));
-        zero = 0;
         sBgShakeOffsets->bgHOFS = 2;
-        sBgShakeOffsets->bgVOFS = zero;
+        sBgShakeOffsets->bgVOFS = -GetMirageViewOffsetY();
+        SetBgShakeOffsets();
         CreateTask(UpdateBgShake, 10);
         DestroyTask(taskId);
         ScriptContext_Enable();
@@ -642,6 +683,8 @@ static void DoMirageTowerDisintegration(u8 taskId)
         bgShakeTaskId = FindTaskIdByFunc(UpdateBgShake);
         if (bgShakeTaskId != TASK_NONE)
             DestroyTask(bgShakeTaskId);
+        ChangeBgX(0, 0, BG_COORD_SET);
+        ChangeBgY(0, 0, BG_COORD_SET);
         sBgShakeOffsets->bgVOFS = sBgShakeOffsets->bgHOFS = 0;
         SetBgShakeOffsets();
         break;
@@ -695,7 +738,7 @@ static void Task_FossilFallAndSink(u8 taskId)
         {
             struct SpriteTemplate fossilTemplate = sSpriteTemplate_FallingFossil;
             fossilTemplate.images = sFallingFossil->frameImage;
-            sFallingFossil->spriteId = CreateSprite(&fossilTemplate, 128, -16, 1);
+            sFallingFossil->spriteId = CreateSprite(&fossilTemplate, 128 + GetMirageViewOffsetX(), -16 + GetMirageViewOffsetY(), 1);
             gSprites[sFallingFossil->spriteId].centerToCornerVecX = 0;
             gSprites[sFallingFossil->spriteId].data[0] = gSprites[sFallingFossil->spriteId].x;
             gSprites[sFallingFossil->spriteId].data[1] = 1;
@@ -727,8 +770,9 @@ static void Task_FossilFallAndSink(u8 taskId)
         FREE_AND_SET_NULL(sFallingFossil);
         break;
     case 8:
+        DestroyTask(taskId);
         ScriptContext_Enable();
-        break;
+        return;
     }
     gTasks[taskId].tState++;
 }
@@ -740,7 +784,7 @@ static void SpriteCB_FallingFossil(struct Sprite *sprite)
         // End animation
         sprite->callback = SpriteCallbackDummy;
     }
-    else if (sprite->y >= 96)
+    else if (sprite->y >= 96 + GetMirageViewOffsetY())
     {
         // Fossil has reached the ground, update disintegration animation
         u8 i;

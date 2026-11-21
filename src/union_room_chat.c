@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "malloc.h"
 #include "bg.h"
 #include "decompress.h"
@@ -945,6 +946,9 @@ static void CB2_LoadInterface(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ResetTasks();
         ResetSpriteData();
         FreeAllSpritePalettes();
@@ -969,7 +973,7 @@ static void CB2_LoadInterface(void)
             sChat->handleInputTask = CreateTask(Task_HandlePlayerInput, 8);
             sChat->receiveMessagesTask = CreateTask(Task_ReceiveChatMessage, 7);
             LoadWirelessStatusIndicatorSpriteGfx();
-            CreateWirelessStatusIndicatorSprite(DISPLAY_WIDTH - 8, DISPLAY_HEIGHT - 10);
+            CreateWirelessStatusIndicatorSprite(GBA_DISPLAY_WIDTH - 8, GBA_DISPLAY_HEIGHT - 10);
         }
         break;
     }
@@ -1600,8 +1604,12 @@ static void Chat_SaveAndExit(void)
     case 13:
         if (!gPaletteFade.active)
         {
+            SetVBlankCallback(NULL);
             FreeDisplay();
             FreeUnionRoomChat();
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_ReturnToField);
         }
         break;
@@ -2173,11 +2181,11 @@ static bool32 IsDisplaySubtask0Active(void)
 
 static void FreeDisplay(void)
 {
+    ScanlineEffect_Stop();
     FreeSprites();
     TRY_FREE_AND_SET_NULL(sDisplay);
 
     FreeAllWindowBuffers();
-    gScanlineEffect.state = 3;
 }
 
 static void InitDisplay(struct UnionRoomChatDisplay *display)
@@ -3040,8 +3048,8 @@ static void ResetGpuBgState(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
     ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON | DISPCNT_WIN1_ON | DISPCNT_OBJWIN_ON);
     SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
-    SetGpuReg(REG_OFFSET_WIN0H, WIN_RANGE(64, DISPLAY_WIDTH));
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT - 16));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 64, GBA_DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, GBA_DISPLAY_HEIGHT - 16));
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG0 | WININ_WIN0_BG2 | WININ_WIN0_BG3
                               | WININ_WIN0_OBJ | WININ_WIN0_CLR);
     SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ | WINOUT_WIN01_CLR);
@@ -3145,18 +3153,23 @@ static void InitScanlineEffect(void)
     ScanlineEffect_SetParams(params);
 }
 
+static void WriteSlidingKeyboardScanlines(u16 *buffer, s16 bg1hofs)
+{
+    const u16 keyboardBottom = GBA_DISPLAY_HEIGHT - 16;
+
+    CpuFill16(bg1hofs, buffer, keyboardBottom * sizeof(*buffer));
+    CpuFill16(0, buffer + keyboardBottom, (DISPLAY_HEIGHT + 2 - keyboardBottom) * sizeof(*buffer));
+}
+
 static void UpdateSlidingKeyboard(s16 bg1hofs)
 {
-    CpuFill16(bg1hofs, gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer], 0x120);
-    CpuFill16(0,       gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer] + 0x90, 0x20);
+    WriteSlidingKeyboardScanlines(gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer], bg1hofs);
 }
 
 static void FinishSlidingKeyboard(s16 bg1hofs)
 {
-    CpuFill16(bg1hofs, gScanlineEffectRegBuffers[0],         0x120);
-    CpuFill16(0,       gScanlineEffectRegBuffers[0] +  0x90, 0x20);
-    CpuFill16(bg1hofs, gScanlineEffectRegBuffers[0] + 0x3C0, 0x120);
-    CpuFill16(0,       gScanlineEffectRegBuffers[0] + 0x450, 0x20);
+    WriteSlidingKeyboardScanlines(gScanlineEffectRegBuffers[0], bg1hofs);
+    WriteSlidingKeyboardScanlines(gScanlineEffectRegBuffers[1], bg1hofs);
 }
 
 static bool32 TryAllocSprites(void)

@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "gpu_regs.h"
 #include "main.h"
 #include "trainer_card.h"
@@ -35,7 +36,7 @@
 // after gFrontierPassBg_Pal (by default, gFrontierPassBg_Gfx) as a palette.
 // Nothing uses these colors (except the Trainer Card, which correctly writes them)
 // so in practice this bug has no effect on the game.
-#ifdef BUGFIX
+#if defined(BUGFIX) || defined(PLATFORM_SDL2)
 #define NUM_BG_PAL_SLOTS 8
 #else
 #define NUM_BG_PAL_SLOTS 13
@@ -595,11 +596,17 @@ static void ResetGpuRegsAndBgs(void)
 void ShowFrontierPass(void (*callback)(void))
 {
     AllocateFrontierPassData(callback);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetMainCallback2(CB2_InitFrontierPass);
 }
 
 static void LeaveFrontierPass(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
     SetMainCallback2(sPassData->callback);
     FreeFrontierPassData();
 }
@@ -899,6 +906,9 @@ void CB2_ReshowFrontierPass(void)
 {
     u8 taskId;
 
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     if (!InitFrontierPass())
         return;
 
@@ -956,6 +966,9 @@ static void CB2_ShowFrontierPassFeature(void)
         sSavedPassData.cursorX = sPassData->cursorX;
         sSavedPassData.cursorY = sPassData->cursorY;
         FreeFrontierPassData();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         PlayRecordedBattle(CB2_ReturnFromRecord);
         break;
     case CURSOR_AREA_CARD:

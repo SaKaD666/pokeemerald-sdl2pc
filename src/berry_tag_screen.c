@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "berry_tag_screen.h"
 #include "berry.h"
 #include "decompress.h"
@@ -183,6 +184,8 @@ void DoBerryTagScreen(void)
 static void CB2_BerryTagScreen(void)
 {
     RunTasks();
+    if (sBerryTag == NULL)
+        return;
     AnimateSprites();
     BuildOamBuffer();
     DoScheduledBgTilemapCopiesToVram();
@@ -214,6 +217,9 @@ static bool8 InitBerryTagScreen(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetVBlankHBlankCallbacksToNull();
         ResetVramOamAndBgCntRegs();
         ClearScheduledBgCopiesToVram();
@@ -523,12 +529,19 @@ static void PrepareToCloseBerryTagScreen(u8 taskId)
 
 static void Task_CloseBerryTagScreen(u8 taskId)
 {
-    if (!gPaletteFade.active)
+    if (!gPaletteFade.active && !IsDma3ManagerBusyWithBgCopy())
     {
+        SetVBlankCallback(NULL);
+        ClearScheduledBgCopiesToVram();
         DestroyBerrySprite();
         DestroyFlavorCircleSprites();
-        Free(sBerryTag);
         FreeAllWindowBuffers();
+        UnsetBgTilemapBuffer(2);
+        UnsetBgTilemapBuffer(3);
+        FREE_AND_SET_NULL(sBerryTag);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_ReturnToBagMenuPocket);
         DestroyTask(taskId);
     }

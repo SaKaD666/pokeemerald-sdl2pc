@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "overworld.h"
 #include "field_effect.h"
 #include "random.h"
@@ -405,12 +406,12 @@ struct SlotMachine
     /*0x50*/ u8 reelTimeBoltSpriteIds[2];
     /*0x52*/ u8 reelTimePikachuAuraSpriteIds[2];
     /*0x54*/ u8 reelTimeDuckSpriteIds[4];
-    /*0x58*/ u16 win0h;
-    /*0x5a*/ u16 win0v;
-    /*0x5c*/ u16 winIn;
-    /*0x5e*/ u16 winOut;
-    /*0x60*/ u16 backupMapMusic;
-    /*0x64*/ MainCallback prevMainCb;
+    u32 win0h;
+    u16 win0v;
+    u16 winIn;
+    u16 winOut;
+    u16 backupMapMusic;
+    MainCallback prevMainCb;
 };
 
 struct DigitalDisplaySprite
@@ -1098,6 +1099,8 @@ static void CB2_SlotMachineSetup(void)
 static void CB2_SlotMachine(void)
 {
     RunTasks();
+    if (sSlotMachine == NULL)
+        return;
     AnimateSprites();
     BuildOamBuffer();
     UpdatePaletteFade();
@@ -1108,7 +1111,7 @@ static void SlotMachine_VBlankCB(void)
     LoadOam();
     ProcessSpriteCopyRequests();
     TransferPlttBuffer();
-    SetGpuReg(REG_OFFSET_WIN0H, sSlotMachine->win0h);
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, sSlotMachine->win0h >> 16, (u16)sSlotMachine->win0h);
     SetGpuReg(REG_OFFSET_WIN0V, sSlotMachine->win0v);
     SetGpuReg(REG_OFFSET_WININ, sSlotMachine->winIn);
     SetGpuReg(REG_OFFSET_WINOUT, sSlotMachine->winOut);
@@ -1141,6 +1144,9 @@ static void SlotMachineDummyTask(u8 taskId)
 
 static void SlotMachineSetup_InitBgsWindows(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetVBlankCallback(NULL);
     SetHBlankCallback(NULL);
     CpuFill32(0, (void *)VRAM, VRAM_SIZE);
@@ -1206,8 +1212,8 @@ static void InitSlotMachine(void)
     sSlotMachine->bet = 0;
     sSlotMachine->currentReel = LEFT_REEL;
     sSlotMachine->reelSpeed = REEL_NORMAL_SPEED;
-    sSlotMachine->win0h = DISPLAY_WIDTH;
-    sSlotMachine->win0v = DISPLAY_HEIGHT;
+    sSlotMachine->win0h = GPU_WINDOW_H_RANGE(0, GBA_DISPLAY_WIDTH);
+    sSlotMachine->win0v = GBA_DISPLAY_HEIGHT;
     sSlotMachine->winIn = WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR;
     sSlotMachine->winOut = WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ | WINOUT_WIN01_CLR;
     sSlotMachine->backupMapMusic = GetCurrentMapMusic();
@@ -1746,7 +1752,12 @@ static bool8 SlotTask_FreeDataStructures(struct Task *task)
 {
     if (!gPaletteFade.active)
     {
-        SetMainCallback2(sSlotMachine->prevMainCb);
+        MainCallback exitCallback = sSlotMachine->prevMainCb;
+
+        IsDma3ManagerBusyWithBgCopy();
+        SetVBlankCallback(NULL);
+        ClearScheduledBgCopiesToVram();
+        FreeAllWindowBuffers();
         FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Reel);
         FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Time);
         FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Insert);
@@ -1776,10 +1787,13 @@ static bool8 SlotTask_FreeDataStructures(struct Task *task)
         FREE_AND_SET_NULL(sSlotMachineSpritesheetsPtr);
         FREE_AND_SET_NULL(sSlotMachine);
 #ifdef PORTABLE
-        SetVBlankCallback(NULL);
         ResetTasks();
         ResetSpriteData();
 #endif
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
+        SetMainCallback2(exitCallback);
     }
     return FALSE;
 }
@@ -4685,9 +4699,9 @@ static void SpriteCB_DigitalDisplay_Reel(struct Sprite *sprite)
     {
     case 0:
         sprite->x += 4;
-        if (sprite->x >= DISPLAY_WIDTH - 32)
+        if (sprite->x >= GBA_DISPLAY_WIDTH - 32)
         {
-            sprite->x = DISPLAY_WIDTH - 32;
+            sprite->x = GBA_DISPLAY_WIDTH - 32;
             sprite->sState++;
         }
         break;
@@ -4697,7 +4711,7 @@ static void SpriteCB_DigitalDisplay_Reel(struct Sprite *sprite)
         break;
     case 2:
         sprite->x += 4;
-        if (sprite->x >= DISPLAY_WIDTH + 32)
+        if (sprite->x >= GBA_DISPLAY_WIDTH + 32)
             sprite->sState++;
         break;
     case 3:
@@ -4713,9 +4727,9 @@ static void SpriteCB_DigitalDisplay_Time(struct Sprite *sprite)
     {
     case 0:
         sprite->x -= 4;
-        if (sprite->x <= DISPLAY_WIDTH - 32)
+        if (sprite->x <= GBA_DISPLAY_WIDTH - 32)
         {
-            sprite->x = DISPLAY_WIDTH - 32;
+            sprite->x = GBA_DISPLAY_WIDTH - 32;
             sprite->sState++;
         }
         break;
@@ -4751,9 +4765,9 @@ static void SpriteCB_DigitalDisplay_ReelTimeNumber(struct Sprite *sprite)
         break;
     case 2:
         sprite->x += 4;
-        if (sprite->x >= DISPLAY_WIDTH - 32)
+        if (sprite->x >= GBA_DISPLAY_WIDTH - 32)
         {
-            sprite->x = DISPLAY_WIDTH - 32;
+            sprite->x = GBA_DISPLAY_WIDTH - 32;
             sprite->sState++;
         }
         break;
@@ -4763,7 +4777,7 @@ static void SpriteCB_DigitalDisplay_ReelTimeNumber(struct Sprite *sprite)
         break;
     case 4:
         sprite->x += 4;
-        if (sprite->x >= DISPLAY_WIDTH + 8)
+        if (sprite->x >= GBA_DISPLAY_WIDTH + 8)
             sprite->sState++;
         break;
     case 5:
@@ -4957,12 +4971,12 @@ static void SpriteCB_DigitalDisplay_AButtonStart(struct Sprite *sprite)
         case 1:
             sprite->sCounter += 2;
             sprite->data[2] = sprite->sCounter + 176;
-            sprite->data[3] = DISPLAY_WIDTH - sprite->sCounter;
+            sprite->data[3] = GBA_DISPLAY_WIDTH - sprite->sCounter;
             if (sprite->data[2] > 208)
                 sprite->data[2] = 208;
             if (sprite->data[3] < 208)
                 sprite->data[3] = 208;
-            sSlotMachine->win0h = (sprite->data[2] << 8) | sprite->data[3];
+            sSlotMachine->win0h = GPU_WINDOW_H_RANGE(sprite->data[2], sprite->data[3]);
             if (sprite->sCounter > 51)
             {
                 sprite->sState++;
@@ -4973,7 +4987,7 @@ static void SpriteCB_DigitalDisplay_AButtonStart(struct Sprite *sprite)
             if (sSlotMachine->bet == 0)
                 break;
             AddDigitalDisplaySprite(DIG_SPRITE_A_BUTTON, SpriteCallbackDummy, 208, 116, 0);
-            sSlotMachine->win0h = WIN_RANGE(192, 224);
+            sSlotMachine->win0h = GPU_WINDOW_H_RANGE(192, 224);
             sSlotMachine->win0v = WIN_RANGE(104, 128);
             sSlotMachine->winIn = WININ_WIN0_BG_ALL | WININ_WIN0_CLR;
             sprite->sState++;
@@ -4982,12 +4996,12 @@ static void SpriteCB_DigitalDisplay_AButtonStart(struct Sprite *sprite)
         case 3:
             sprite->sCounter += 2;
             sprite->data[2] = sprite->sCounter + 192;
-            sprite->data[3] = DISPLAY_WIDTH - 16 - sprite->sCounter;
+            sprite->data[3] = GBA_DISPLAY_WIDTH - 16 - sprite->sCounter;
             if (sprite->data[2] > 208)
                 sprite->data[2] = 208;
             if (sprite->data[3] < 208)
                 sprite->data[3] = 208;
-            sSlotMachine->win0h = (sprite->data[2] << 8) | sprite->data[3];
+            sSlotMachine->win0h = GPU_WINDOW_H_RANGE(sprite->data[2], sprite->data[3]);
             if (sprite->sCounter > 15)
             {
                 sprite->sState++;
@@ -5013,8 +5027,8 @@ static void EndDigitalDisplayScene_Win(void)
 
 static void EndDigitalDisplayScene_InsertBet(void)
 {
-    sSlotMachine->win0h = DISPLAY_WIDTH;
-    sSlotMachine->win0v = DISPLAY_HEIGHT;
+    sSlotMachine->win0h = GPU_WINDOW_H_RANGE(0, GBA_DISPLAY_WIDTH);
+    sSlotMachine->win0v = GBA_DISPLAY_HEIGHT;
     sSlotMachine->winIn = WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR;
     sSlotMachine->winOut = WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ | WINOUT_WIN01_CLR;
 }

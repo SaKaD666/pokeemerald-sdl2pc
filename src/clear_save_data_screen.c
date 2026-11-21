@@ -12,6 +12,9 @@
 #include "constants/songs.h"
 #include "constants/rgb.h"
 #include "platform.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 extern const u8 gText_ClearAllSaveData[];
 extern const u8 gText_ClearingData[];
@@ -136,6 +139,9 @@ static bool8 SetupClearSaveDataScreen(void)
     case 0:
     default:
         SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0);
         SetGpuReg(REG_OFFSET_BG0HOFS, 0);
         SetGpuReg(REG_OFFSET_BG0VOFS, 0);

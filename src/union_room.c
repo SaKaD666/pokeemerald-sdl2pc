@@ -3656,9 +3656,22 @@ static s8 UnionRoomHandleYesNo(u8 *state, bool32 noDraw)
     return MENU_NOTHING_CHOSEN;
 }
 
+static u8 AddUnionRoomTradeBoardWindow(const struct WindowTemplate *template)
+{
+#ifdef PLATFORM_SDL2
+    if (IsWideFieldUi())
+    {
+        struct WindowTemplate centered = *template;
+        centered.tilemapLeft += (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / (2 * TILE_WIDTH);
+        return AddWindow(&centered);
+    }
+#endif
+    return AddWindow(template);
+}
+
 static u8 CreateTradeBoardWindow(const struct WindowTemplate *template)
 {
-    u8 windowId = AddWindow(template);
+    u8 windowId = AddUnionRoomTradeBoardWindow(template);
     DrawStdWindowFrame(windowId, FALSE);
     FillWindowPixelBuffer(windowId, PIXEL_FILL(15));
     PrintUnionRoomText(windowId, FONT_NORMAL, sText_NameWantedOfferLv, 8, 1, UR_COLOR_TRADE_BOARD_OTHER);
@@ -3685,8 +3698,13 @@ static s32 ListMenuHandler_AllItemsAvailable(u8 *state, u8 *windowId, u8 *listMe
         if (winTemplateCopy.width > maxWidth)
             winTemplateCopy.width = maxWidth;
 
-        if (winTemplateCopy.tilemapLeft + winTemplateCopy.width >= DISPLAY_TILE_WIDTH)
-            winTemplateCopy.tilemapLeft = max(DISPLAY_TILE_WIDTH - 1 - winTemplateCopy.width, 0);
+        u8 visibleColumns = DISPLAY_TILE_WIDTH;
+#ifdef PLATFORM_SDL2
+        if (IsWideFieldUi())
+            visibleColumns = DISPLAY_WIDTH / TILE_WIDTH;
+#endif
+        if (winTemplateCopy.tilemapLeft + winTemplateCopy.width >= visibleColumns)
+            winTemplateCopy.tilemapLeft = max(visibleColumns - 1 - winTemplateCopy.width, 0);
 
         *windowId = AddWindow(&winTemplateCopy);
         DrawStdWindowFrame(*windowId, FALSE);
@@ -3732,7 +3750,7 @@ static s32 TradeBoardMenuHandler(u8 *state, u8 *mainWindowId, u8 *listMenuId, u8
     {
     case 0:
         *headerWindowId = CreateTradeBoardWindow(&sWindowTemplate_TradingBoardHeader);
-        *mainWindowId = AddWindow(winTemplate);
+        *mainWindowId = AddUnionRoomTradeBoardWindow(winTemplate);
         DrawStdWindowFrame(*mainWindowId, FALSE);
         gMultiuseListMenuTemplate = *menuTemplate;
         gMultiuseListMenuTemplate.windowId = *mainWindowId;
@@ -3781,7 +3799,7 @@ static s32 TradeBoardMenuHandler(u8 *state, u8 *mainWindowId, u8 *listMenuId, u8
 
 static void UR_ClearBg0(void)
 {
-    FillBgTilemapBufferRect(0, 0, 0, 0, 32, 32, 0);
+    FillBgTilemapBufferRect(0, 0, 0, 0, 32 * GetBgMetricTextMode(0, 1), 32, 0);
     CopyBgTilemapBufferToVram(0);
 }
 

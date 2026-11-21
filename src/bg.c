@@ -4,6 +4,7 @@
 #include "dma3.h"
 #include "gpu_regs.h"
 #ifdef PORTABLE
+#include "field_camera.h"
 #include "platform/system.h"
 #endif
 
@@ -173,6 +174,19 @@ static u16 GetBgControlAttribute(u8 bg, u8 attributeId)
     return 0xFF;
 }
 
+#ifdef PLATFORM_SDL2
+// Field BG0 tile IDs 512–1023 overlap map blocks in simulated GBA VRAM.
+u8 ALIGNED(4) gFieldUiUpperTiles[BG_CHAR_SIZE];
+
+bool32 IsWideFieldUi(void)
+{
+    return GetBgAttribute(0, BG_ATTR_MAPBASEINDEX) == FIELD_UI_MAP_BASE
+        && GetBgAttribute(0, BG_ATTR_CHARBASEINDEX) == FIELD_UI_CHAR_BASE
+        && GetBgAttribute(0, BG_ATTR_SCREENSIZE) == FIELD_UI_SCREEN_SIZE
+        && GetBgAttribute(0, BG_ATTR_PALETTEMODE) == 0;
+}
+#endif
+
 u8 LoadBgVram(u8 bg, const void *src, u16 size, u16 destOffset, u8 mode)
 {
     u16 offset;
@@ -184,6 +198,14 @@ u8 LoadBgVram(u8 bg, const void *src, u16 size, u16 destOffset, u8 mode)
     switch (mode)
     {
     case 0x1:
+#ifdef PLATFORM_SDL2
+        if (bg == 0 && IsWideFieldUi() && (u32)destOffset + size > BG_CHAR_SIZE)
+        {
+            if (destOffset < BG_CHAR_SIZE || (u32)destOffset + size > 2 * BG_CHAR_SIZE)
+                return -1;
+            return RequestDma3Copy(src, gFieldUiUpperTiles + destOffset - BG_CHAR_SIZE, size, 0);
+        }
+#endif
         offset = sGpuBgConfigs.configs[bg].charBaseIndex * BG_CHAR_SIZE;
         offset = destOffset + offset;
         cursor = RequestDma3Copy(src, (void *)(offset + BG_VRAM), size, 0);
@@ -907,6 +929,10 @@ void CopyBgTilemapBufferToVram(u8 bg)
             sizeToLoad = 0;
             break;
         }
+#ifdef PORTABLE
+        if (QueueFieldTilemapCopy(bg, sGpuBgConfigs2[bg].tilemap, sizeToLoad))
+            return;
+#endif
         LoadBgVram(bg, sGpuBgConfigs2[bg].tilemap, sizeToLoad, 0, 2);
     }
 }

@@ -994,12 +994,20 @@ bool8 ScrCmd_fadeinbgm(struct ScriptContext *ctx)
     return FALSE;
 }
 
+static u16 GetImplicitObjectMap(const struct ScriptContext *ctx, u16 localId)
+{
+    if (ctx->hasObjectMap && localId != LOCALID_PLAYER && localId != LOCALID_CAMERA)
+        return (ctx->objectMapGroup << 8) | ctx->objectMapNum;
+    return ((u8)gSaveBlock1Ptr->location.mapGroup << 8) | (u8)gSaveBlock1Ptr->location.mapNum;
+}
+
 bool8 ScrCmd_applymovement(struct ScriptContext *ctx)
 {
     u16 localId = VarGet(ScriptReadHalfword(ctx));
     const void *movementScript = (const void *)ScriptReadPointer(ctx);
+    u16 map = GetImplicitObjectMap(ctx, localId);
 
-    ScriptMovement_StartObjectMovementScript(localId, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup, movementScript);
+    ScriptMovement_StartObjectMovementScript(localId, MAP_NUM(map), MAP_GROUP(map), movementScript);
     sMovingNpcId = localId;
     return FALSE;
 }
@@ -1024,11 +1032,13 @@ static bool8 WaitForMovementFinish(void)
 bool8 ScrCmd_waitmovement(struct ScriptContext *ctx)
 {
     u16 localId = VarGet(ScriptReadHalfword(ctx));
+    u16 map;
 
     if (localId != LOCALID_NONE)
         sMovingNpcId = localId;
-    sMovingNpcMapGroup = gSaveBlock1Ptr->location.mapGroup;
-    sMovingNpcMapNum = gSaveBlock1Ptr->location.mapNum;
+    map = GetImplicitObjectMap(ctx, sMovingNpcId);
+    sMovingNpcMapGroup = MAP_GROUP(map);
+    sMovingNpcMapNum = MAP_NUM(map);
     SetupNativeScript(ctx, WaitForMovementFinish);
     return TRUE;
 }
@@ -1052,8 +1062,9 @@ bool8 ScrCmd_waitmovementat(struct ScriptContext *ctx)
 bool8 ScrCmd_removeobject(struct ScriptContext *ctx)
 {
     u16 localId = VarGet(ScriptReadHalfword(ctx));
+    u16 map = GetImplicitObjectMap(ctx, localId);
 
-    RemoveObjectEventByLocalIdAndMap(localId, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup);
+    RemoveObjectEventByLocalIdAndMap(localId, MAP_NUM(map), MAP_GROUP(map));
     return FALSE;
 }
 
@@ -1070,8 +1081,9 @@ bool8 ScrCmd_removeobjectat(struct ScriptContext *ctx)
 bool8 ScrCmd_addobject(struct ScriptContext *ctx)
 {
     u16 objectId = VarGet(ScriptReadHalfword(ctx));
+    u16 map = GetImplicitObjectMap(ctx, objectId);
 
-    TrySpawnObjectEvent(objectId, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup);
+    TrySpawnObjectEvent(objectId, MAP_NUM(map), MAP_GROUP(map));
     return FALSE;
 }
 
@@ -1090,8 +1102,9 @@ bool8 ScrCmd_setobjectxy(struct ScriptContext *ctx)
     u16 localId = VarGet(ScriptReadHalfword(ctx));
     u16 x = VarGet(ScriptReadHalfword(ctx));
     u16 y = VarGet(ScriptReadHalfword(ctx));
+    u16 map = GetImplicitObjectMap(ctx, localId);
 
-    TryMoveObjectEventToMapCoords(localId, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup, x, y);
+    TryMoveObjectEventToMapCoords(localId, MAP_NUM(map), MAP_GROUP(map), x, y);
     return FALSE;
 }
 
@@ -1100,16 +1113,23 @@ bool8 ScrCmd_setobjectxyperm(struct ScriptContext *ctx)
     u16 localId = VarGet(ScriptReadHalfword(ctx));
     u16 x = VarGet(ScriptReadHalfword(ctx));
     u16 y = VarGet(ScriptReadHalfword(ctx));
+    u16 map = GetImplicitObjectMap(ctx, localId);
 
-    SetObjEventTemplateCoords(localId, x, y);
+    if (MAP_NUM(map) == gSaveBlock1Ptr->location.mapNum && MAP_GROUP(map) == gSaveBlock1Ptr->location.mapGroup)
+        SetObjEventTemplateCoords(localId, x, y);
+#ifdef PLATFORM_SDL2
+    else
+        SetConnectedObjectTemplateCoords(MAP_GROUP(map), MAP_NUM(map), localId, x, y);
+#endif
     return FALSE;
 }
 
 bool8 ScrCmd_copyobjectxytoperm(struct ScriptContext *ctx)
 {
     u16 localId = VarGet(ScriptReadHalfword(ctx));
+    u16 map = GetImplicitObjectMap(ctx, localId);
 
-    TryOverrideObjectEventTemplateCoords(localId, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup);
+    TryOverrideObjectEventTemplateCoords(localId, MAP_NUM(map), MAP_GROUP(map));
     return FALSE;
 }
 
@@ -1165,8 +1185,9 @@ bool8 ScrCmd_turnobject(struct ScriptContext *ctx)
 {
     u16 localId = VarGet(ScriptReadHalfword(ctx));
     u8 direction = ScriptReadByte(ctx);
+    u16 map = GetImplicitObjectMap(ctx, localId);
 
-    ObjectEventTurnByLocalIdAndMap(localId, gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup, direction);
+    ObjectEventTurnByLocalIdAndMap(localId, MAP_NUM(map), MAP_GROUP(map), direction);
     return FALSE;
 }
 
@@ -1174,8 +1195,14 @@ bool8 ScrCmd_setobjectmovementtype(struct ScriptContext *ctx)
 {
     u16 localId = VarGet(ScriptReadHalfword(ctx));
     u8 movementType = ScriptReadByte(ctx);
+    u16 map = GetImplicitObjectMap(ctx, localId);
 
-    SetObjEventTemplateMovementType(localId, movementType);
+    if (MAP_NUM(map) == gSaveBlock1Ptr->location.mapNum && MAP_GROUP(map) == gSaveBlock1Ptr->location.mapGroup)
+        SetObjEventTemplateMovementType(localId, movementType);
+#ifdef PLATFORM_SDL2
+    else
+        SetConnectedObjectTemplateMovement(MAP_GROUP(map), MAP_NUM(map), localId, movementType);
+#endif
     return FALSE;
 }
 
@@ -1821,7 +1848,7 @@ bool8 ScrCmd_updatecoinsbox(struct ScriptContext *ctx)
 
 bool8 ScrCmd_trainerbattle(struct ScriptContext *ctx)
 {
-    ctx->scriptPtr = BattleSetup_ConfigureTrainerBattle(ctx->scriptPtr);
+    ctx->scriptPtr = BattleSetup_ConfigureTrainerBattleInMap(ctx->scriptPtr, GetImplicitObjectMap(ctx, LOCALID_NONE), gSpecialVar_LastTalked);
     return FALSE;
 }
 
@@ -1839,7 +1866,11 @@ bool8 ScrCmd_gotopostbattlescript(struct ScriptContext *ctx)
 
 bool8 ScrCmd_gotobeatenscript(struct ScriptContext *ctx)
 {
-    ctx->scriptPtr = BattleSetup_GetTrainerPostBattleScript();
+    u16 map;
+
+    ctx->scriptPtr = BattleSetup_GetTrainerPostBattleScript(&map);
+    if (map != MAP_UNDEFINED)
+        ScriptContext_SetObjectMap(ctx, MAP_GROUP(map), MAP_NUM(map));
     return FALSE;
 }
 
@@ -2187,6 +2218,7 @@ bool8 ScrCmd_freerotatingtilepuzzle(struct ScriptContext *ctx)
 bool8 ScrCmd_selectapproachingtrainer(struct ScriptContext *ctx)
 {
     gSelectedObjectEvent = GetCurrentApproachingTrainerObjectEventId();
+    gSpecialVar_LastTalked = gObjectEvents[gSelectedObjectEvent].localId;
     return FALSE;
 }
 

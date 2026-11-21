@@ -12,6 +12,7 @@
 #include "data.h"
 #include "daycare.h"
 #include "decompress.h"
+#include "dma3.h"
 #include "dynamic_placeholder_text_util.h"
 #include "event_data.h"
 #include "gpu_regs.h"
@@ -321,8 +322,13 @@ static const struct BgTemplate sBgTemplates[] =
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0,
@@ -330,8 +336,13 @@ static const struct BgTemplate sBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 26,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 27,
         .screenSize = 1,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0,
@@ -339,8 +350,13 @@ static const struct BgTemplate sBgTemplates[] =
     {
         .bg = 2,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 24,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 25,
         .screenSize = 1,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0,
@@ -348,8 +364,13 @@ static const struct BgTemplate sBgTemplates[] =
     {
         .bg = 3,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 29,
         .screenSize = 1,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0,
@@ -1299,18 +1320,40 @@ static bool8 LoadGraphics(void)
     return FALSE;
 }
 
+#define SUMMARY_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
+#define SUMMARY_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
+#define SUMMARY_VIEW_BG_X (-SUMMARY_VIEW_X * 256)
+#define SUMMARY_VIEW_BG_Y (-SUMMARY_VIEW_Y * 256)
+
 static void InitBGs(void)
 {
+    u8 bg;
+    u16 display = DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP;
+
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
     SetBgTilemapBuffer(1, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_BATTLE_MOVES][0]);
     SetBgTilemapBuffer(2, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_SKILLS][0]);
     SetBgTilemapBuffer(3, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0]);
     ResetAllBgsCoordinates();
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, SUMMARY_VIEW_X, SUMMARY_VIEW_X + GBA_DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(SUMMARY_VIEW_Y, SUMMARY_VIEW_Y + GBA_DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
+    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    display |= DISPCNT_WIN0_ON;
+#endif
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+    {
+        ChangeBgX(bg, SUMMARY_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgY(bg, SUMMARY_VIEW_BG_Y, BG_COORD_SET);
+    }
+    gSpriteCoordOffsetX = SUMMARY_VIEW_X;
+    gSpriteCoordOffsetY = SUMMARY_VIEW_Y;
     ScheduleBgCopyTilemapToVram(1);
     ScheduleBgCopyTilemapToVram(2);
     ScheduleBgCopyTilemapToVram(3);
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
+    SetGpuReg(REG_OFFSET_DISPCNT, display);
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
     ShowBg(0);
     ShowBg(1);
@@ -1501,8 +1544,18 @@ static void SetDefaultTilemaps(void)
 
 static void FreeSummaryScreen(void)
 {
+    u8 bg;
+
+    ClearScheduledBgCopiesToVram();
+    ClearDma3Requests();
+    ResetAllBgsCoordinates();
+#ifdef PLATFORM_SDL2
+    ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
+#endif
     FreeAllWindowBuffers();
-    Free(sMonSummaryScreen);
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+        SetBgTilemapBuffer(bg, NULL);
+    FREE_AND_SET_NULL(sMonSummaryScreen);
 }
 
 static void BeginCloseSummaryScreen(u8 taskId)
@@ -1801,7 +1854,7 @@ static void PssScrollRight(u8 taskId) // Scroll right
             SetBgAttribute(1, BG_ATTR_PRIORITY, 2);
             ScheduleBgCopyTilemapToVram(2);
         }
-        ChangeBgX(data[1], 0, BG_COORD_SET);
+        ChangeBgX(data[1], SUMMARY_VIEW_BG_X, BG_COORD_SET);
         SetBgTilemapBuffer(data[1], sMonSummaryScreen->bgTilemapBuffers[sMonSummaryScreen->currPageIndex][0]);
         ShowBg(1);
         ShowBg(2);
@@ -1834,7 +1887,7 @@ static void PssScrollLeft(u8 taskId) // Scroll left
             data[1] = 2;
         else
             data[1] = 1;
-        ChangeBgX(data[1], 0x10000, BG_COORD_SET);
+        ChangeBgX(data[1], SUMMARY_VIEW_BG_X + 0x10000, BG_COORD_SET);
     }
     ChangeBgX(data[1], 0x2000, BG_COORD_SUB);
     data[0] += 32;
@@ -1860,7 +1913,7 @@ static void PssScrollLeftEnd(u8 taskId) // display left
     if (sMonSummaryScreen->currPageIndex > 1)
     {
         SetBgTilemapBuffer(data[1], sMonSummaryScreen->bgTilemapBuffers[sMonSummaryScreen->currPageIndex - 1][0]);
-        ChangeBgX(data[1], 0x10000, BG_COORD_SET);
+        ChangeBgX(data[1], SUMMARY_VIEW_BG_X + 0x10000, BG_COORD_SET);
     }
     ShowBg(1);
     ShowBg(2);
@@ -2713,9 +2766,9 @@ static void DrawContestMoveHearts(u16 move)
 static void LimitEggSummaryPageDisplay(void) // If the Pokémon is an egg, limit the number of pages displayed to 1
 {
     if (sMonSummaryScreen->summary.isEgg)
-        ChangeBgX(3, 0x10000, BG_COORD_SET);
+        ChangeBgX(3, SUMMARY_VIEW_BG_X + 0x10000, BG_COORD_SET);
     else
-        ChangeBgX(3, 0, BG_COORD_SET);
+        ChangeBgX(3, SUMMARY_VIEW_BG_X, BG_COORD_SET);
 }
 
 static void ResetWindows(void)
@@ -3791,6 +3844,13 @@ static void SetTypeIcons(void)
     }
 }
 
+static u8 UseSummarySpriteOffset(u8 spriteId)
+{
+    if (spriteId < MAX_SPRITES)
+        gSprites[spriteId].coordOffsetEnabled = TRUE;
+    return spriteId;
+}
+
 static void CreateMoveTypeIcons(void)
 {
     u8 i;
@@ -3798,7 +3858,7 @@ static void CreateMoveTypeIcons(void)
     for (i = SPRITE_ARR_ID_TYPE; i < SPRITE_ARR_ID_TYPE + TYPE_ICON_SPRITE_COUNT; i++)
     {
         if (sMonSummaryScreen->spriteIds[i] == SPRITE_NONE)
-            sMonSummaryScreen->spriteIds[i] = CreateSprite(&sSpriteTemplate_MoveTypes, 0, 0, 2);
+            sMonSummaryScreen->spriteIds[i] = UseSummarySpriteOffset(CreateSprite(&sSpriteTemplate_MoveTypes, 0, 0, 2));
 
         SetSpriteInvisibility(i, TRUE);
     }
@@ -3975,7 +4035,7 @@ static void PlayMonCry(void)
 static u8 CreateMonSprite(struct Pokemon *unused)
 {
     struct PokeSummary *summary = &sMonSummaryScreen->summary;
-    u8 spriteId = CreateSprite(&gMultiuseSpriteTemplate, 40, 64, 5);
+    u8 spriteId = UseSummarySpriteOffset(CreateSprite(&gMultiuseSpriteTemplate, 40, 64, 5));
 
     FreeSpriteOamMatrix(&gSprites[spriteId]);
     gSprites[spriteId].data[0] = summary->species2;
@@ -4052,6 +4112,7 @@ static void CreateMonMarkingsSprite(struct Pokemon *mon)
     sMonSummaryScreen->markingsSprite = sprite;
     if (sprite != NULL)
     {
+        sprite->coordOffsetEnabled = TRUE;
         StartSpriteAnim(sprite, GetMonData(mon, MON_DATA_MARKINGS));
         sMonSummaryScreen->markingsSprite->x = 60;
         sMonSummaryScreen->markingsSprite->y = 26;
@@ -4071,7 +4132,7 @@ static void CreateCaughtBallSprite(struct Pokemon *mon)
     u8 ball = ItemIdToBallId(GetMonData(mon, MON_DATA_POKEBALL));
 
     LoadBallGfx(ball);
-    sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = CreateSprite(&gBallSpriteTemplates[ball], 16, 136, 0);
+    sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = UseSummarySpriteOffset(CreateSprite(&gBallSpriteTemplates[ball], 16, 136, 0));
     gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].callback = SpriteCallbackDummy;
     gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].oam.priority = 3;
 }
@@ -4082,7 +4143,7 @@ static void CreateSetStatusSprite(void)
     u8 statusAnim;
 
     if (*spriteId == SPRITE_NONE)
-        *spriteId = CreateSprite(&sSpriteTemplate_StatusCondition, 64, 152, 0);
+        *spriteId = UseSummarySpriteOffset(CreateSprite(&sSpriteTemplate_StatusCondition, 64, 152, 0));
 
     statusAnim = GetMonAilment(&sMonSummaryScreen->currentMon);
     if (statusAnim != 0)
@@ -4109,7 +4170,7 @@ static void CreateMoveSelectorSprites(u8 idArrayStart)
 
         for (i = 0; i < MOVE_SELECTOR_SPRITES_COUNT; i++)
         {
-            spriteIds[i] = CreateSprite(&sMoveSelectorSpriteTemplate, i * 16 + 89, 40, subpriority);
+            spriteIds[i] = UseSummarySpriteOffset(CreateSprite(&sMoveSelectorSpriteTemplate, i * 16 + 89, 40, subpriority));
             if (i == 0)
                 StartSpriteAnim(&gSprites[spriteIds[i]], 4); // left
             else if (i == 9)

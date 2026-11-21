@@ -1,6 +1,7 @@
 #include "global.h"
 #include "battle_pyramid.h"
 #include "bg.h"
+#include "event_object_movement.h"
 #include "fieldmap.h"
 #include "fldeff.h"
 #include "fldeff_misc.h"
@@ -26,6 +27,10 @@ struct ConnectionFlags
 };
 
 EWRAM_DATA static u16 ALIGNED(4) sBackupMapData[MAX_MAP_DATA_SIZE] = {0};
+// Zero denotes the active map; other values are connection indices plus one.
+static u8 sMapGridConnectionSources[MAX_MAP_DATA_SIZE];
+static const struct MapConnections *sMapGridConnections;
+static u16 sConnectionMapViewSources[MAP_VIEW_WIDTH * MAP_VIEW_HEIGHT];
 EWRAM_DATA struct MapHeader gMapHeader = {0};
 EWRAM_DATA struct Camera gCamera = {0};
 EWRAM_DATA static struct ConnectionFlags sMapConnectionFlags = {0};
@@ -33,31 +38,102 @@ EWRAM_DATA static u32 UNUSED sFiller = 0; // without this, the next file won't a
 
 COMMON_DATA struct BackupMapLayout gBackupMapLayout = {0};
 
+static s32 sMapGridStorageWidth;
+static s32 sMapGridStorageHeight;
+static s32 sMapGridStorageOffsetX;
+static s32 sMapGridStorageOffsetY;
+
+enum
+{
+    WIDE_MAP_MARGIN_WEST = MAP_VIEW_LEFT_MARGIN,
+    WIDE_MAP_MARGIN_EAST = MAP_VIEW_WIDTH - MAP_VIEW_LEFT_MARGIN - 1,
+    WIDE_MAP_MARGIN_NORTH = MAP_VIEW_TOP_MARGIN,
+    WIDE_MAP_MARGIN_SOUTH = MAP_VIEW_HEIGHT - MAP_VIEW_TOP_MARGIN - 1,
+};
+
 static const struct ConnectionFlags sDummyConnectionFlags = {0};
 
 static void InitMapLayoutData(const struct MapHeader *mapHeader);
 static void InitBackupMapLayoutData(const u16 *map, u16 width, u16 height);
-static void FillSouthConnection(struct MapHeader const *mapHeader, struct MapHeader const *connectedMapHeader, s32 offset);
-static void FillNorthConnection(struct MapHeader const *mapHeader, struct MapHeader const *connectedMapHeader, s32 offset);
-static void FillWestConnection(struct MapHeader const *mapHeader, struct MapHeader const *connectedMapHeader, s32 offset);
-static void FillEastConnection(struct MapHeader const *mapHeader, struct MapHeader const *connectedMapHeader, s32 offset);
 static void InitBackupMapLayoutConnections(const struct MapHeader *mapHeader);
 static void LoadSavedMapView(void);
-static bool8 SkipCopyingMetatileFromSavedMap(u16 *mapBlock, u16 mapWidth, u8 yMode);
+static bool8 SkipCopyingMetatileFromSavedMap(s32 x, s32 y, u8 yMode);
 static const struct MapConnection *GetIncomingConnection(u8 direction, s32 x, s32 y);
 static bool8 IsPosInIncomingConnectingMap(u8 direction, s32 x, s32 y, const struct MapConnection *connection);
 static bool8 IsCoordInIncomingConnectingMap(s32 coord, s32 srcMax, s32 destMax, s32 offset);
 
 #define GetBorderBlockAt(x, y) (gMapHeader.mapLayout->border[((x + 1) & 1) + (((y + 1) & 1) << 1)] | MAPGRID_IMPASSABLE)
 
-#define AreCoordsWithinMapGridBounds(x, y) (x >= 0 && x < gBackupMapLayout.width && y >= 0 && y < gBackupMapLayout.height)
+static u16 *GetMapGridEntry(s32 x, s32 y)
+{
+    x += sMapGridStorageOffsetX;
+    y += sMapGridStorageOffsetY;
+    if (x < 0 || x >= sMapGridStorageWidth || y < 0 || y >= sMapGridStorageHeight)
+        return NULL;
 
-#define GetMapGridBlockAt(x, y) (AreCoordsWithinMapGridBounds(x, y) ? gBackupMapLayout.map[x + gBackupMapLayout.width * y] : GetBorderBlockAt(x, y))
+    return &gBackupMapLayout.map[y * sMapGridStorageWidth + x];
+}
+
+static u16 GetMapGridBlockAt(s32 x, s32 y)
+{
+    const u16 *entry = GetMapGridEntry(x, y);
+
+    if (entry != NULL)
+        return *entry;
+
+    return GetBorderBlockAt(x, y);
+}
 
 const struct MapHeader *const GetMapHeaderFromConnection(const struct MapConnection *connection)
 {
     return Overworld_GetMapHeaderByGroupAndId(connection->mapGroup, connection->mapNum);
 }
+
+static const struct MapConnection *GetMapGridSourceConnection(const u16 *entry)
+{
+    if (entry != NULL && *entry != MAPGRID_UNDEFINED
+     && sMapGridConnections != NULL && sMapGridConnections == gMapHeader.connections)
+    {
+        u8 source = sMapGridConnectionSources[entry - sBackupMapData];
+        if (source != 0)
+            return &sMapGridConnections->connections[source - 1];
+    }
+
+    return NULL;
+}
+
+const struct MapLayout *MapGridGetSourceLayoutAt(s32 x, s32 y)
+{
+    const struct MapConnection *connection = GetMapGridSourceConnection(GetMapGridEntry(x, y));
+
+    if (connection != NULL)
+        return GetMapHeaderFromConnection(connection)->mapLayout;
+
+    return gMapHeader.mapLayout;
+}
+
+static u16 GetMapGridSourceId(s32 x, s32 y)
+{
+    const u16 *entry = GetMapGridEntry(x, y);
+    const struct MapConnection *connection = GetMapGridSourceConnection(entry);
+
+    if (connection != NULL)
+        return (connection->mapGroup << 8) | connection->mapNum;
+
+    if (entry == NULL || *entry == MAPGRID_UNDEFINED
+     || x < MAP_OFFSET || x >= gBackupMapLayout.width - (MAP_OFFSET + 1)
+     || y < MAP_OFFSET || y >= gBackupMapLayout.height - MAP_OFFSET)
+        return MAP_UNDEFINED;
+
+    return ((u8)gSaveBlock1Ptr->location.mapGroup << 8) | (u8)gSaveBlock1Ptr->location.mapNum;
+}
+
+#ifdef PLATFORM_SDL2
+bool8 MapGridIsFromMap(s32 x, s32 y, u8 mapGroup, u8 mapNum)
+{
+    return GetMapGridSourceId(x, y) == ((mapGroup << 8) | mapNum);
+}
+#endif
 
 void InitMap(void)
 {
@@ -78,26 +154,54 @@ void InitMapFromSavedGame(void)
 
 void InitBattlePyramidMap(bool8 setPlayerPosition)
 {
-    CpuFastFill16(MAPGRID_UNDEFINED, sBackupMapData, sizeof(sBackupMapData));
-    GenerateBattlePyramidFloorLayout(sBackupMapData, setPlayerPosition);
+    GenerateBattlePyramidFloorLayout(setPlayerPosition);
 }
 
 void InitTrainerHillMap(void)
 {
+    GenerateTrainerHillFloorLayout();
+}
+
+bool32 InitMapGrid(s32 width, s32 height)
+{
+    bool32 wideTilemap = IsOverworldTilemapWide();
+    s32 marginWidth = wideTilemap ? WIDE_MAP_MARGIN_WEST + WIDE_MAP_MARGIN_EAST : MAP_OFFSET_W;
+    s32 marginHeight = wideTilemap ? WIDE_MAP_MARGIN_NORTH + WIDE_MAP_MARGIN_SOUTH : MAP_OFFSET_H;
+
+#if defined(PLATFORM_SDL2) && ENABLE_WIDE_OBJECT_SPAWN
+    // A sprite anchored one row past the south edge can overlap the screen.
+    if (wideTilemap)
+        marginHeight++;
+#endif
+
+    gBackupMapLayout.map = sBackupMapData;
+    gBackupMapLayout.width = 0;
+    gBackupMapLayout.height = 0;
+    sMapGridStorageWidth = 0;
+    sMapGridStorageHeight = 0;
+    sMapGridConnections = NULL;
+
+    if (width <= 0 || width > MAX_MAP_DATA_SIZE - marginWidth || height <= 0
+     || height > MAX_MAP_DATA_SIZE / (width + marginWidth) - marginHeight)
+        return FALSE;
+
+    // These dimensions still describe the historical MapGrid coordinate space.
+    gBackupMapLayout.width = width + MAP_OFFSET_W;
+    gBackupMapLayout.height = height + MAP_OFFSET_H;
+    sMapGridStorageWidth = width + marginWidth;
+    sMapGridStorageHeight = height + marginHeight;
+    sMapGridStorageOffsetX = wideTilemap ? WIDE_MAP_MARGIN_WEST - MAP_OFFSET : 0;
+    sMapGridStorageOffsetY = wideTilemap ? WIDE_MAP_MARGIN_NORTH - MAP_OFFSET : 0;
     CpuFastFill16(MAPGRID_UNDEFINED, sBackupMapData, sizeof(sBackupMapData));
-    GenerateTrainerHillFloorLayout(sBackupMapData);
+    memset(sMapGridConnectionSources, 0, sizeof(sMapGridConnectionSources));
+    return TRUE;
 }
 
 static void InitMapLayoutData(const struct MapHeader *mapHeader)
 {
     const struct MapLayout *mapLayout = mapHeader->mapLayout;
-    CpuFastFill16(MAPGRID_UNDEFINED, sBackupMapData, sizeof(sBackupMapData));
 
-    gBackupMapLayout.map = sBackupMapData;
-    gBackupMapLayout.width = mapLayout->width + MAP_OFFSET_W;
-    gBackupMapLayout.height = mapLayout->height + MAP_OFFSET_H;
-
-    if (gBackupMapLayout.width * gBackupMapLayout.height > MAX_MAP_DATA_SIZE)
+    if (!InitMapGrid(mapLayout->width, mapLayout->height))
         return;
 
     InitBackupMapLayoutData(mapLayout->map, mapLayout->width, mapLayout->height);
@@ -106,212 +210,137 @@ static void InitMapLayoutData(const struct MapHeader *mapHeader)
 
 static void InitBackupMapLayoutData(const u16 *map, u16 width, u16 height)
 {
-    u16 *dest;
+    u16 *dest = GetMapGridEntry(MAP_OFFSET, MAP_OFFSET);
     s32 y;
-    dest = gBackupMapLayout.map;
-    dest += gBackupMapLayout.width * MAP_OFFSET + MAP_OFFSET;
+
     for (y = 0; y < height; y++)
     {
         CpuCopy16(map, dest, width * 2);
-        dest += width + MAP_OFFSET_W;
+        dest += sMapGridStorageWidth;
         map += width;
     }
 }
 
+static void FillConnection(const struct MapLayout *neighbor, s32 originX, s32 originY, u8 source)
+{
+    s32 left = max(originX, -sMapGridStorageOffsetX);
+    s32 top = max(originY, -sMapGridStorageOffsetY);
+    s32 right = min(originX + neighbor->width, sMapGridStorageWidth - sMapGridStorageOffsetX);
+    s32 bottom = min(originY + neighbor->height, sMapGridStorageHeight - sMapGridStorageOffsetY);
+    s32 y;
+
+    if (left >= right || top >= bottom)
+        return;
+
+    for (y = top; y < bottom; y++)
+    {
+        const u16 *src = &neighbor->map[(y - originY) * neighbor->width + left - originX];
+        u16 *dest = GetMapGridEntry(left, y);
+
+        CpuCopy16(src, dest, (right - left) * sizeof(*src));
+        if (source != 0)
+            memset(&sMapGridConnectionSources[dest - sBackupMapData], source, right - left);
+    }
+}
+
+static bool8 GetConnectionOrigin(const struct MapLayout *layout, const struct MapLayout *neighbor,
+                                 const struct MapConnection *connection, s32 *x, s32 *y)
+{
+    switch (connection->direction)
+    {
+    case CONNECTION_SOUTH:
+        *x = connection->offset;
+        *y = layout->height;
+        return TRUE;
+    case CONNECTION_NORTH:
+        *x = connection->offset;
+        *y = -neighbor->height;
+        return TRUE;
+    case CONNECTION_WEST:
+        *x = -neighbor->width;
+        *y = connection->offset;
+        return TRUE;
+    case CONNECTION_EAST:
+        *x = layout->width;
+        *y = connection->offset;
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+bool8 ProjectMapCoordsToCurrentMap(u8 mapGroup, u8 mapNum, s16 *x, s16 *y)
+{
+    const struct MapConnections *connections = gMapHeader.connections;
+    s32 i;
+
+    if (mapGroup == gSaveBlock1Ptr->location.mapGroup && mapNum == gSaveBlock1Ptr->location.mapNum)
+        return TRUE;
+    if (connections == NULL)
+        return FALSE;
+
+    for (i = 0; i < connections->count; i++)
+    {
+        const struct MapConnection *connection = &connections->connections[i];
+        const struct MapHeader *neighbor;
+        s32 originX, originY;
+
+        if (connection->mapGroup != mapGroup || connection->mapNum != mapNum)
+            continue;
+        neighbor = GetMapHeaderFromConnection(connection);
+        if (neighbor == NULL || !GetConnectionOrigin(gMapHeader.mapLayout, neighbor->mapLayout, connection, &originX, &originY))
+            continue;
+
+        originX += *x;
+        originY += *y;
+        if (originX < SHRT_MIN || originX > SHRT_MAX - MAP_OFFSET
+         || originY < SHRT_MIN || originY > SHRT_MAX - MAP_OFFSET)
+            return FALSE;
+        *x = originX;
+        *y = originY;
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static void InitBackupMapLayoutConnections(const struct MapHeader *mapHeader)
 {
-    s32 count, i, offset;
     const struct MapConnection *connection;
-    const struct MapHeader *cMap;
+    s32 i;
+    bool32 wideTilemap = IsOverworldTilemapWide();
 
     if (!mapHeader->connections)
         return;
 
-    count = mapHeader->connections->count;
+    sMapGridConnections = mapHeader->connections;
     connection = mapHeader->connections->connections;
     sMapConnectionFlags = sDummyConnectionFlags;
-    for (i = 0; i < count; i++, connection++)
+    for (i = 0; i < mapHeader->connections->count; i++, connection++)
     {
-        cMap = GetMapHeaderFromConnection(connection);
-        offset = connection->offset;
+        const struct MapHeader *neighborHeader = GetMapHeaderFromConnection(connection);
+        s32 originX, originY;
+        u8 source = wideTilemap && i < 255 ? i + 1 : 0;
+
+        if (neighborHeader == NULL || !GetConnectionOrigin(mapHeader->mapLayout, neighborHeader->mapLayout, connection, &originX, &originY))
+            continue;
+
+        FillConnection(neighborHeader->mapLayout, originX + MAP_OFFSET, originY + MAP_OFFSET, source);
         switch (connection->direction)
         {
         case CONNECTION_SOUTH:
-            FillSouthConnection(mapHeader, cMap, offset);
             sMapConnectionFlags.south = TRUE;
             break;
         case CONNECTION_NORTH:
-            FillNorthConnection(mapHeader, cMap, offset);
             sMapConnectionFlags.north = TRUE;
             break;
         case CONNECTION_WEST:
-            FillWestConnection(mapHeader, cMap, offset);
             sMapConnectionFlags.west = TRUE;
             break;
         case CONNECTION_EAST:
-            FillEastConnection(mapHeader, cMap, offset);
             sMapConnectionFlags.east = TRUE;
             break;
         }
     }
-}
-
-static void FillConnection(s32 x, s32 y, const struct MapHeader *connectedMapHeader, s32 x2, s32 y2, s32 width, s32 height)
-{
-    s32 i;
-    const u16 *src;
-    u16 *dest;
-    s32 mapWidth;
-
-    mapWidth = connectedMapHeader->mapLayout->width;
-    src = &connectedMapHeader->mapLayout->map[mapWidth * y2 + x2];
-    dest = &gBackupMapLayout.map[gBackupMapLayout.width * y + x];
-
-    for (i = 0; i < height; i++)
-    {
-        CpuCopy16(src, dest, width * 2);
-        dest += gBackupMapLayout.width;
-        src += mapWidth;
-    }
-}
-
-static void FillSouthConnection(const struct MapHeader *mapHeader, const struct MapHeader *connectedMapHeader, s32 offset)
-{
-    s32 x, y;
-    s32 x2;
-    s32 width;
-    s32 cWidth;
-
-    if (!connectedMapHeader)
-        return;
-
-    cWidth = connectedMapHeader->mapLayout->width;
-    x = offset + MAP_OFFSET;
-    y = mapHeader->mapLayout->height + MAP_OFFSET;
-    if (x < 0)
-    {
-        x2 = -x;
-        x += cWidth;
-        if (x < gBackupMapLayout.width)
-            width = x;
-        else
-            width = gBackupMapLayout.width;
-        x = 0;
-    }
-    else
-    {
-        x2 = 0;
-        if (x + cWidth < gBackupMapLayout.width)
-            width = cWidth;
-        else
-            width = gBackupMapLayout.width - x;
-    }
-
-    FillConnection(x, y, connectedMapHeader, x2, /*y2*/ 0, width, /*height*/ MAP_OFFSET);
-}
-
-static void FillNorthConnection(const struct MapHeader *mapHeader, const struct MapHeader *connectedMapHeader, s32 offset)
-{
-    s32 x;
-    s32 x2, y2;
-    s32 width;
-    s32 cWidth, cHeight;
-
-    if (!connectedMapHeader)
-        return;
-
-    cWidth = connectedMapHeader->mapLayout->width;
-    cHeight = connectedMapHeader->mapLayout->height;
-    x = offset + MAP_OFFSET;
-    y2 = cHeight - MAP_OFFSET;
-    if (x < 0)
-    {
-        x2 = -x;
-        x += cWidth;
-        if (x < gBackupMapLayout.width)
-            width = x;
-        else
-            width = gBackupMapLayout.width;
-        x = 0;
-    }
-    else
-    {
-        x2 = 0;
-        if (x + cWidth < gBackupMapLayout.width)
-            width = cWidth;
-        else
-            width = gBackupMapLayout.width - x;
-    }
-
-    FillConnection(x, /*y*/ 0, connectedMapHeader, x2, y2, width, /*height*/ MAP_OFFSET);
-}
-
-static void FillWestConnection(const struct MapHeader *mapHeader, const struct MapHeader *connectedMapHeader, s32 offset)
-{
-    s32 y;
-    s32 x2, y2;
-    s32 height;
-    s32 cWidth, cHeight;
-
-    if (!connectedMapHeader)
-        return;
-
-    cWidth = connectedMapHeader->mapLayout->width;
-    cHeight = connectedMapHeader->mapLayout->height;
-    y = offset + MAP_OFFSET;
-    x2 = cWidth - MAP_OFFSET;
-    if (y < 0)
-    {
-        y2 = -y;
-        if (y + cHeight < gBackupMapLayout.height)
-            height = y + cHeight;
-        else
-            height = gBackupMapLayout.height;
-        y = 0;
-    }
-    else
-    {
-        y2 = 0;
-        if (y + cHeight < gBackupMapLayout.height)
-            height = cHeight;
-        else
-            height = gBackupMapLayout.height - y;
-    }
-
-    FillConnection(/*x*/ 0, y, connectedMapHeader, x2, y2, /*width*/ MAP_OFFSET, height);
-}
-
-static void FillEastConnection(const struct MapHeader *mapHeader, const struct MapHeader *connectedMapHeader, s32 offset)
-{
-    s32 x, y;
-    s32 y2;
-    s32 height;
-    s32 cHeight;
-    if (!connectedMapHeader)
-        return;
-
-    cHeight = connectedMapHeader->mapLayout->height;
-    x = mapHeader->mapLayout->width + MAP_OFFSET;
-    y = offset + MAP_OFFSET;
-    if (y < 0)
-    {
-        y2 = -y;
-        if (y + cHeight < gBackupMapLayout.height)
-            height = y + cHeight;
-        else
-            height = gBackupMapLayout.height;
-        y = 0;
-    }
-    else
-    {
-        y2 = 0;
-        if (y + cHeight < gBackupMapLayout.height)
-            height = cHeight;
-        else
-            height = gBackupMapLayout.height - y;
-    }
-
-    FillConnection(x, y, connectedMapHeader, /*x2*/ 0, y2, /*width*/ MAP_OFFSET + 1, height);
 }
 
 u8 MapGridGetElevationAt(s32 x, s32 y)
@@ -344,175 +373,141 @@ s32 MapGridGetMetatileIdAt(s32 x, s32 y)
     return UNPACK_METATILE(block);
 }
 
+static u16 GetLayoutMetatileAttributes(const struct MapLayout *layout, u16 metatile)
+{
+    if (metatile < NUM_METATILES_IN_PRIMARY)
+        return layout->primaryTileset->metatileAttributes[metatile];
+    if (metatile < NUM_METATILES_TOTAL)
+        return layout->secondaryTileset->metatileAttributes[metatile - NUM_METATILES_IN_PRIMARY];
+
+    return MB_INVALID;
+}
+
 s32 MapGridGetMetatileBehaviorAt(s32 x, s32 y)
 {
-    return UNPACK_BEHAVIOR(GetMetatileAttributesById(MapGridGetMetatileIdAt(x, y)));
+    return UNPACK_BEHAVIOR(GetLayoutMetatileAttributes(MapGridGetSourceLayoutAt(x, y), MapGridGetMetatileIdAt(x, y)));
 }
 
 u8 MapGridGetMetatileLayerTypeAt(s32 x, s32 y)
 {
-    return UNPACK_LAYER_TYPE(GetMetatileAttributesById(MapGridGetMetatileIdAt(x, y)));
+    return UNPACK_LAYER_TYPE(GetLayoutMetatileAttributes(MapGridGetSourceLayoutAt(x, y), MapGridGetMetatileIdAt(x, y)));
 }
 
 void MapGridSetMetatileIdAt(s32 x, s32 y, u16 metatile)
 {
-    if (AreCoordsWithinMapGridBounds(x, y))
+    u16 *entry = GetMapGridEntry(x, y);
+
+    if (entry != NULL)
     {
-        // Elevation is ignored in the argument, but copy metatile ID and collision
-        gBackupMapLayout.map[x + y * gBackupMapLayout.width] &= MAPGRID_ELEVATION_MASK;
-        gBackupMapLayout.map[x + y * gBackupMapLayout.width] |= metatile & ~MAPGRID_ELEVATION_MASK;
+        // Keep the elevation, and copy the metatile ID and collision.
+        *entry = (*entry & MAPGRID_ELEVATION_MASK) | (metatile & ~MAPGRID_ELEVATION_MASK);
     }
 }
 
 void MapGridSetMetatileEntryAt(s32 x, s32 y, u16 metatile)
 {
-    if (AreCoordsWithinMapGridBounds(x, y))
-    {
-        gBackupMapLayout.map[x + gBackupMapLayout.width * y] = metatile;
-    }
+    u16 *entry = GetMapGridEntry(x, y);
+
+    if (entry != NULL)
+        *entry = metatile;
 }
 
 u16 GetMetatileAttributesById(u16 metatile)
 {
-    if (metatile < NUM_METATILES_IN_PRIMARY)
+    return GetLayoutMetatileAttributes(gMapHeader.mapLayout, metatile);
+}
+
+static void GetSavedMapViewOrigin(s32 *left, s32 *top)
+{
+    *left = gSaveBlock1Ptr->pos.x + MAP_OFFSET - MAP_VIEW_LEFT_MARGIN;
+    *top = gSaveBlock1Ptr->pos.y + MAP_OFFSET - MAP_VIEW_TOP_MARGIN;
+}
+
+static void SaveMapViewInternal(u16 *sources)
+{
+    s32 left, top;
+    s32 x, y;
+    u16 *mapView = gSaveBlock1Ptr->mapView;
+
+    GetSavedMapViewOrigin(&left, &top);
+    for (y = top; y < top + MAP_VIEW_HEIGHT; y++)
     {
-        return gMapHeader.mapLayout->primaryTileset->metatileAttributes[metatile];
+        for (x = left; x < left + MAP_VIEW_WIDTH; x++)
+        {
+            u16 source = GetMapGridSourceId(x, y);
+            *mapView++ = source != MAP_UNDEFINED ? GetMapGridBlockAt(x, y) : MAPGRID_UNDEFINED;
+            if (sources != NULL)
+                *sources++ = source;
+        }
     }
-    else if (metatile < NUM_METATILES_TOTAL)
-    {
-        return gMapHeader.mapLayout->secondaryTileset->metatileAttributes[metatile - NUM_METATILES_IN_PRIMARY];
-    }
-    else
-    {
-        return MB_INVALID;
-    }
+    gSaveBlock1Ptr->mapViewValid = TRUE;
 }
 
 void SaveMapView(void)
 {
-    s32 i, j;
-    s32 x, y;
-    u16 *mapView;
-    s32 width;
-    mapView = gSaveBlock1Ptr->mapView;
-    width = gBackupMapLayout.width;
-    x = gSaveBlock1Ptr->pos.x;
-    y = gSaveBlock1Ptr->pos.y;
-    for (i = y; i < y + MAP_OFFSET_H; i++)
-    {
-        for (j = x; j < x + MAP_OFFSET_W; j++)
-            *mapView++ = sBackupMapData[width * i + j];
-    }
-}
-
-static bool32 SavedMapViewIsEmpty(void)
-{
-    u16 i;
-    u32 marker = 0;
-
-#ifndef UBFIX
-    for (i = 0; i < sizeof(gSaveBlock1Ptr->mapView); i++)
-        marker |= gSaveBlock1Ptr->mapView[i];
-#else
-    for (i = 0; i < ARRAY_COUNT(gSaveBlock1Ptr->mapView); i++)
-        marker |= gSaveBlock1Ptr->mapView[i];
-#endif
-
-
-    if (marker == 0)
-        return TRUE;
-    else
-        return FALSE;
+    SaveMapViewInternal(NULL);
 }
 
 static void ClearSavedMapView(void)
 {
     CpuFill16(0, gSaveBlock1Ptr->mapView, sizeof(gSaveBlock1Ptr->mapView));
+    gSaveBlock1Ptr->mapViewValid = FALSE;
 }
 
 static void LoadSavedMapView(void)
 {
-    u8 yMode;
-    s32 i, j;
+    s32 left, top;
     s32 x, y;
-    u16 *mapView;
-    s32 width;
-    mapView = gSaveBlock1Ptr->mapView;
-    if (SavedMapViewIsEmpty())
+    s32 bottom;
+    const u16 *mapView = gSaveBlock1Ptr->mapView;
+
+    if (gSaveBlock1Ptr->mapViewValid != TRUE)
         return;
 
-    width = gBackupMapLayout.width;
-    x = gSaveBlock1Ptr->pos.x;
-    y = gSaveBlock1Ptr->pos.y;
-    for (i = y; i < y + MAP_OFFSET_H; i++)
+    GetSavedMapViewOrigin(&left, &top);
+    bottom = top + MAP_VIEW_HEIGHT - 1;
+    for (y = top; y <= bottom; y++)
     {
-        if (i == y && i != 0)
-            yMode = 0;
-        else if (i == y + MAP_OFFSET_H - 1 && i != gMapHeader.mapLayout->height - 1)
-            yMode = 1;
-        else
-            yMode = 0xFF;
-
-        for (j = x; j < x + MAP_OFFSET_W; j++)
+        u8 yMode = y == top ? 0 : y == bottom ? 1 : 0xFF;
+        for (x = left; x < left + MAP_VIEW_WIDTH; x++, mapView++)
         {
-            if (!SkipCopyingMetatileFromSavedMap(&sBackupMapData[j + width * i], width, yMode))
-                sBackupMapData[j + width * i] = *mapView;
-            mapView++;
+            if (*mapView == MAPGRID_UNDEFINED || GetMapGridSourceId(x, y) == MAP_UNDEFINED
+             || SkipCopyingMetatileFromSavedMap(x, y, yMode))
+                continue;
+
+            MapGridSetMetatileEntryAt(x, y, *mapView);
         }
     }
-    for (j = x; j < x + MAP_OFFSET_W; j++)
+    for (x = left; x < left + MAP_VIEW_WIDTH; x++)
     {
-        if (y != 0)
-            FixLongGrassMetatilesWindowTop(j, y - 1);
-        if (i < gMapHeader.mapLayout->height - 1)
-            FixLongGrassMetatilesWindowBottom(j, y + MAP_OFFSET_H - 1);
+        u16 topSource = GetMapGridSourceId(x, top);
+        u16 bottomSource = GetMapGridSourceId(x, bottom);
+
+        if (topSource != MAP_UNDEFINED && topSource == GetMapGridSourceId(x, top - 1))
+            FixLongGrassMetatilesWindowTop(x, top - 1);
+        if (bottomSource != MAP_UNDEFINED && bottomSource == GetMapGridSourceId(x, bottom + 1))
+            FixLongGrassMetatilesWindowBottom(x, bottom);
     }
     ClearSavedMapView();
 }
 
-static void MoveMapViewToBackup(u8 direction)
+static void MoveMapViewToBackup(s32 deltaX, s32 deltaY, const u16 *sources)
 {
-    s32 width;
-    s32 x0, y0;
-    s32 x2, y2;
+    s32 left, top;
     s32 x, y;
-    s32 i, j;
+    const u16 *mapView = gSaveBlock1Ptr->mapView;
 
-    u16 *mapView = gSaveBlock1Ptr->mapView;
-    
-    width = gBackupMapLayout.width;
-    i = 0;
-    j = 0;
-    x0 = gSaveBlock1Ptr->pos.x;
-    y0 = gSaveBlock1Ptr->pos.y;
-    x2 = MAP_OFFSET_W;
-    y2 = MAP_OFFSET_H;
-
-    switch (direction)
+    GetSavedMapViewOrigin(&left, &top);
+    for (y = max(0, -deltaY); y < min(MAP_VIEW_HEIGHT, MAP_VIEW_HEIGHT - deltaY); y++)
     {
-    case CONNECTION_NORTH:
-        y0++;
-        y2 = MAP_OFFSET_H - 1;
-        break;
-    case CONNECTION_SOUTH:
-        j = 1;
-        y2 = MAP_OFFSET_H - 1;
-        break;
-    case CONNECTION_WEST:
-        x0++;
-        x2 = MAP_OFFSET_W - 1;
-        break;
-    case CONNECTION_EAST:
-        i = 1;
-        x2 = MAP_OFFSET_W - 1;
-        break;
-    }
-
-    for (y = 0; y < y2; y++)
-    {
-        for (x = 0; x < x2; x++)
+        for (x = max(0, -deltaX); x < min(MAP_VIEW_WIDTH, MAP_VIEW_WIDTH - deltaX); x++)
         {
-            sBackupMapData[x + x0 + width * (y + y0)] = mapView[i + x + MAP_OFFSET_W * (j + y)];
+            s32 index = x + deltaX + MAP_VIEW_WIDTH * (y + deltaY);
+            if (mapView[index] == MAPGRID_UNDEFINED
+             || (sources != NULL && sources[index] != GetMapGridSourceId(left + x, top + y)))
+                continue;
+
+            MapGridSetMetatileEntryAt(left + x, top + y, mapView[index]);
         }
     }
 
@@ -614,19 +609,29 @@ bool8 CameraMove(s32 x, s32 y)
     }
     else
     {
-        SaveMapView();
+        u16 *sources = IsOverworldTilemapWide() ? sConnectionMapViewSources : NULL;
+
+        SaveMapViewInternal(sources);
         ClearMirageTowerPulseBlendEffect();
         old_x = gSaveBlock1Ptr->pos.x;
         old_y = gSaveBlock1Ptr->pos.y;
         connection = GetIncomingConnection(direction, gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y);
         SetPositionFromConnection(connection, direction, x, y);
-        LoadMapFromCameraTransition(connection->mapGroup, connection->mapNum);
-        gCamera.active = TRUE;
+#ifdef PLATFORM_SDL2
+        // Destination scripts can move or create objects in the new coordinate system.
         gCamera.x = old_x - gSaveBlock1Ptr->pos.x;
         gCamera.y = old_y - gSaveBlock1Ptr->pos.y;
+        ShiftObjectEventCoordsForCameraTransition(gCamera.x, gCamera.y);
+#endif
+        LoadMapFromCameraTransition(connection->mapGroup, connection->mapNum);
+        gCamera.active = TRUE;
+#ifndef PLATFORM_SDL2
+        gCamera.x = old_x - gSaveBlock1Ptr->pos.x;
+        gCamera.y = old_y - gSaveBlock1Ptr->pos.y;
+#endif
         gSaveBlock1Ptr->pos.x += x;
         gSaveBlock1Ptr->pos.y += y;
-        MoveMapViewToBackup(direction);
+        MoveMapViewToBackup(x, y, sources);
     }
     return gCamera.active;
 }
@@ -771,28 +776,29 @@ void GetCameraCoords(u16 *x, u16 *y)
 
 void MapGridSetMetatileImpassabilityAt(s32 x, s32 y, bool32 impassable)
 {
-    if (AreCoordsWithinMapGridBounds(x, y))
+    u16 *entry = GetMapGridEntry(x, y);
+
+    if (entry != NULL)
     {
         if (impassable)
-            gBackupMapLayout.map[x + gBackupMapLayout.width * y] |= MAPGRID_COLLISION_MASK;
+            *entry |= MAPGRID_COLLISION_MASK;
         else
-            gBackupMapLayout.map[x + gBackupMapLayout.width * y] &= ~MAPGRID_COLLISION_MASK;
+            *entry &= ~MAPGRID_COLLISION_MASK;
     }
 }
 
-static bool8 SkipCopyingMetatileFromSavedMap(u16 *mapBlock, u16 mapWidth, u8 yMode)
+static bool8 SkipCopyingMetatileFromSavedMap(s32 x, s32 y, u8 yMode)
 {
+    const u16 *entry;
+    s32 neighborY;
+
     if (yMode == 0xFF)
         return FALSE;
 
-    if (yMode == 0)
-        mapBlock -= mapWidth;
-    else
-        mapBlock += mapWidth;
-
-    if (IsLargeBreakableDecoration(UNPACK_METATILE(*mapBlock), yMode) == TRUE)
-        return TRUE;
-    return FALSE;
+    neighborY = y + (yMode == 0 ? -1 : 1);
+    entry = GetMapGridEntry(x, neighborY);
+    return entry != NULL && GetMapGridSourceId(x, y) == GetMapGridSourceId(x, neighborY)
+        && IsLargeBreakableDecoration(UNPACK_METATILE(*entry), yMode);
 }
 
 static void CopyTilesetToVram(struct Tileset const *tileset, u16 numTiles, u16 offset)

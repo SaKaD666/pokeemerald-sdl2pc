@@ -1,4 +1,5 @@
 #include "global.h"
+#include "platform/framedraw.h"
 #include "task.h"
 #include "bg.h"
 #include "palette.h"
@@ -197,6 +198,9 @@ void ShowWirelessCommunicationScreen(void)
 
 static void CB2_InitWirelessCommunicationScreen(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
     sStatusScreen = AllocZeroed(sizeof(struct WirelessCommunicationStatusScreen));
     SetVBlankCallback(NULL);
@@ -237,12 +241,17 @@ static void CB2_InitWirelessCommunicationScreen(void)
 static void CB2_ExitWirelessCommunicationStatusScreen(void)
 {
     s32 i;
+
+    SetVBlankCallback(NULL);
     FreeAllWindowBuffers();
     for (i = 0; i < (int)ARRAY_COUNT(sBgTemplates); i++)
     {
         Free(GetBgTilemapBuffer(i));
     }
     Free(sStatusScreen);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
     SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
 }
 

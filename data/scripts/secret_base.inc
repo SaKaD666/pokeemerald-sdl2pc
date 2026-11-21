@@ -48,14 +48,14 @@ SecretBase_EventScript_Cave::
 	msgbox Text_MonUsedFieldMove, MSGBOX_DEFAULT
 	closemessage
 	dofieldeffect FLDEFF_USE_SECRET_POWER_CAVE
-	waitstate
+	waitfieldeffect FLDEFF_USE_SECRET_POWER_CAVE
 	goto SecretBase_EventScript_CaveEnter
 	end
 
 SecretBase_EventScript_CaveUseSecretPower::
 	lockall
 	dofieldeffect FLDEFF_USE_SECRET_POWER_CAVE
-	waitstate
+	waitfieldeffect FLDEFF_USE_SECRET_POWER_CAVE
 	goto SecretBase_EventScript_CaveEnter
 	end
 
@@ -78,14 +78,14 @@ SecretBase_EventScript_Tree::
 	msgbox Text_MonUsedFieldMove, MSGBOX_DEFAULT
 	closemessage
 	dofieldeffect FLDEFF_USE_SECRET_POWER_TREE
-	waitstate
+	waitfieldeffect FLDEFF_USE_SECRET_POWER_TREE
 	goto SecretBase_EventScript_TreeEnter
 	end
 
 SecretBase_EventScript_TreeUseSecretPower::
 	lockall
 	dofieldeffect FLDEFF_USE_SECRET_POWER_TREE
-	waitstate
+	waitfieldeffect FLDEFF_USE_SECRET_POWER_TREE
 	goto SecretBase_EventScript_TreeEnter
 	end
 
@@ -108,14 +108,14 @@ SecretBase_EventScript_Shrub::
 	msgbox Text_MonUsedFieldMove, MSGBOX_DEFAULT
 	closemessage
 	dofieldeffect FLDEFF_USE_SECRET_POWER_SHRUB
-	waitstate
+	waitfieldeffect FLDEFF_USE_SECRET_POWER_SHRUB
 	goto SecretBase_EventScript_ShrubEnter
 	end
 
 SecretBase_EventScript_ShrubUseSecretPower::
 	lockall
 	dofieldeffect FLDEFF_USE_SECRET_POWER_SHRUB
-	waitstate
+	waitfieldeffect FLDEFF_USE_SECRET_POWER_SHRUB
 	goto SecretBase_EventScript_ShrubEnter
 	end
 

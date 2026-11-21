@@ -1,9 +1,12 @@
 #include "global.h"
 #include "sprite.h"
 #include "main.h"
+#ifdef PLATFORM_SDL2
+#include "link_rfu.h"
+#endif
 #include "palette.h"
 
-#define MAX_SPRITE_COPY_REQUESTS 64
+#define MAX_SPRITE_COPY_REQUESTS MAX_SPRITES
 
 #define sAnchorX data[6]
 #define sAnchorY data[7]
@@ -282,7 +285,7 @@ EWRAM_DATA static u16 sSpritePriorities[MAX_SPRITES] = {0};
 EWRAM_DATA static u8 sSpriteOrder[MAX_SPRITES] = {0};
 EWRAM_DATA static bool8 sShouldProcessSpriteCopyRequests = 0;
 EWRAM_DATA static u8 sSpriteCopyRequestCount = 0;
-EWRAM_DATA static struct SpriteCopyRequest sSpriteCopyRequests[MAX_SPRITES] = {0};
+EWRAM_DATA static struct SpriteCopyRequest sSpriteCopyRequests[MAX_SPRITE_COPY_REQUESTS] = {0};
 EWRAM_DATA u8 gOamLimit = 0;
 EWRAM_DATA u16 gReservedSpriteTileCount = 0;
 EWRAM_DATA static u8 sSpriteTileAllocBitmap[128] = {0};
@@ -330,7 +333,21 @@ void BuildOamBuffer(void)
     SortSprites();
     temp = gMain.oamLoadDisabled;
     gMain.oamLoadDisabled = TRUE;
-    AddSpritesToOamBuffer();
+#ifdef PLATFORM_SDL2
+    if (gOamLimit == ARRAY_COUNT(gMain.oamBuffer) && IsWirelessStatusIndicatorActive())
+    {
+        gOamLimit--;
+        AddSpritesToOamBuffer();
+        gOamLimit++;
+        gMain.oamBuffer[127] = gMain.oamBuffer[126];
+        gMain.oamBuffer[126] = gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX];
+        gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX] = gDummyOamData;
+    }
+    else
+#endif
+    {
+        AddSpritesToOamBuffer();
+    }
     CopyMatricesToOamBuffer();
     gMain.oamLoadDisabled = temp;
     sShouldProcessSpriteCopyRequests = TRUE;
@@ -1460,16 +1477,17 @@ void FreeOamMatrix(u8 matrixNum)
     SetOamMatrix(matrixNum, 0x100, 0, 0, 0x100);
 }
 
-void InitSpriteAffineAnim(struct Sprite *sprite)
+bool8 InitSpriteAffineAnim(struct Sprite *sprite)
 {
     u8 matrixNum = AllocOamMatrix();
-    if (matrixNum != 0xFF)
-    {
-        CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
-        sprite->oam.matrixNum = matrixNum;
-        sprite->affineAnimBeginning = TRUE;
-        AffineAnimStateReset(matrixNum);
-    }
+    if (matrixNum == 0xFF)
+        return FALSE;
+
+    CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
+    sprite->oam.matrixNum = matrixNum;
+    sprite->affineAnimBeginning = TRUE;
+    AffineAnimStateReset(matrixNum);
+    return TRUE;
 }
 
 void SetOamMatrixRotationScaling(u8 matrixNum, s16 xScale, s16 yScale, u16 rotation)
