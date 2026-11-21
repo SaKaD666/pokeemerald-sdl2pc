@@ -14,6 +14,9 @@
 #include "starter_choose.h"
 #include "script_pokemon_util.h"
 #include "palette.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 #include "window.h"
 #include "event_object_movement.h"
 #include "event_scripts.h"
@@ -945,6 +948,9 @@ static void CB2_StartFirstBattle(void)
         gBattleTypeFlags = BATTLE_TYPE_FIRST_BATTLE;
         gMain.savedCallback = CB2_EndFirstBattle;
         FreeAllWindowBuffers();
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(CB2_InitBattle);
         RestartWildEncounterImmunitySteps();
         ClearPoisonStepCounter();

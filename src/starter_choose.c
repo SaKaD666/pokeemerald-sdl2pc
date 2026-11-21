@@ -555,9 +555,6 @@ static void Task_HandleConfirmStarterInput(u8 taskId)
         ResetAllPicSprites();
         FreeAllWindowBuffers();
         DestroyTask(taskId);
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(FALSE);
-#endif
         SetMainCallback2(gMain.savedCallback);
         break;
     case 1:  // NO

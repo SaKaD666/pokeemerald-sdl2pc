@@ -1065,6 +1065,23 @@ bool8 FldEff_PokecenterHeal(void)
     task->tFirstBallY = 36;
     task->tMonitorX = 124;
     task->tMonitorY = 24;
+#ifdef PLATFORM_SDL2
+    if (gSelectedObjectEvent < OBJECT_EVENTS_COUNT && gObjectEvents[gSelectedObjectEvent].active)
+    {
+        const struct ObjectEvent *nurse = &gObjectEvents[gSelectedObjectEvent];
+        s16 x = nurse->currentCoords.x;
+        s16 y = nurse->currentCoords.y;
+
+        // The monitor's flash fits its screen 24 pixels above the nurse's tile center.
+        SetSpritePosToOffsetMapCoords(&x, &y, 8, 8);
+        x += gSpriteCoordOffsetX;
+        y += gSpriteCoordOffsetY;
+        task->tFirstBallX = x - 27;
+        task->tFirstBallY = y - 12;
+        task->tMonitorX = x + 4;
+        task->tMonitorY = y - 24;
+    }
+#endif
     return FALSE;
 }
 
