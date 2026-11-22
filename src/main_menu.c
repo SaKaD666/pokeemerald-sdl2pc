@@ -265,7 +265,11 @@ static const u16 sBirchSpeechBgGradientPal[] = INCGFX_U16("graphics/birch_speech
 #define MENU_TOP_WIN4 13
 #define MENU_TOP_WIN5 17
 #define MENU_TOP_WIN6 21
+#ifdef PLATFORM_SDL2
+#define MENU_WIDTH 36
+#else
 #define MENU_WIDTH 26
+#endif
 #define MENU_HEIGHT_WIN0 2
 #define MENU_HEIGHT_WIN1 2
 #define MENU_HEIGHT_WIN2 6
@@ -274,9 +278,16 @@ static const u16 sBirchSpeechBgGradientPal[] = INCGFX_U16("graphics/birch_speech
 #define MENU_HEIGHT_WIN5 2
 #define MENU_HEIGHT_WIN6 2
 
+#define MENU_BASE_NO_SAVE_OPTION (1 + MENU_WIDTH * MENU_HEIGHT_WIN0)
+#define MENU_BASE_SAVED_NEW_GAME (1 + MENU_WIDTH * MENU_HEIGHT_WIN2)
+#define MENU_BASE_SAVED_OPTION (MENU_BASE_SAVED_NEW_GAME + MENU_WIDTH * MENU_HEIGHT_WIN3)
+#define MENU_BASE_MYSTERY_EVENTS (MENU_BASE_SAVED_OPTION + MENU_WIDTH * MENU_HEIGHT_WIN4)
+#define MENU_BASE_MYSTERY_OPTION (MENU_BASE_MYSTERY_EVENTS + MENU_WIDTH * MENU_HEIGHT_WIN5)
+#define MENU_BASE_ERROR (1 + MENU_WIDTH * (MENU_HEIGHT_WIN2 + MENU_HEIGHT_WIN3 + MENU_HEIGHT_WIN4 + MENU_HEIGHT_WIN5 + MENU_HEIGHT_WIN6))
+
 #define MENU_LEFT_ERROR 2
 #define MENU_TOP_ERROR 15
-#define MENU_WIDTH_ERROR 26
+#define MENU_WIDTH_ERROR MENU_WIDTH
 #define MENU_HEIGHT_ERROR 4
 
 #define MENU_SHADOW_PADDING 1
@@ -306,7 +317,7 @@ static const struct WindowTemplate sWindowTemplates_MainMenu[] =
         .width = MENU_WIDTH,
         .height = MENU_HEIGHT_WIN1,
         .paletteNum = 15,
-        .baseBlock = 0x35
+        .baseBlock = MENU_BASE_NO_SAVE_OPTION
     },
     // Has saved game
     // CONTINUE
@@ -327,7 +338,7 @@ static const struct WindowTemplate sWindowTemplates_MainMenu[] =
         .width = MENU_WIDTH,
         .height = MENU_HEIGHT_WIN3,
         .paletteNum = 15,
-        .baseBlock = 0x9D
+        .baseBlock = MENU_BASE_SAVED_NEW_GAME
     },
     // OPTION / MYSTERY GIFT
     {
@@ -337,7 +348,7 @@ static const struct WindowTemplate sWindowTemplates_MainMenu[] =
         .width = MENU_WIDTH,
         .height = MENU_HEIGHT_WIN4,
         .paletteNum = 15,
-        .baseBlock = 0xD1
+        .baseBlock = MENU_BASE_SAVED_OPTION
     },
     // OPTION / MYSTERY EVENTS
     {
@@ -347,7 +358,7 @@ static const struct WindowTemplate sWindowTemplates_MainMenu[] =
         .width = MENU_WIDTH,
         .height = MENU_HEIGHT_WIN5,
         .paletteNum = 15,
-        .baseBlock = 0x105
+        .baseBlock = MENU_BASE_MYSTERY_EVENTS
     },
     // OPTION
     {
@@ -357,7 +368,7 @@ static const struct WindowTemplate sWindowTemplates_MainMenu[] =
         .width = MENU_WIDTH,
         .height = MENU_HEIGHT_WIN6,
         .paletteNum = 15,
-        .baseBlock = 0x139
+        .baseBlock = MENU_BASE_MYSTERY_OPTION
     },
     // Error message window
     {
@@ -367,7 +378,7 @@ static const struct WindowTemplate sWindowTemplates_MainMenu[] =
         .width = MENU_WIDTH_ERROR,
         .height = MENU_HEIGHT_ERROR,
         .paletteNum = 15,
-        .baseBlock = 0x16D
+        .baseBlock = MENU_BASE_ERROR
     },
     DUMMY_WIN_TEMPLATE
 };
@@ -415,7 +426,11 @@ static const struct BgTemplate sMainMenuBgTemplates[] = {
         .bg = 0,
         .charBaseIndex = 2,
         .mapBaseIndex = 30,
+#ifdef PLATFORM_SDL2
+        .screenSize = 1,
+#else
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -527,7 +542,11 @@ enum
     ACTION_INVALID
 };
 
+#ifdef PLATFORM_SDL2
+#define MAIN_MENU_BORDER_TILE   0x28A
+#else
 #define MAIN_MENU_BORDER_TILE   0x1D5
+#endif
 #define BIRCH_DLG_BASE_TILE_NUM 0xFC
 
 static void CB2_MainMenu(void)
@@ -558,7 +577,7 @@ void CB2_ReinitMainMenu(void)
 static u32 InitMainMenu(bool8 returningFromOptionsMenu)
 {
 #ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
+    SetFrameViewToGbaSize(FALSE);
 #endif
     SetVBlankCallback(NULL);
 
@@ -900,8 +919,8 @@ static bool8 HandleMainMenuInput(u8 taskId)
     {
         PlaySE(SE_SELECT);
         BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 0x10, RGB_WHITEALPHA);
-        SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, GBA_DISPLAY_WIDTH);
-        SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, GBA_DISPLAY_HEIGHT));
+        SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, DISPLAY_WIDTH);
+        SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT));
         gTasks[taskId].func = Task_HandleMainMenuBPressed;
     }
     else if ((JOY_NEW(DPAD_UP)) && tCurrItem > 0)
@@ -1177,7 +1196,13 @@ static void Task_DisplayMainMenuInvalidActionError(u8 taskId)
 
 static void HighlightSelectedMainMenuItem(u8 menuType, u8 selectedMenuItem, s16 isScrolled)
 {
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H,
+        ((MENU_LEFT - 1) * 8) + MENU_SHADOW_PADDING,
+        (MENU_LEFT + MENU_WIDTH + 1) * 8 - MENU_SHADOW_PADDING);
+#else
     SetGpuReg(REG_OFFSET_WIN0H, MENU_WIN_HCOORDS);
+#endif
 
     switch (menuType)
     {
@@ -2134,8 +2159,8 @@ static void CreateMainMenuErrorWindow(const u8 *str)
     PutWindowTilemap(7);
     CopyWindowToVram(7, COPYWIN_GFX);
     DrawMainMenuWindowBorder(&sWindowTemplates_MainMenu[7], MAIN_MENU_BORDER_TILE);
-    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 9, GBA_DISPLAY_WIDTH - 9);
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(113, GBA_DISPLAY_HEIGHT - 1));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 9, DISPLAY_WIDTH - 9);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(113, DISPLAY_HEIGHT - 1));
 }
 
 static void MainMenu_FormatSavegameText(void)
