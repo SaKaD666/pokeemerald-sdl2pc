@@ -129,11 +129,30 @@ u8 GetBattlerSpriteCoord(u8 battler, u8 coordType)
         retVal = sBattlerCoords[IS_DOUBLE_BATTLE()][GetBattlerPosition(battler)].x;
 #ifdef PLATFORM_SDL2
         if (!IsContest())
-            retVal += GetBattlerSide(battler) == B_SIDE_PLAYER ? BATTLE_PLAYER_PLATFORM_SHIFT : BATTLE_OPPONENT_PLATFORM_SHIFT;
+        {
+            if (GetBattlerSide(battler) == B_SIDE_PLAYER)
+                retVal += BATTLE_PLAYER_PLATFORM_SHIFT;
+            else
+                retVal += BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_OPPONENT_MON_X_FINE_SHIFT;
+        }
 #endif
         break;
     case BATTLER_COORD_Y:
         retVal = sBattlerCoords[IS_DOUBLE_BATTLE()][GetBattlerPosition(battler)].y;
+#ifdef PLATFORM_SDL2
+        if (!IsContest())
+        {
+            if (GetBattlerSide(battler) == B_SIDE_PLAYER)
+            {
+                if (!IS_DOUBLE_BATTLE())
+                    retVal += BATTLE_PLAYER_MON_Y_SHIFT;
+            }
+            else
+            {
+                retVal += BATTLE_OPPONENT_MON_Y_SHIFT + BATTLE_OPPONENT_MON_Y_FINE_SHIFT;
+            }
+        }
+#endif
         break;
     case BATTLER_COORD_Y_PIC_OFFSET:
     case BATTLER_COORD_Y_PIC_OFFSET_DEFAULT:
@@ -286,6 +305,12 @@ u8 GetBattlerSpriteFinal_Y(u8 battler, u16 species, bool8 a3)
         offset -= GetBattlerElevation(battler, species);
     }
     y = offset + sBattlerCoords[IS_DOUBLE_BATTLE()][GetBattlerPosition(battler)].y;
+#ifdef PLATFORM_SDL2
+    if (!IsContest() && !IS_DOUBLE_BATTLE() && GetBattlerSide(battler) == B_SIDE_PLAYER)
+        y += BATTLE_PLAYER_MON_Y_SHIFT;
+    else if (!IsContest() && GetBattlerSide(battler) != B_SIDE_PLAYER)
+        y += BATTLE_OPPONENT_MON_Y_FINE_SHIFT;
+#endif
     if (a3)
     {
         if (GetBattlerSide(battler) == B_SIDE_PLAYER)
@@ -2028,8 +2053,14 @@ void InitPrioritiesForVisibleBattlers(void)
     {
         if (IsBattlerSpriteVisible(i))
         {
+            u8 priority = 2;
+
             gSprites[gBattlerSpriteIds[i]].subpriority = GetBattlerSpriteSubpriority(i);
-            gSprites[gBattlerSpriteIds[i]].oam.priority = 2;
+#ifdef PLATFORM_SDL2
+            if (!IsContest() && !IS_DOUBLE_BATTLE() && GetBattlerSide(i) == B_SIDE_PLAYER)
+                priority = 1;
+#endif
+            gSprites[gBattlerSpriteIds[i]].oam.priority = priority;
         }
     }
 }

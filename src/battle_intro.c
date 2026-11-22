@@ -1,6 +1,7 @@
 #include "global.h"
 #include "battle.h"
 #include "battle_anim.h"
+#include "battle_bg.h"
 #include "battle_main.h"
 #include "battle_setup.h"
 #include "bg.h"
@@ -540,7 +541,7 @@ static void BattleIntroSlidePartner(u8 taskId)
             SetGpuReg(REG_OFFSET_DISPCNT, GetGpuReg(REG_OFFSET_DISPCNT) | DISPCNT_OBJ_1D_MAP | DISPCNT_OBJ_ON | DISPCNT_WIN0_ON | DISPCNT_WIN1_ON | DISPCNT_OBJWIN_ON);
             SetGpuReg(REG_OFFSET_WININ, WININ_WIN1_BG1 | WININ_WIN1_BG2 | WININ_WIN1_BG3 | WININ_WIN1_OBJ | WININ_WIN1_CLR);
             SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ | WINOUT_WIN01_CLR | WINOUT_WINOBJ_BG_ALL | WINOUT_WINOBJ_OBJ | WINOUT_WINOBJ_CLR);
-            gBattle_BG0_Y = -48;
+            gBattle_BG0_Y = -(48 + BATTLE_MESSAGE_WINDOW_Y_OFFSET);
             gBattle_BG1_X = DISPLAY_WIDTH;
             gBattle_BG2_X = -DISPLAY_WIDTH;
         }
@@ -575,7 +576,7 @@ static void BattleIntroSlidePartner(u8 taskId)
         if ((gBattle_WIN0V & 0xFF00) != 0x5000)
             gBattle_WIN0V += 0xFF;
 
-        if (!gBattle_BG0_Y)
+        if (gBattle_BG0_Y == ((0x200 - BATTLE_MESSAGE_WINDOW_Y_OFFSET) & 0x1FF))
         {
             CpuFill32(0, (void *)BG_SCREEN_ADDR(28), BG_SCREEN_SIZE * 4);
             SetGpuReg(REG_OFFSET_DISPCNT, GetGpuReg(REG_OFFSET_DISPCNT) & ~DISPCNT_WIN1_ON);

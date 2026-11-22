@@ -1175,6 +1175,9 @@ static void WallyHandlePrintString(void)
 {
     u16 *stringId;
 
+#ifdef PLATFORM_SDL2
+    BattleActionMenuRestoreViewport();
+#endif
     gBattle_BG0_X = 0;
     gBattle_BG0_Y = 0;
     stringId = (u16 *)(&gBattleBufferA[gActiveBattler][2]);
@@ -1195,8 +1198,13 @@ static void HandleChooseActionAfterDma3(void)
 {
     if (!IsDma3ManagerBusyWithBgCopy())
     {
+#ifdef PLATFORM_SDL2
+        BattleActionMenuPrepareViewport();
+        gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
+#else
         gBattle_BG0_X = 0;
-        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT;
+#endif
+        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT - BATTLE_ACTION_MENU_Y_OFFSET;
         gBattlerControllerFuncs[gActiveBattler] = WallyHandleActions;
     }
 }
@@ -1233,6 +1241,9 @@ static void WallyHandleChooseMove(void)
     case 1:
         if (!IsDma3ManagerBusyWithBgCopy())
         {
+#ifdef PLATFORM_SDL2
+            BattleActionMenuRestoreViewport();
+#endif
             gBattle_BG0_X = 0;
             gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT * 2;
             gBattleStruct->wallyMovesState++;

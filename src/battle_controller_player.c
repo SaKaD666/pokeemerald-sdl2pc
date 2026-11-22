@@ -1514,7 +1514,7 @@ static void MoveSelectionCreateCursorAt(u8 cursorPosition, u8 baseTileNum)
     src[0] = baseTileNum + 1;
     src[1] = baseTileNum + 2;
 
-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 9 * (cursorPosition & 1) + 1, 55 + (cursorPosition & 2), 1, 2, 0x11);
+    CopyToBgTilemapBufferRect_ChangePalette(0, src, BATTLE_MOVE_CURSOR_COLUMN_STEP * (cursorPosition & 1) + BATTLE_MOVE_CURSOR_LEFT, BATTLE_MOVE_WINDOW_TOP + (cursorPosition & 2), 1, 2, 0x11);
     CopyBgTilemapBufferToVram(0);
 }
 
@@ -1524,7 +1524,7 @@ static void MoveSelectionDestroyCursorAt(u8 cursorPosition)
     src[0] = 0x1016;
     src[1] = 0x1016;
 
-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 9 * (cursorPosition & 1) + 1, 55 + (cursorPosition & 2), 1, 2, 0x11);
+    CopyToBgTilemapBufferRect_ChangePalette(0, src, BATTLE_MOVE_CURSOR_COLUMN_STEP * (cursorPosition & 1) + BATTLE_MOVE_CURSOR_LEFT, BATTLE_MOVE_WINDOW_TOP + (cursorPosition & 2), 1, 2, 0x11);
     CopyBgTilemapBufferToVram(0);
 }
 
@@ -1534,7 +1534,7 @@ void ActionSelectionCreateCursorAt(u8 cursorPosition, u8 baseTileNum)
     src[0] = 1;
     src[1] = 2;
 
-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 7 * (cursorPosition & 1) + 16, 35 + (cursorPosition & 2), 1, 2, 0x11);
+    CopyToBgTilemapBufferRect_ChangePalette(0, src, BATTLE_ACTION_MENU_CURSOR_COLUMN_STEP * (cursorPosition & 1) + BATTLE_ACTION_MENU_CURSOR_LEFT, BATTLE_ACTION_WINDOW_TOP + (cursorPosition & 2), 1, 2, 0x11);
     CopyBgTilemapBufferToVram(0);
 }
 
@@ -1544,7 +1544,7 @@ void ActionSelectionDestroyCursorAt(u8 cursorPosition)
     src[0] = 0x1016;
     src[1] = 0x1016;
 
-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 7 * (cursorPosition & 1) + 16, 35 + (cursorPosition & 2), 1, 2, 0x11);
+    CopyToBgTilemapBufferRect_ChangePalette(0, src, BATTLE_ACTION_MENU_CURSOR_COLUMN_STEP * (cursorPosition & 1) + BATTLE_ACTION_MENU_CURSOR_LEFT, BATTLE_ACTION_WINDOW_TOP + (cursorPosition & 2), 1, 2, 0x11);
     CopyBgTilemapBufferToVram(0);
 }
 
@@ -2323,6 +2323,10 @@ static void PlayerHandleDrawTrainerPic(void)
         else
         {
             yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
+#ifdef PLATFORM_SDL2
+            if (!IsDoubleBattle() && !(gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER))
+                yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+#endif
         }
 
     }
@@ -2330,6 +2334,10 @@ static void PlayerHandleDrawTrainerPic(void)
     {
         xPos = 80;
         yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
+#ifdef PLATFORM_SDL2
+        if (!IsDoubleBattle())
+            yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+#endif
     }
 
     // Use front pic table for any tag battles unless your partner is Steven.
@@ -2367,6 +2375,7 @@ static void PlayerHandleDrawTrainerPic(void)
 static void PlayerHandleTrainerSlide(void)
 {
     u32 trainerPicId;
+    s16 yPos;
 
     if (gBattleTypeFlags & BATTLE_TYPE_LINK)
     {
@@ -2392,7 +2401,12 @@ static void PlayerHandleTrainerSlide(void)
 
     DecompressTrainerBackPic(trainerPicId, gActiveBattler);
     SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
-    gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, 80, (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80, 30);
+    yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
+#ifdef PLATFORM_SDL2
+    if (!IsDoubleBattle())
+        yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+#endif
+    gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, 80, yPos, 30);
 
     gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -96;
@@ -2558,6 +2572,9 @@ static void PlayerHandlePrintString(void)
 {
     u16 *stringId;
 
+#ifdef PLATFORM_SDL2
+    BattleActionMenuRestoreViewport();
+#endif
     gBattle_BG0_X = 0;
     gBattle_BG0_Y = 0;
     stringId = (u16 *)(&gBattleBufferA[gActiveBattler][2]);
@@ -2580,8 +2597,13 @@ static void HandleChooseActionAfterDma3(void)
 {
     if (!IsDma3ManagerBusyWithBgCopy())
     {
+#ifdef PLATFORM_SDL2
+        BattleActionMenuPrepareViewport();
+        gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
+#else
         gBattle_BG0_X = 0;
-        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT;
+#endif
+        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT - BATTLE_ACTION_MENU_Y_OFFSET;
         gBattlerControllerFuncs[gActiveBattler] = HandleInputChooseAction;
     }
 }
@@ -2622,8 +2644,13 @@ static void HandleChooseMoveAfterDma3(void)
 {
     if (!IsDma3ManagerBusyWithBgCopy())
     {
+#ifdef PLATFORM_SDL2
+        BattleMoveMenuPrepareViewport();
+        gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
+#else
         gBattle_BG0_X = 0;
-        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT * 2;
+#endif
+        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT * 2 - BATTLE_MOVE_MENU_Y_OFFSET;
         gBattlerControllerFuncs[gActiveBattler] = HandleInputChooseMove;
     }
 }

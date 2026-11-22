@@ -37,6 +37,13 @@ struct BattleBackground
 // .rodata
 static const u16 sUnrefArray[] = {0x0300, 0x0000}; //OamData?
 
+#ifdef PLATFORM_SDL2
+static u16 sBattleActionMenuTopRows[3][40];
+static bool8 sBattleActionMenuTopRowHidden;
+static u16 sBattleMoveMenuTopRows[6][40];
+static bool8 sBattleMoveMenuTopRowHidden;
+#endif
+
 static const struct OamData sVsLetter_V_OamData =
 {
     .y = 0,
@@ -139,7 +146,12 @@ const struct BgTemplate gBattleBgTemplates[] =
         .bg = 1,
         .charBaseIndex = 1,
         .mapBaseIndex = 28,
+#ifdef PLATFORM_SDL2
+        // 64x32 is wide enough for SDL2 while keeping BG2's map at block 30 separate.
+        .screenSize = 1,
+#else
         .screenSize = 2,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -168,71 +180,71 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
 {
     [B_WIN_MSG] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 15,
-        .width = 26,
+        .tilemapLeft = BATTLE_MESSAGE_WINDOW_LEFT,
+        .tilemapTop = BATTLE_MESSAGE_WINDOW_TOP,
+        .width = BATTLE_MESSAGE_WINDOW_WIDTH,
         .height = 4,
         .paletteNum = 0,
-        .baseBlock = 0x0090,
+        .baseBlock = BATTLE_MESSAGE_WINDOW_BASE_BLOCK,
     },
     [B_WIN_ACTION_PROMPT] = {
         .bg = 0,
-        .tilemapLeft = 1,
-        .tilemapTop = 35,
-        .width = 14,
+        .tilemapLeft = BATTLE_ACTION_PROMPT_LEFT,
+        .tilemapTop = BATTLE_ACTION_WINDOW_TOP,
+        .width = BATTLE_ACTION_PROMPT_WIDTH,
         .height = 4,
         .paletteNum = 0,
-        .baseBlock = 0x01c0,
+        .baseBlock = BATTLE_ACTION_PROMPT_BASE_BLOCK,
     },
     [B_WIN_ACTION_MENU] = {
         .bg = 0,
-        .tilemapLeft = 17,
-        .tilemapTop = 35,
-        .width = 12,
+        .tilemapLeft = BATTLE_ACTION_MENU_LEFT,
+        .tilemapTop = BATTLE_ACTION_WINDOW_TOP,
+        .width = BATTLE_ACTION_MENU_WIDTH,
         .height = 4,
         .paletteNum = 5,
-        .baseBlock = 0x0190,
+        .baseBlock = BATTLE_ACTION_MENU_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_1] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 55,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0300,
+        .baseBlock = BATTLE_MOVE_NAME_1_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_2] = {
         .bg = 0,
-        .tilemapLeft = 11,
-        .tilemapTop = 55,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_SECOND_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0310,
+        .baseBlock = BATTLE_MOVE_NAME_2_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_3] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 57,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0320,
+        .baseBlock = BATTLE_MOVE_NAME_3_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_4] = {
         .bg = 0,
-        .tilemapLeft = 11,
-        .tilemapTop = 57,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_SECOND_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0330,
+        .baseBlock = BATTLE_MOVE_NAME_4_BASE_BLOCK,
     },
     [B_WIN_PP] = {
         .bg = 0,
-        .tilemapLeft = 21,
-        .tilemapTop = 55,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
         .width = 4,
         .height = 2,
         .paletteNum = 5,
@@ -240,8 +252,8 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
     },
     [B_WIN_DUMMY] = {
         .bg = 0,
-        .tilemapLeft = 21,
-        .tilemapTop = 57,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
         .width = 0,
         .height = 0,
         .paletteNum = 5,
@@ -249,8 +261,8 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
     },
     [B_WIN_PP_REMAINING] = {
         .bg = 0,
-        .tilemapLeft = 25,
-        .tilemapTop = 55,
+        .tilemapLeft = BATTLE_MOVE_INFO_VALUE_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
         .width = 4,
         .height = 2,
         .paletteNum = 5,
@@ -258,12 +270,12 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
     },
     [B_WIN_MOVE_TYPE] = {
         .bg = 0,
-        .tilemapLeft = 21,
-        .tilemapTop = 57,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
+        .width = BATTLE_MOVE_INFO_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x02a0,
+        .baseBlock = BATTLE_MOVE_TYPE_BASE_BLOCK,
     },
     [B_WIN_SWITCH_PROMPT] = {
         .bg = 0,
@@ -285,8 +297,8 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
     },
     [B_WIN_LEVEL_UP_BOX] = {
         .bg = 1,
-        .tilemapLeft = 19,
-        .tilemapTop = 8,
+        .tilemapLeft = BATTLE_LEVEL_UP_BOX_LEFT,
+        .tilemapTop = BATTLE_LEVEL_UP_BOX_TOP,
         .width = 10,
         .height = 11,
         .paletteNum = 5,
@@ -389,71 +401,71 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
 {
     [B_WIN_MSG] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 15,
-        .width = 26,
+        .tilemapLeft = BATTLE_MESSAGE_WINDOW_LEFT,
+        .tilemapTop = BATTLE_MESSAGE_WINDOW_TOP,
+        .width = BATTLE_MESSAGE_WINDOW_WIDTH,
         .height = 4,
         .paletteNum = 0,
-        .baseBlock = 0x0090,
+        .baseBlock = BATTLE_MESSAGE_WINDOW_BASE_BLOCK,
     },
     [B_WIN_ACTION_PROMPT] = {
         .bg = 0,
-        .tilemapLeft = 1,
-        .tilemapTop = 35,
-        .width = 14,
+        .tilemapLeft = BATTLE_ACTION_PROMPT_LEFT,
+        .tilemapTop = BATTLE_ACTION_WINDOW_TOP,
+        .width = BATTLE_ACTION_PROMPT_WIDTH,
         .height = 4,
         .paletteNum = 0,
-        .baseBlock = 0x01c0,
+        .baseBlock = BATTLE_ACTION_PROMPT_BASE_BLOCK,
     },
     [B_WIN_ACTION_MENU] = {
         .bg = 0,
-        .tilemapLeft = 17,
-        .tilemapTop = 35,
-        .width = 12,
+        .tilemapLeft = BATTLE_ACTION_MENU_LEFT,
+        .tilemapTop = BATTLE_ACTION_WINDOW_TOP,
+        .width = BATTLE_ACTION_MENU_WIDTH,
         .height = 4,
         .paletteNum = 5,
-        .baseBlock = 0x0190,
+        .baseBlock = BATTLE_ACTION_MENU_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_1] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 55,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0300,
+        .baseBlock = BATTLE_MOVE_NAME_1_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_2] = {
         .bg = 0,
-        .tilemapLeft = 11,
-        .tilemapTop = 55,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_SECOND_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0310,
+        .baseBlock = BATTLE_MOVE_NAME_2_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_3] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 57,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0320,
+        .baseBlock = BATTLE_MOVE_NAME_3_BASE_BLOCK,
     },
     [B_WIN_MOVE_NAME_4] = {
         .bg = 0,
-        .tilemapLeft = 11,
-        .tilemapTop = 57,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_WINDOW_SECOND_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
+        .width = BATTLE_MOVE_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x0330,
+        .baseBlock = BATTLE_MOVE_NAME_4_BASE_BLOCK,
     },
     [B_WIN_PP] = {
         .bg = 0,
-        .tilemapLeft = 21,
-        .tilemapTop = 55,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
         .width = 4,
         .height = 2,
         .paletteNum = 5,
@@ -461,8 +473,8 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [B_WIN_DUMMY] = {
         .bg = 0,
-        .tilemapLeft = 21,
-        .tilemapTop = 57,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
         .width = 0,
         .height = 0,
         .paletteNum = 5,
@@ -470,8 +482,8 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [B_WIN_PP_REMAINING] = {
         .bg = 0,
-        .tilemapLeft = 25,
-        .tilemapTop = 55,
+        .tilemapLeft = BATTLE_MOVE_INFO_VALUE_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP,
         .width = 4,
         .height = 2,
         .paletteNum = 5,
@@ -479,12 +491,12 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [B_WIN_MOVE_TYPE] = {
         .bg = 0,
-        .tilemapLeft = 21,
-        .tilemapTop = 57,
-        .width = 8,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
+        .tilemapTop = BATTLE_MOVE_WINDOW_TOP + 2,
+        .width = BATTLE_MOVE_INFO_WIDTH,
         .height = 2,
         .paletteNum = 5,
-        .baseBlock = 0x02a0,
+        .baseBlock = BATTLE_MOVE_TYPE_BASE_BLOCK,
     },
     [B_WIN_SWITCH_PROMPT] = {
         .bg = 0,
@@ -506,8 +518,8 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [B_WIN_LEVEL_UP_BOX] = {
         .bg = 1,
-        .tilemapLeft = 19,
-        .tilemapTop = 8,
+        .tilemapLeft = BATTLE_LEVEL_UP_BOX_LEFT,
+        .tilemapTop = BATTLE_LEVEL_UP_BOX_TOP,
         .width = 10,
         .height = 11,
         .paletteNum = 5,
@@ -587,12 +599,12 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [ARENA_WIN_JUDGMENT_TEXT] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 15,
-        .width = 26,
+        .tilemapLeft = BATTLE_MESSAGE_WINDOW_LEFT,
+        .tilemapTop = BATTLE_MESSAGE_WINDOW_TOP,
+        .width = BATTLE_MESSAGE_WINDOW_WIDTH,
         .height = 4,
         .paletteNum = 7,
-        .baseBlock = 0x0090,
+        .baseBlock = BATTLE_MESSAGE_WINDOW_BASE_BLOCK,
     },
     DUMMY_WIN_TEMPLATE
 };
@@ -769,7 +781,13 @@ static void LoadBattleTerrainTilemap(const void *source)
 #ifdef PLATFORM_SDL2
     // Block 27 contains the same neutral terrain without either platform.
     // Read each platform row before writing a destination that overlaps it.
+    u16 playerPlatform[2][16];
+    u8 playerPlatformTileRowShift = (gBattleTypeFlags & BATTLE_TYPE_DOUBLE) ? 0 : BATTLE_PLAYER_PLATFORM_Y_TILE_SHIFT;
     u16 y;
+
+    CpuCopy16(tilemap + 12 * 32, playerPlatform[0], sizeof(playerPlatform[0]));
+    CpuCopy16(tilemap + 13 * 32, playerPlatform[1], sizeof(playerPlatform[1]));
+
     for (y = 0; y < 32; y++)
     {
         u16 row[32];
@@ -782,19 +800,19 @@ static void LoadBattleTerrainTilemap(const void *source)
 
         if (y >= 6 && y <= 9)
         {
-            u16 shift = BATTLE_OPPONENT_PLATFORM_SHIFT / 8;
+            u16 shift = (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_OPPONENT_PLATFORM_X_FINE_SHIFT) / 8;
+            u16 destY = y - BATTLE_OPPONENT_PLATFORM_Y_TILE_SHIFT;
 
             for (x = 14; x < 30; x++)
             {
                 u16 column = x + shift;
-                tilemap[column / 32 * 1024 + y * 32 + column % 32] = row[x];
+                tilemap[column / 32 * 1024 + destY * 32 + column % 32] = row[x];
             }
         }
-        else if (y == 12 || y == 13)
-        {
-            CpuCopy16(row, tilemap + y * 32 + BATTLE_PLAYER_PLATFORM_SHIFT / 8, 16 * sizeof(*row));
-        }
     }
+
+    CpuCopy16(playerPlatform[0], tilemap + (12 + playerPlatformTileRowShift) * 32 + BATTLE_PLAYER_PLATFORM_SHIFT / 8, sizeof(playerPlatform[0]));
+    CpuCopy16(playerPlatform[1], tilemap + (13 + playerPlatformTileRowShift) * 32 + BATTLE_PLAYER_PLATFORM_SHIFT / 8, sizeof(playerPlatform[1]));
 #endif
 }
 
@@ -922,6 +940,9 @@ static void LoadBattleTextboxTilemap(void)
     if (tilemap == NULL)
         return;
 
+    sBattleActionMenuTopRowHidden = FALSE;
+    sBattleMoveMenuTopRowHidden = FALSE;
+
     // The native 32×64 map goes in the left column of a 64×64 map.
     // Tiles 30 and 31 sit outside the native 240px panel.
     LZDecompressWram(gBattleTextboxTilemap, tilemap);
@@ -933,11 +954,198 @@ static void LoadBattleTextboxTilemap(void)
         CpuFill16(0, tilemap + row * 32 + 30, 2 * sizeof(*tilemap));
         CpuFill16(0, tilemap + 2048 + row * 32 + 30, 2 * sizeof(*tilemap));
     }
+
+    // Extend and lower the battle message frame to cover the 320px SDL2 view.
+    u16 originalMessageRows[6][30];
+    for (u16 row = 0; row < 6; row++)
+        CpuCopy16(tilemap + (row + 14) * 32, originalMessageRows[row], sizeof(originalMessageRows[row]));
+
+    for (u16 y = 14; y < 16; y++)
+    {
+        CpuFill16(0, tilemap + y * 32, 32 * sizeof(*tilemap));
+        CpuFill16(0, tilemap + 1024 + y * 32, 8 * sizeof(*tilemap));
+    }
+
+    for (u16 row = 0; row < 6; row++)
+    {
+        u16 *originalRow = originalMessageRows[row];
+        u16 y = row + 16;
+        u16 *leftBlockRow = tilemap + y * 32;
+        u16 *rightBlockRow = tilemap + 1024 + y * 32;
+
+        leftBlockRow[0] = originalRow[0];
+        leftBlockRow[1] = originalRow[1];
+        for (u16 x = 2; x < 32; x++)
+            leftBlockRow[x] = originalRow[2];
+        for (u16 x = 0; x < 6; x++)
+            rightBlockRow[x] = originalRow[2];
+        rightBlockRow[6] = originalRow[28];
+        rightBlockRow[7] = originalRow[29];
+    }
+
+    // Extend the move selection frame across the full SDL2 view.
+    u16 originalMoveRows[6][30];
+    for (u16 row = 0; row < 6; row++)
+        CpuCopy16(tilemap + 2048 + (row + 22) * 32, originalMoveRows[row], sizeof(originalMoveRows[row]));
+
+    for (u16 row = 0; row < 6; row++)
+    {
+        u16 *originalRow = originalMoveRows[row];
+        u16 *leftBlockRow = tilemap + 2048 + (row + 22) * 32;
+        u16 *rightBlockRow = tilemap + 3072 + (row + 22) * 32;
+
+        // Merge the unused middle compartment into the move list.
+        leftBlockRow[19] = originalRow[2];
+        leftBlockRow[20] = originalRow[2];
+        // Keep the move panel's right edge and place the PP panel edge beside it.
+        leftBlockRow[28] = originalRow[28];
+        leftBlockRow[29] = originalRow[29];
+        leftBlockRow[30] = originalRow[0];
+        leftBlockRow[31] = originalRow[2];
+        for (u16 x = 0; x < 6; x++)
+            rightBlockRow[x] = originalRow[2];
+        rightBlockRow[6] = originalRow[28];
+        rightBlockRow[7] = originalRow[29];
+    }
+
+    // Extend and lower the action prompt and command frames into the right map blocks.
+    u16 originalRows[6][30];
+    for (u16 row = 0; row < 6; row++)
+        CpuCopy16(tilemap + 2048 + (row + 2) * 32, originalRows[row], sizeof(originalRows[row]));
+
+    for (u16 y = 34; y < 36; y++)
+    {
+        u16 *leftBlockRow = tilemap + 2048 + (y - 32) * 32;
+        u16 *rightBlockRow = tilemap + 3072 + (y - 32) * 32;
+
+        CpuFill16(0, leftBlockRow, 32 * sizeof(*leftBlockRow));
+        CpuFill16(0, rightBlockRow, 8 * sizeof(*rightBlockRow));
+    }
+
+    for (u16 row = 0; row < 6; row++)
+    {
+        u16 *originalRow = originalRows[row];
+        u16 y = row + 36;
+        u16 *leftBlockRow = tilemap + 2048 + (y - 32) * 32;
+        u16 *rightBlockRow = tilemap + 3072 + (y - 32) * 32;
+
+        leftBlockRow[0] = originalRow[0];
+        leftBlockRow[1] = originalRow[1];
+        for (u16 x = 2; x < 25; x++)
+            leftBlockRow[x] = originalRow[2];
+        leftBlockRow[25] = originalRow[15];
+        leftBlockRow[26] = originalRow[16];
+        for (u16 x = 27; x < 32; x++)
+            leftBlockRow[x] = originalRow[17];
+        for (u16 x = 0; x < 7; x++)
+            rightBlockRow[x] = originalRow[17];
+        rightBlockRow[7] = originalRow[29];
+    }
 #else
     CopyToBgTilemapBuffer(0, gBattleTextboxTilemap, 0, 0);
 #endif
     CopyBgTilemapBufferToVram(0);
 }
+
+#ifdef PLATFORM_SDL2
+void BattleActionMenuPrepareViewport(void)
+{
+    u16 *tilemap = GetBgTilemapBuffer(0);
+
+    if (tilemap == NULL)
+        return;
+
+    if (sBattleMoveMenuTopRowHidden)
+    {
+        for (u16 row = 0; row < 6; row++)
+        {
+            u16 y = row + 36;
+            u16 *leftBlockRow = tilemap + 2048 + (y - 32) * 32;
+            u16 *rightBlockRow = tilemap + 3072 + (y - 32) * 32;
+
+            CpuCopy16(sBattleMoveMenuTopRows[row], leftBlockRow, 32 * sizeof(*tilemap));
+            CpuCopy16(sBattleMoveMenuTopRows[row] + 32, rightBlockRow, 8 * sizeof(*tilemap));
+        }
+        sBattleMoveMenuTopRowHidden = FALSE;
+    }
+
+    if (sBattleActionMenuTopRowHidden)
+        return;
+
+    for (u16 row = 0; row < 3; row++)
+    {
+        u16 y = row + 19;
+        u16 *leftBlockRow = tilemap + y * 32;
+        u16 *rightBlockRow = tilemap + 1024 + y * 32;
+
+        CpuCopy16(leftBlockRow, sBattleActionMenuTopRows[row], 32 * sizeof(*tilemap));
+        CpuCopy16(rightBlockRow, sBattleActionMenuTopRows[row] + 32, 8 * sizeof(*tilemap));
+        CpuFill16(0, leftBlockRow, 32 * sizeof(*tilemap));
+        CpuFill16(0, rightBlockRow, 8 * sizeof(*tilemap));
+    }
+    sBattleActionMenuTopRowHidden = TRUE;
+    CopyBgTilemapBufferToVram(0);
+}
+
+void BattleActionMenuRestoreViewport(void)
+{
+    u16 *tilemap = GetBgTilemapBuffer(0);
+
+    if (tilemap == NULL || !sBattleActionMenuTopRowHidden)
+        return;
+
+    for (u16 row = 0; row < 3; row++)
+    {
+        u16 y = row + 19;
+        u16 *leftBlockRow = tilemap + y * 32;
+        u16 *rightBlockRow = tilemap + 1024 + y * 32;
+
+        CpuCopy16(sBattleActionMenuTopRows[row], leftBlockRow, 32 * sizeof(*tilemap));
+        CpuCopy16(sBattleActionMenuTopRows[row] + 32, rightBlockRow, 8 * sizeof(*tilemap));
+    }
+    sBattleActionMenuTopRowHidden = FALSE;
+    CopyBgTilemapBufferToVram(0);
+}
+
+void BattleMoveMenuPrepareViewport(void)
+{
+    u16 *tilemap = GetBgTilemapBuffer(0);
+
+    if (tilemap == NULL)
+        return;
+
+    if (sBattleActionMenuTopRowHidden)
+    {
+        for (u16 row = 0; row < 3; row++)
+        {
+            u16 y = row + 19;
+            u16 *leftBlockRow = tilemap + y * 32;
+            u16 *rightBlockRow = tilemap + 1024 + y * 32;
+
+            CpuCopy16(sBattleActionMenuTopRows[row], leftBlockRow, 32 * sizeof(*tilemap));
+            CpuCopy16(sBattleActionMenuTopRows[row] + 32, rightBlockRow, 8 * sizeof(*tilemap));
+        }
+        sBattleActionMenuTopRowHidden = FALSE;
+    }
+
+    if (sBattleMoveMenuTopRowHidden)
+        return;
+
+    for (u16 row = 0; row < 6; row++)
+    {
+        u16 y = row + 36;
+        u16 *leftBlockRow = tilemap + 2048 + (y - 32) * 32;
+        u16 *rightBlockRow = tilemap + 3072 + (y - 32) * 32;
+
+        CpuCopy16(leftBlockRow, sBattleMoveMenuTopRows[row], 32 * sizeof(*tilemap));
+        CpuCopy16(rightBlockRow, sBattleMoveMenuTopRows[row] + 32, 8 * sizeof(*tilemap));
+        CpuFill16(0, leftBlockRow, 32 * sizeof(*tilemap));
+        CpuFill16(0, rightBlockRow, 8 * sizeof(*tilemap));
+    }
+    sBattleMoveMenuTopRowHidden = TRUE;
+    CopyBgTilemapBufferToVram(0);
+}
+#endif
 
 void LoadBattleTextboxAndBackground(void)
 {

@@ -5971,13 +5971,14 @@ static void Cmd_drawlvlupbox(void)
         break;
     case 3:
         // Init level up box
-        gBattle_BG1_X = 0;
+        gBattle_BG1_X = BATTLE_LEVEL_UP_BG_X_OFFSET;
         gBattle_BG1_Y = 256;
         SetBgAttribute(0, BG_ATTR_PRIORITY, 1);
         SetBgAttribute(1, BG_ATTR_PRIORITY, 0);
         ShowBg(0);
         ShowBg(1);
-        HandleBattleWindow(18, 7, 29, 19, WINDOW_BG1);
+        HandleBattleWindow(BATTLE_LEVEL_UP_FRAME_LEFT, BATTLE_LEVEL_UP_FRAME_TOP,
+                           BATTLE_LEVEL_UP_FRAME_RIGHT, BATTLE_LEVEL_UP_FRAME_BOTTOM, WINDOW_BG1);
         gBattleScripting.drawlvlupboxState = 4;
         break;
     case 4:
@@ -5992,7 +5993,8 @@ static void Cmd_drawlvlupbox(void)
         // Wait for draw after each page
         if (!IsDma3ManagerBusyWithBgCopy())
         {
-            gBattle_BG1_Y = 0;
+            gBattle_BG1_Y = BATTLE_LEVEL_UP_BG_Y_OFFSET;
+            ShowBg(1);
             gBattleScripting.drawlvlupboxState++;
         }
         break;
@@ -6011,7 +6013,9 @@ static void Cmd_drawlvlupbox(void)
         {
             // Close level up box
             PlaySE(SE_SELECT);
-            HandleBattleWindow(18, 7, 29, 19, WINDOW_BG1 | WINDOW_CLEAR);
+            HandleBattleWindow(BATTLE_LEVEL_UP_FRAME_LEFT, BATTLE_LEVEL_UP_FRAME_TOP,
+                               BATTLE_LEVEL_UP_FRAME_RIGHT, BATTLE_LEVEL_UP_FRAME_BOTTOM,
+                               WINDOW_BG1 | WINDOW_CLEAR);
             gBattleScripting.drawlvlupboxState++;
         }
         break;
@@ -6033,6 +6037,8 @@ static void Cmd_drawlvlupbox(void)
     case 10:
         if (!IsDma3ManagerBusyWithBgCopy())
         {
+            gBattle_BG1_X = 0;
+            gBattle_BG1_Y = 0;
             SetBgAttribute(0, BG_ATTR_PRIORITY, 0);
             SetBgAttribute(1, BG_ATTR_PRIORITY, 1);
             ShowBg(0);

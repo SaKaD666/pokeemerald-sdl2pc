@@ -1,5 +1,6 @@
 #include "global.h"
 #include "battle.h"
+#include "battle_bg.h"
 #include "battle_anim.h"
 #include "battle_controllers.h"
 #include "battle_message.h"
@@ -2972,6 +2973,14 @@ void BattlePutTextOnWindow(const u8 *text, u8 windowId)
         FillWindowPixelBuffer(windowId, textInfo[windowId].fillValue);
         copyToVram = TRUE;
     }
+
+#ifdef PLATFORM_SDL2
+    if (windowId == B_WIN_MSG || windowId == ARENA_WIN_JUDGMENT_TEXT)
+    {
+        gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
+        gBattle_BG0_Y = (0x200 - BATTLE_MESSAGE_WINDOW_Y_OFFSET) & 0x1FF;
+    }
+#endif
 
     printerTemplate.currentChar = text;
     printerTemplate.windowId = windowId;

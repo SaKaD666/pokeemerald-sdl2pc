@@ -3,6 +3,7 @@
 #include "battle_anim.h"
 #include "battle_ai_script_commands.h"
 #include "battle_arena.h"
+#include "battle_bg.h"
 #include "battle_controllers.h"
 #include "battle_interface.h"
 #include "battle_main.h"
@@ -660,8 +661,12 @@ static void CB2_InitBattleInternal(void)
     }
 
     ResetPaletteFade();
+#ifdef PLATFORM_SDL2
+    gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
+#else
     gBattle_BG0_X = 0;
-    gBattle_BG0_Y = 0;
+#endif
+    gBattle_BG0_Y = (0x200 - BATTLE_MESSAGE_WINDOW_Y_OFFSET) & 0x1FF;
     gBattle_BG1_X = 0;
     gBattle_BG1_Y = 0;
     gBattle_BG2_X = 0;
@@ -2103,7 +2108,7 @@ void VBlankCB_Battle(void)
     SetGpuReg(REG_OFFSET_BG2HOFS, gBattle_BG2_X);
     SetGpuReg(REG_OFFSET_BG2VOFS, gBattle_BG2_Y);
     SetGpuReg(REG_OFFSET_BG3HOFS, gBattle_BG3_X);
-    SetGpuReg(REG_OFFSET_BG3VOFS, gBattle_BG3_Y);
+    SetGpuReg(REG_OFFSET_BG3VOFS, gBattle_BG3_Y + BATTLE_TERRAIN_SCROLL_Y_OFFSET);
     SetBattleWindowHorizontal(REG_OFFSET_WIN0H, gBattle_WIN0H);
     SetGpuReg(REG_OFFSET_WIN0V, gBattle_WIN0V);
     SetBattleWindowHorizontal(REG_OFFSET_WIN1H, gBattle_WIN1H);
