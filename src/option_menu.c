@@ -51,6 +51,31 @@ enum
 #define YPOS_BUTTONMODE   (MENUITEM_BUTTONMODE * 16)
 #define YPOS_FRAMETYPE    (MENUITEM_FRAMETYPE * 16)
 
+#ifdef PLATFORM_SDL2
+#define OPTION_MENU_WINDOW_WIDTH 36
+#define OPTION_MENU_FRAME_RIGHT 38
+#define OPTION_MENU_HEADER_EDGE_WIDTH 36
+#define OPTION_MENU_LIST_EDGE_WIDTH 36
+#define OPTION_MENU_LIST_HEIGHT 14
+#define OPTION_MENU_LIST_BOTTOM 21
+#define OPTION_MENU_LIST_EDGE_HEIGHT 16
+#define OPTION_MENU_LIST_BASE_BLOCK 1
+#define OPTION_MENU_BOTTOM_FILL_TILE (OPTION_MENU_LIST_BASE_BLOCK + OPTION_MENU_WINDOW_WIDTH * OPTION_MENU_LIST_HEIGHT)
+#define OPTION_MENU_CHOICE_RIGHT 246
+#define OPTION_MENU_CHOICE_SPAN (OPTION_MENU_CHOICE_RIGHT - 104)
+#define OPTION_MENU_HIGHLIGHT_RIGHT (DISPLAY_WIDTH - 16)
+#else
+#define OPTION_MENU_WINDOW_WIDTH 26
+#define OPTION_MENU_FRAME_RIGHT 28
+#define OPTION_MENU_HEADER_EDGE_WIDTH 27
+#define OPTION_MENU_LIST_EDGE_WIDTH 26
+#define OPTION_MENU_LIST_BOTTOM 19
+#define OPTION_MENU_LIST_EDGE_HEIGHT 18
+#define OPTION_MENU_CHOICE_RIGHT 198
+#define OPTION_MENU_CHOICE_SPAN (OPTION_MENU_CHOICE_RIGHT - 104)
+#define OPTION_MENU_HIGHLIGHT_RIGHT (GBA_DISPLAY_WIDTH - 16)
+#endif
+
 static void Task_OptionMenuFadeIn(u8 taskId);
 static void Task_OptionMenuProcessInput(u8 taskId);
 static void Task_OptionMenuSave(u8 taskId);
@@ -95,7 +120,7 @@ static const struct WindowTemplate sOptionMenuWinTemplates[] =
         .bg = 1,
         .tilemapLeft = 2,
         .tilemapTop = 1,
-        .width = 26,
+        .width = OPTION_MENU_WINDOW_WIDTH,
         .height = 2,
         .paletteNum = 1,
         .baseBlock = 2
@@ -104,10 +129,14 @@ static const struct WindowTemplate sOptionMenuWinTemplates[] =
         .bg = 0,
         .tilemapLeft = 2,
         .tilemapTop = 5,
-        .width = 26,
-        .height = 14,
+        .width = OPTION_MENU_WINDOW_WIDTH,
+        .height = OPTION_MENU_LIST_HEIGHT,
         .paletteNum = 1,
+#ifdef PLATFORM_SDL2
+        .baseBlock = OPTION_MENU_LIST_BASE_BLOCK
+#else
         .baseBlock = 0x36
+#endif
     },
     DUMMY_WIN_TEMPLATE
 };
@@ -117,17 +146,28 @@ static const struct BgTemplate sOptionMenuBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
     },
     {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .charBaseIndex = 0,
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .charBaseIndex = 1,
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -158,7 +198,7 @@ void CB2_InitOptionMenu(void)
     default:
     case 0:
 #ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(TRUE);
+        SetFrameViewToGbaSize(FALSE);
 #endif
         SetVBlankCallback(NULL);
         gMain.state++;
@@ -387,7 +427,7 @@ static void Task_OptionMenuFadeOut(u8 taskId)
 
 static void HighlightOptionMenuItem(u8 index)
 {
-    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 16, GBA_DISPLAY_WIDTH - 16);
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 16, OPTION_MENU_HIGHLIGHT_RIGHT);
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(index * 16 + 40, index * 16 + 56));
 }
 
@@ -448,11 +488,11 @@ static void TextSpeed_DrawChoices(u8 selection)
     widthMid = GetStringWidth(FONT_NORMAL, gText_TextSpeedMid, 0);
     widthFast = GetStringWidth(FONT_NORMAL, gText_TextSpeedFast, 0);
 
-    widthMid -= 94;
+    widthMid -= OPTION_MENU_CHOICE_SPAN;
     xMid = (widthSlow - widthMid - widthFast) / 2 + 104;
     DrawOptionMenuChoice(gText_TextSpeedMid, xMid, YPOS_TEXTSPEED, styles[1]);
 
-    DrawOptionMenuChoice(gText_TextSpeedFast, GetStringRightAlignXOffset(FONT_NORMAL, gText_TextSpeedFast, 198), YPOS_TEXTSPEED, styles[2]);
+    DrawOptionMenuChoice(gText_TextSpeedFast, GetStringRightAlignXOffset(FONT_NORMAL, gText_TextSpeedFast, OPTION_MENU_CHOICE_RIGHT), YPOS_TEXTSPEED, styles[2]);
 }
 
 static u8 BattleScene_ProcessInput(u8 selection)
@@ -475,7 +515,7 @@ static void BattleScene_DrawChoices(u8 selection)
     styles[selection] = 1;
 
     DrawOptionMenuChoice(gText_BattleSceneOn, 104, YPOS_BATTLESCENE, styles[0]);
-    DrawOptionMenuChoice(gText_BattleSceneOff, GetStringRightAlignXOffset(FONT_NORMAL, gText_BattleSceneOff, 198), YPOS_BATTLESCENE, styles[1]);
+    DrawOptionMenuChoice(gText_BattleSceneOff, GetStringRightAlignXOffset(FONT_NORMAL, gText_BattleSceneOff, OPTION_MENU_CHOICE_RIGHT), YPOS_BATTLESCENE, styles[1]);
 }
 
 static u8 BattleStyle_ProcessInput(u8 selection)
@@ -498,7 +538,7 @@ static void BattleStyle_DrawChoices(u8 selection)
     styles[selection] = 1;
 
     DrawOptionMenuChoice(gText_BattleStyleShift, 104, YPOS_BATTLESTYLE, styles[0]);
-    DrawOptionMenuChoice(gText_BattleStyleSet, GetStringRightAlignXOffset(FONT_NORMAL, gText_BattleStyleSet, 198), YPOS_BATTLESTYLE, styles[1]);
+    DrawOptionMenuChoice(gText_BattleStyleSet, GetStringRightAlignXOffset(FONT_NORMAL, gText_BattleStyleSet, OPTION_MENU_CHOICE_RIGHT), YPOS_BATTLESTYLE, styles[1]);
 }
 
 static u8 Sound_ProcessInput(u8 selection)
@@ -522,7 +562,7 @@ static void Sound_DrawChoices(u8 selection)
     styles[selection] = 1;
 
     DrawOptionMenuChoice(gText_SoundMono, 104, YPOS_SOUND, styles[0]);
-    DrawOptionMenuChoice(gText_SoundStereo, GetStringRightAlignXOffset(FONT_NORMAL, gText_SoundStereo, 198), YPOS_SOUND, styles[1]);
+    DrawOptionMenuChoice(gText_SoundStereo, GetStringRightAlignXOffset(FONT_NORMAL, gText_SoundStereo, OPTION_MENU_CHOICE_RIGHT), YPOS_SOUND, styles[1]);
 }
 
 static u8 FrameType_ProcessInput(u8 selection)
@@ -622,11 +662,11 @@ static void ButtonMode_DrawChoices(u8 selection)
     widthLR = GetStringWidth(FONT_NORMAL, gText_ButtonTypeLR, 0);
     widthLA = GetStringWidth(FONT_NORMAL, gText_ButtonTypeLEqualsA, 0);
 
-    widthLR -= 94;
+    widthLR -= OPTION_MENU_CHOICE_SPAN;
     xLR = (widthNormal - widthLR - widthLA) / 2 + 104;
     DrawOptionMenuChoice(gText_ButtonTypeLR, xLR, YPOS_BUTTONMODE, styles[1]);
 
-    DrawOptionMenuChoice(gText_ButtonTypeLEqualsA, GetStringRightAlignXOffset(FONT_NORMAL, gText_ButtonTypeLEqualsA, 198), YPOS_BUTTONMODE, styles[2]);
+    DrawOptionMenuChoice(gText_ButtonTypeLEqualsA, GetStringRightAlignXOffset(FONT_NORMAL, gText_ButtonTypeLEqualsA, OPTION_MENU_CHOICE_RIGHT), YPOS_BUTTONMODE, styles[2]);
 }
 
 static void DrawHeaderText(void)
@@ -641,6 +681,10 @@ static void DrawOptionMenuTexts(void)
     u8 i;
 
     FillWindowPixelBuffer(WIN_OPTIONS, PIXEL_FILL(1));
+#ifdef PLATFORM_SDL2
+    // Reuse the unmodified background tile for the two rows below the window.
+    LoadBgTiles(0, GetWindowTileData(WIN_OPTIONS), TILE_SIZE_4BPP, OPTION_MENU_BOTTOM_FILL_TILE);
+#endif
     for (i = 0; i < MENUITEM_COUNT; i++)
         AddTextPrinterParameterized(WIN_OPTIONS, FONT_NORMAL, sOptionMenuItemsNames[i], 8, (i * 16) + 1, TEXT_SKIP_DRAW, NULL);
     CopyWindowToVram(WIN_OPTIONS, COPYWIN_FULL);
@@ -660,23 +704,28 @@ static void DrawBgWindowFrames(void)
     //                     bg, tile,              x, y, width, height, palNum
     // Draw title window frame
     FillBgTilemapBufferRect(1, TILE_TOP_CORNER_L,  1,  0,  1,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_TOP_EDGE,      2,  0, 27,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_TOP_CORNER_R, 28,  0,  1,  1,  7);
+    FillBgTilemapBufferRect(1, TILE_TOP_EDGE,      2,  0, OPTION_MENU_HEADER_EDGE_WIDTH, 1,  7);
+    FillBgTilemapBufferRect(1, TILE_TOP_CORNER_R, OPTION_MENU_FRAME_RIGHT, 0, 1, 1, 7);
     FillBgTilemapBufferRect(1, TILE_LEFT_EDGE,     1,  1,  1,  2,  7);
-    FillBgTilemapBufferRect(1, TILE_RIGHT_EDGE,   28,  1,  1,  2,  7);
+    FillBgTilemapBufferRect(1, TILE_RIGHT_EDGE, OPTION_MENU_FRAME_RIGHT, 1, 1, 2, 7);
     FillBgTilemapBufferRect(1, TILE_BOT_CORNER_L,  1,  3,  1,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_BOT_EDGE,      2,  3, 27,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_BOT_CORNER_R, 28,  3,  1,  1,  7);
+    FillBgTilemapBufferRect(1, TILE_BOT_EDGE,      2,  3, OPTION_MENU_HEADER_EDGE_WIDTH, 1,  7);
+    FillBgTilemapBufferRect(1, TILE_BOT_CORNER_R, OPTION_MENU_FRAME_RIGHT, 3, 1, 1, 7);
 
     // Draw options list window frame
     FillBgTilemapBufferRect(1, TILE_TOP_CORNER_L,  1,  4,  1,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_TOP_EDGE,      2,  4, 26,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_TOP_CORNER_R, 28,  4,  1,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_LEFT_EDGE,     1,  5,  1, 18,  7);
-    FillBgTilemapBufferRect(1, TILE_RIGHT_EDGE,   28,  5,  1, 18,  7);
-    FillBgTilemapBufferRect(1, TILE_BOT_CORNER_L,  1, 19,  1,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_BOT_EDGE,      2, 19, 26,  1,  7);
-    FillBgTilemapBufferRect(1, TILE_BOT_CORNER_R, 28, 19,  1,  1,  7);
+    FillBgTilemapBufferRect(1, TILE_TOP_EDGE,      2, 4, OPTION_MENU_LIST_EDGE_WIDTH, 1, 7);
+    FillBgTilemapBufferRect(1, TILE_TOP_CORNER_R, OPTION_MENU_FRAME_RIGHT, 4, 1, 1, 7);
+    FillBgTilemapBufferRect(1, TILE_LEFT_EDGE,     1, 5, 1, OPTION_MENU_LIST_EDGE_HEIGHT, 7);
+    FillBgTilemapBufferRect(1, TILE_RIGHT_EDGE, OPTION_MENU_FRAME_RIGHT, 5, 1, OPTION_MENU_LIST_EDGE_HEIGHT, 7);
+    FillBgTilemapBufferRect(1, TILE_BOT_CORNER_L,  1, OPTION_MENU_LIST_BOTTOM, 1, 1, 7);
+    FillBgTilemapBufferRect(1, TILE_BOT_EDGE,      2, OPTION_MENU_LIST_BOTTOM, OPTION_MENU_LIST_EDGE_WIDTH, 1, 7);
+    FillBgTilemapBufferRect(1, TILE_BOT_CORNER_R, OPTION_MENU_FRAME_RIGHT, OPTION_MENU_LIST_BOTTOM, 1, 1, 7);
+
+#ifdef PLATFORM_SDL2
+    // Keep the list background solid through the bottom frame.
+    FillBgTilemapBufferRect(0, OPTION_MENU_BOTTOM_FILL_TILE, 2, 19, OPTION_MENU_WINDOW_WIDTH, 2, 1);
+#endif
 
     CopyBgTilemapBufferToVram(1);
 }
