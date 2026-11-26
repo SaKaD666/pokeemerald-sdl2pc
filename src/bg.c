@@ -334,20 +334,27 @@ void InvalidateBgTilemapVramRange(const volatile void *dest, u32 size)
 // Character base, color depth, screen base and map dimensions.
 #define BG_TILEMAP_CONTROL_MASK (BGCNT_CHARBASE(3) | BGCNT_256COLOR | BGCNT_SCREENBASE(31) | BGCNT_TXT512x512)
 
-static bool8 PrepareBgTilemapPublication(u8 bg, struct PublishedBgTilemapBanks *publication)
+enum BgTilemapPublicationResult
+{
+    BG_TILEMAP_PUBLICATION_INVALID,
+    BG_TILEMAP_PUBLICATION_NO_MEMORY,
+    BG_TILEMAP_PUBLICATION_READY,
+};
+
+static enum BgTilemapPublicationResult PrepareBgTilemapPublication(u8 bg, struct PublishedBgTilemapBanks *publication)
 {
     u32 count = GetBgTilemapEntryCount(bg);
     u32 entrySize, size, offset;
     u8 *packed = NULL;
 
     if (count == 0)
-        return FALSE;
+        return BG_TILEMAP_PUBLICATION_INVALID;
 
     entrySize = GetBgType(bg) == BG_TYPE_AFFINE ? 1 : sizeof(u16);
     size = count * entrySize;
     offset = GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX) * BG_SCREEN_SIZE;
     if (offset >= BG_VRAM_SIZE || size > BG_VRAM_SIZE - offset)
-        return FALSE;
+        return BG_TILEMAP_PUBLICATION_INVALID;
 
     if (sBgTilemapBanks[bg] != NULL)
     {
@@ -355,7 +362,7 @@ static bool8 PrepareBgTilemapPublication(u8 bg, struct PublishedBgTilemapBanks *
 
         packed = malloc(packedSize);
         if (packed == NULL)
-            return FALSE;
+            return BG_TILEMAP_PUBLICATION_NO_MEMORY;
         memcpy(packed, sBgTilemapBanks[bg], packedSize);
     }
 
@@ -369,7 +376,7 @@ static bool8 PrepareBgTilemapPublication(u8 bg, struct PublishedBgTilemapBanks *
                  | (GetBgAttribute(bg, BG_ATTR_SCREENSIZE) << 14),
         .entrySize = entrySize,
     };
-    return TRUE;
+    return BG_TILEMAP_PUBLICATION_READY;
 }
 
 static void CommitBgTilemapPublication(u8 bg, const struct PublishedBgTilemapBanks *publication)
@@ -494,9 +501,13 @@ enum Dma3TransferState PublishFieldBgTilemaps(u64 generation)
 
     for (bg = 1; bg < NUM_BACKGROUNDS; bg++)
     {
-        if (!PrepareBgTilemapPublication(bg, &publications[bg]))
+        enum BgTilemapPublicationResult preparation = PrepareBgTilemapPublication(bg, &publications[bg]);
+
+        if (preparation != BG_TILEMAP_PUBLICATION_READY)
         {
-            state = DMA3_TRANSFER_REJECTED;
+            state = preparation == BG_TILEMAP_PUBLICATION_NO_MEMORY
+                  ? DMA3_TRANSFER_PENDING
+                  : DMA3_TRANSFER_REJECTED;
             break;
         }
     }
@@ -540,14 +551,23 @@ static bool8 TryPublishPendingBgTilemap(u8 index, enum Dma3TransferState tiles)
     map = BG_SCREEN_ADDR(GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX));
     size = GetBgAttribute(bg, BG_ATTR_METRIC);
     if (HasEarlierOverlappingBgPublication(index, map, size)
-     || HasPendingDma3Write((const void *)map, size)
-     || !ReserveDma3FrameBytes(size))
+     || HasPendingDma3Write((const void *)map, size))
         return FALSE;
 
     struct PublishedBgTilemapBanks publication;
+    enum BgTilemapPublicationResult preparation = PrepareBgTilemapPublication(bg, &publication);
 
-    if (PrepareBgTilemapPublication(bg, &publication))
-        CommitBgTilemapPublication(bg, &publication);
+    if (preparation == BG_TILEMAP_PUBLICATION_NO_MEMORY)
+        return FALSE;
+    if (preparation == BG_TILEMAP_PUBLICATION_INVALID)
+        return TRUE;
+    if (!ReserveDma3FrameBytes(size))
+    {
+        free(publication.packed);
+        return FALSE;
+    }
+
+    CommitBgTilemapPublication(bg, &publication);
     return TRUE;
 }
 

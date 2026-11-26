@@ -2495,6 +2495,16 @@ static void AnimGreenStar(struct Sprite *sprite)
 
     spriteId1 = CreateSprite(&gGreenStarSpriteTemplate, sprite->x, sprite->y, sprite->subpriority + 1);
     spriteId2 = CreateSprite(&gGreenStarSpriteTemplate, sprite->x, sprite->y, sprite->subpriority + 1);
+    if (spriteId1 >= MAX_SPRITES || spriteId2 >= MAX_SPRITES)
+    {
+        if (spriteId1 < MAX_SPRITES)
+            DestroySprite(&gSprites[spriteId1]);
+        if (spriteId2 < MAX_SPRITES)
+            DestroySprite(&gSprites[spriteId2]);
+        DestroyAnimSprite(sprite);
+        return;
+    }
+
     StartSpriteAnim(&gSprites[spriteId1], 1);
     StartSpriteAnim(&gSprites[spriteId2], 2);
 

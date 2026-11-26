@@ -296,15 +296,18 @@ bool8 LoadCompressedSpritePaletteUsingHeap(const struct CompressedSpritePalette 
 {
     struct SpritePalette dest;
     void *buffer;
+    bool8 loaded;
 
     buffer = AllocZeroed(src->data[0] >> 8);
+    if (buffer == NULL)
+        return FALSE;
     LZ77UnCompWram(src->data, buffer);
     dest.data = buffer;
     dest.tag = src->tag;
 
-    LoadSpritePalette(&dest);
+    loaded = LoadSpritePalette(&dest) != 0xFF;
     Free(buffer);
-    return FALSE;
+    return loaded;
 }
 
 void DecompressPicFromTable_2(const struct CompressedSpriteSheet *src, void *buffer, s32 species) // a copy of DecompressPicFromTable

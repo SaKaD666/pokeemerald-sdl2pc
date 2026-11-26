@@ -86,6 +86,13 @@ static void CreateLinkupTask(u8 minPlayers, u8 maxPlayers)
     {
         u8 taskId1;
 
+        if (GetTaskCount() >= NUM_TASKS)
+        {
+            gSpecialVar_Result = LINKUP_FAILED;
+            ScriptContext_Enable();
+            return;
+        }
+
         taskId1 = CreateTask(Task_LinkupStart, 80);
         gTasks[taskId1].tMinPlayers = minPlayers;
         gTasks[taskId1].tMaxPlayers = maxPlayers;
@@ -628,6 +635,13 @@ void ValidateMixingGameLanguage(void)
 
     if (taskId == TASK_NONE)
     {
+        if (GetTaskCount() >= NUM_TASKS)
+        {
+            gSpecialVar_Result = LINKUP_FAILED;
+            ScriptContext_Enable();
+            return;
+        }
+
         taskId = CreateTask(Task_ValidateMixingGameLanguage, 80);
         gTasks[taskId].tState = 0;
     }

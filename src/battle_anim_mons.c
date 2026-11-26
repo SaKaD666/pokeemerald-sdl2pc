@@ -2141,15 +2141,42 @@ u8 GetBattlerSpriteBGPriorityRank(u8 battler)
 u8 CreateAdditionalMonSpriteForMoveAnim(u16 species, bool8 isBackpic, u8 id, s16 x, s16 y, u8 subpriority, u32 personality, u32 trainerId, u32 battler, bool32 ignoreDeoxysForm)
 {
     u8 spriteId;
-    u16 sheet = LoadSpriteSheet(&sSpriteSheets_MoveEffectMons[id]);
+    u16 tileTag = sSpriteTemplates_MoveEffectMons[id].tileTag;
+    u16 paletteTag = sSpriteTemplates_MoveEffectMons[id].paletteTag;
+    u16 sheet;
     u16 palette;
 
+    // These tags are freed by tag below, so don't take ownership of an existing resource.
+    if (GetSpriteTileStartByTag(tileTag) != SPRITE_TILE_NONE || IndexOfSpritePaletteTag(paletteTag) != 0xFF)
+        return MAX_SPRITES;
+
+    sheet = LoadSpriteSheet(&sSpriteSheets_MoveEffectMons[id]);
     if (sheet == SPRITE_TILE_NONE)
         return MAX_SPRITES;
-    palette = AllocSpritePalette(sSpriteTemplates_MoveEffectMons[id].paletteTag);
+    palette = AllocSpritePalette(paletteTag);
+    if (palette == 0xFF)
+    {
+        FreeSpriteTilesByTag(tileTag);
+        return MAX_SPRITES;
+    }
 
-    if (gMonSpritesGfxPtr != NULL && gMonSpritesGfxPtr->buffer == NULL)
+    if (gMonSpritesGfxPtr == NULL)
+    {
+        FreeSpriteTilesByTag(tileTag);
+        FreeSpritePaletteByTag(paletteTag);
+        return MAX_SPRITES;
+    }
+
+    if (gMonSpritesGfxPtr->buffer == NULL)
+    {
         gMonSpritesGfxPtr->buffer = AllocZeroed(MON_PIC_SIZE * MAX_MON_PIC_FRAMES);
+        if (gMonSpritesGfxPtr->buffer == NULL)
+        {
+            FreeSpriteTilesByTag(tileTag);
+            FreeSpritePaletteByTag(paletteTag);
+            return MAX_SPRITES;
+        }
+    }
     if (!isBackpic)
     {
         LoadCompressedPalette(GetMonSpritePalFromSpeciesAndPersonality(species, trainerId, personality), OBJ_PLTT_ID(palette), PLTT_SIZE_4BPP);

@@ -192,7 +192,10 @@ static void Task_HandleTruckSequence(u8 taskId)
         {
             SetCameraPanningCallback(NULL);
             tTimer = 0;
-            tTaskId1 = CreateTask(Task_Truck1, 0xA);
+            if (GetTaskCount() >= NUM_TASKS)
+                tTaskId1 = TASK_NONE;
+            else
+                tTaskId1 = CreateTask(Task_Truck1, 0xA);
             tState = 1;
             PlaySE(SE_TRUCK_MOVE);
         }
@@ -213,7 +216,10 @@ static void Task_HandleTruckSequence(u8 taskId)
             tTimer = 0;
             if (tTaskId1 != TASK_NONE)
                 DestroyTask(tTaskId1);
-            tTaskId2 = CreateTask(Task_Truck2, 0xA);
+            if (GetTaskCount() >= NUM_TASKS)
+                tTaskId2 = TASK_NONE;
+            else
+                tTaskId2 = CreateTask(Task_Truck2, 0xA);
             tState = 3;
             PlaySE(SE_TRUCK_STOP);
         }
@@ -255,12 +261,13 @@ static void Task_HandleTruckSequence(u8 taskId)
 
 void ExecuteTruckSequence(void)
 {
-    if (CreateTask(Task_HandleTruckSequence, 0xA) == TASK_NONE)
+    if (GetTaskCount() >= NUM_TASKS)
     {
         FadeInFromBlack();
         return;
     }
 
+    CreateTask(Task_HandleTruckSequence, 0xA);
     MapGridSetMetatileIdAt(4 + MAP_OFFSET, 1 + MAP_OFFSET, METATILE_InsideOfTruck_DoorClosedFloor_Top);
     MapGridSetMetatileIdAt(4 + MAP_OFFSET, 2 + MAP_OFFSET, METATILE_InsideOfTruck_DoorClosedFloor_Mid);
     MapGridSetMetatileIdAt(4 + MAP_OFFSET, 3 + MAP_OFFSET, METATILE_InsideOfTruck_DoorClosedFloor_Bottom);

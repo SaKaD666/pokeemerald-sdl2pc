@@ -390,13 +390,15 @@ static s16 GetMirageViewOffsetY(void)
 
 static void StartScreenShake(u8 yShakeOffset, u8 xShakeOffset, u8 numShakes, u8 shakeDelay)
 {
-    u8 taskId = CreateTask(DoScreenShake, 9);
+    u8 taskId;
 
-    if (taskId == TASK_NONE)
+    if (GetTaskCount() >= NUM_TASKS)
     {
         IncrementCeilingCrumbleFinishedCount();
         return;
     }
+
+    taskId = CreateTask(DoScreenShake, 9);
     gTasks[taskId].tXShakeOffset = xShakeOffset;
     gTasks[taskId].tTimer = 0;
     gTasks[taskId].tNumShakes = numShakes;
@@ -443,12 +445,13 @@ static void IncrementCeilingCrumbleFinishedCount(void)
 
 void DoMirageTowerCeilingCrumble(void)
 {
-    if (CreateTask(WaitCeilingCrumble, 8) == TASK_NONE)
+    if (GetTaskCount() >= NUM_TASKS)
     {
         ScriptContext_Enable();
         return;
     }
 
+    CreateTask(WaitCeilingCrumble, 8);
     LoadSpriteSheets(sCeilingCrumbleSpriteSheets);
     CreateCeilingCrumbleSprites();
     StartScreenShake(2, 1, 16, 3);
