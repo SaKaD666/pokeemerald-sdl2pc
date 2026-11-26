@@ -147,7 +147,12 @@ struct BerryBlender
 {
     u8 mainState;
     u8 loadGfxState;
-    u8 unused0[66];
+    u8 countdownSpriteId;
+    u8 countdownState;
+    u8 countdownDelay;
+    u8 countdownNumber;
+    s16 countdownY;
+    u8 unused0[60];
     u16 unk0; // never read
     u8 scoreIconIds[NUM_SCORE_TYPES];
     u16 arrowPos;
@@ -204,8 +209,8 @@ static void Task_HandleBerryMaster(u8);
 static void Task_PlayPokeblockFanfare(u8);
 static void SpriteCB_PlayerArrow(struct Sprite *);
 static void SpriteCB_ScoreSymbol(struct Sprite *);
-static void SpriteCB_CountdownNumber(struct Sprite *);
-static void SpriteCB_Start(struct Sprite *);
+static void StartBlenderCountdown(void);
+static void UpdateBlenderCountdown(void);
 static void SpriteCB_ScoreSymbolBest(struct Sprite *);
 static void InitLocalPlayers(u8);
 static void CB2_LoadBerryBlender(void);
@@ -815,7 +820,7 @@ static const struct SpriteTemplate sSpriteTemplate_CountdownNumbers =
     .anims = sAnims_CountdownNumbers,
     .images = NULL,
     .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_CountdownNumber
+    .callback = SpriteCallbackDummy
 };
 
 static const struct OamData sOam_Start =
@@ -859,7 +864,7 @@ static const struct SpriteTemplate sSpriteTemplate_Start =
     .anims = sAnims_Start,
     .images = NULL,
     .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_Start
+    .callback = SpriteCallbackDummy
 };
 
 // Data for throwing the berries in at the start
@@ -1048,11 +1053,16 @@ static void InitBerryBlenderWindows(void)
     }
 }
 
-static void ReleaseBlenderDisplay(void)
+static bool8 ReleaseBlenderDisplay(void)
 {
     SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return FALSE;
+#else
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeAllWindowBuffers();
@@ -1061,6 +1071,13 @@ static void ReleaseBlenderDisplay(void)
 #ifdef PLATFORM_SDL2
     SetFrameViewToGbaSize(FALSE);
 #endif
+    return TRUE;
+}
+
+static void AnimateBlenderSprite(u8 spriteId, u8 animation)
+{
+    if (spriteId < MAX_SPRITES)
+        StartSpriteAnim(&gSprites[spriteId], animation);
 }
 
 // gSpecialVar_0x8004 is the number of NPC opponents
@@ -1088,6 +1105,7 @@ static void CB2_LoadBerryBlender(void)
     case 0:
         SetGpuReg(REG_OFFSET_DISPCNT, 0);
         ResetSpriteData();
+        memset(sBerryBlender->scoreIconIds, MAX_SPRITES, sizeof(sBerryBlender->scoreIconIds));
         FreeAllSpritePalettes();
         SetVBlankCallback(NULL);
 #ifdef PLATFORM_SDL2
@@ -1117,7 +1135,7 @@ static void CB2_LoadBerryBlender(void)
             for (i = 0; i < BLENDER_MAX_PLAYERS; i++)
             {
                 sBerryBlender->playerArrowSpriteIds[i] = CreateSprite(&sSpriteTemplate_PlayerArrow, sPlayerArrowPos[i][0], sPlayerArrowPos[i][1], 1);
-                StartSpriteAnim(&gSprites[sBerryBlender->playerArrowSpriteIds[i]], i + 8);
+                AnimateBlenderSprite(sBerryBlender->playerArrowSpriteIds[i], i + 8);
             }
             if (gReceivedRemoteLinkPlayers && gWirelessCommType)
             {
@@ -1150,8 +1168,9 @@ static void CB2_LoadBerryBlender(void)
         if (!gPaletteFade.active)
         {
             // Go to bag menu to choose berry, set callback to StartBlender
+            if (!ReleaseBlenderDisplay())
+                return;
             sBerryBlender->mainState = 0;
-            ReleaseBlenderDisplay();
             ChooseBerryForMachine(StartBlender);
             return;
         }
@@ -1220,6 +1239,9 @@ static void SetBerrySpriteData(struct Sprite *sprite, s16 x, s16 y, s16 bounceSp
 static void CreateBerrySprite(u16 itemId, u8 playerId)
 {
     u8 spriteId = CreateSpinningBerrySprite(ITEM_TO_BERRY(itemId) - 1, 0, 80, playerId & 1);
+    if (spriteId >= MAX_SPRITES)
+        return;
+
     SetBerrySpriteData(&gSprites[spriteId],
                         sBerrySpriteData[playerId][0],
                         sBerrySpriteData[playerId][1],
@@ -1345,7 +1367,7 @@ static void CB2_StartBlenderLink(void)
         for (i = 0; i < BLENDER_MAX_PLAYERS; i++)
         {
             sBerryBlender->playerArrowSpriteIds2[i] = CreateSprite(&sSpriteTemplate_PlayerArrow, sPlayerArrowPos[i][0], sPlayerArrowPos[i][1], 1);
-            StartSpriteAnim(&gSprites[sBerryBlender->playerArrowSpriteIds2[i]], i + 8);
+            AnimateBlenderSprite(sBerryBlender->playerArrowSpriteIds2[i], i + 8);
         }
         if (gReceivedRemoteLinkPlayers && gWirelessCommType)
         {
@@ -1475,12 +1497,10 @@ static void CB2_StartBlenderLink(void)
         DrawBlenderCenter(&sBerryBlender->bgAffineSrc);
         break;
     case 16:
-        CreateSprite(&sSpriteTemplate_CountdownNumbers, 120, -16, 3);
+        StartBlenderCountdown();
         sBerryBlender->mainState++;
         break;
     case 17:
-        // Wait here for the countdown
-        // State is progressed in SpriteCB_Start
         break;
     case 18:
         sBerryBlender->mainState++;
@@ -1511,6 +1531,8 @@ static void CB2_StartBlenderLink(void)
     Blender_DummiedOutFunc(sBerryBlender->bg_X, sBerryBlender->bg_Y);
     RunTasks();
     AnimateSprites();
+    if (sBerryBlender->mainState == 17)
+        UpdateBlenderCountdown();
     BuildOamBuffer();
     RunTextPrinters();
     UpdatePaletteFade();
@@ -1524,6 +1546,7 @@ static void InitBlenderBgs(void)
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
 
     ResetSpriteData();
+    memset(sBerryBlender->scoreIconIds, MAX_SPRITES, sizeof(sBerryBlender->scoreIconIds));
     FreeAllSpritePalettes();
     ResetTasks();
 
@@ -1636,7 +1659,7 @@ static void PrintPlayerNames(void)
         if (sBerryBlender->arrowIdToPlayerId[i] != NO_PLAYER)
         {
             sBerryBlender->playerArrowSpriteIds[sBerryBlender->arrowIdToPlayerId[i]] = sBerryBlender->playerArrowSpriteIds2[i];
-            StartSpriteAnim(&gSprites[sBerryBlender->playerArrowSpriteIds[sBerryBlender->arrowIdToPlayerId[i]]], i);
+            AnimateBlenderSprite(sBerryBlender->playerArrowSpriteIds[sBerryBlender->arrowIdToPlayerId[i]], i);
 
             text[0] = EOS;
             StringCopy(text, gLinkPlayers[sBerryBlender->arrowIdToPlayerId[i]].name);
@@ -1691,7 +1714,7 @@ static void CB2_StartBlenderLocal(void)
         for (i = 0; i < BLENDER_MAX_PLAYERS; i++)
         {
             sBerryBlender->playerArrowSpriteIds2[i] = CreateSprite(&sSpriteTemplate_PlayerArrow, sPlayerArrowPos[i][0], sPlayerArrowPos[i][1], 1);
-            StartSpriteAnim(&gSprites[sBerryBlender->playerArrowSpriteIds2[i]], i + 8);
+            AnimateBlenderSprite(sBerryBlender->playerArrowSpriteIds2[i], i + 8);
         }
         sBerryBlender->mainState++;
         break;
@@ -1773,12 +1796,10 @@ static void CB2_StartBlenderLocal(void)
         DrawBlenderCenter(&sBerryBlender->bgAffineSrc);
         break;
     case 16:
-        CreateSprite(&sSpriteTemplate_CountdownNumbers, 120, -16, 3);
+        StartBlenderCountdown();
         sBerryBlender->mainState++;
         break;
     case 17:
-        // Wait here for the countdown
-        // State is progressed in SpriteCB_Start
         break;
     case 18:
         sBerryBlender->mainState++;
@@ -1823,6 +1844,8 @@ static void CB2_StartBlenderLocal(void)
     Blender_DummiedOutFunc(sBerryBlender->bg_X, sBerryBlender->bg_Y);
     RunTasks();
     AnimateSprites();
+    if (sBerryBlender->mainState == 17)
+        UpdateBlenderCountdown();
     BuildOamBuffer();
     RunTextPrinters();
     UpdatePaletteFade();
@@ -2042,18 +2065,19 @@ static void CreateScoreSymbolSprite(u16 cmd, u8 arrowId)
                             1);
     if (cmd == LINKCMD_BLENDER_SCORE_BEST)
     {
-        StartSpriteAnim(&gSprites[spriteId], SCOREANIM_BEST_FLASH);
-        gSprites[spriteId].callback = SpriteCB_ScoreSymbolBest;
+        AnimateBlenderSprite(spriteId, SCOREANIM_BEST_FLASH);
+        if (spriteId < MAX_SPRITES)
+            gSprites[spriteId].callback = SpriteCB_ScoreSymbolBest;
         PlaySE(SE_ICE_STAIRS);
     }
     else if (cmd == LINKCMD_BLENDER_SCORE_GOOD)
     {
-        StartSpriteAnim(&gSprites[spriteId], SCOREANIM_GOOD);
+        AnimateBlenderSprite(spriteId, SCOREANIM_GOOD);
         PlaySE(SE_SUCCESS);
     }
     else if (cmd == LINKCMD_BLENDER_SCORE_MISS)
     {
-        StartSpriteAnim(&gSprites[spriteId], SCOREANIM_MISS);
+        AnimateBlenderSprite(spriteId, SCOREANIM_MISS);
         PlaySE(SE_FAILURE);
     }
     CreateParticleSprites();
@@ -2211,7 +2235,7 @@ static void HandlePlayerInput(void)
         if (pressedA)
         {
             u8 proximity;
-            StartSpriteAnim(&gSprites[sBerryBlender->playerArrowSpriteIds[sBerryBlender->arrowIdToPlayerId[arrowId]]], arrowId + 4);
+            AnimateBlenderSprite(sBerryBlender->playerArrowSpriteIds[sBerryBlender->arrowIdToPlayerId[arrowId]], arrowId + 4);
             proximity = GetArrowProximity(sBerryBlender->arrowPos, playerId);
 
             if (proximity == PROXIMITY_BEST)
@@ -2925,7 +2949,8 @@ static void CB2_CheckPlayAgainLink(void)
         {
             if (sBerryBlender->playerContinueResponses[0] == LINKCMD_SEND_LINK_TYPE)
             {
-                ReleaseBlenderDisplay();
+                if (!ReleaseBlenderDisplay())
+                    return;
                 FREE_AND_SET_NULL(sBerryBlender);
                 SetMainCallback2(DoBerryBlending);
                 return;
@@ -2947,7 +2972,8 @@ static void CB2_CheckPlayAgainLink(void)
     case 12:
         if (!gReceivedRemoteLinkPlayers)
         {
-            ReleaseBlenderDisplay();
+            if (!ReleaseBlenderDisplay())
+                return;
             FREE_AND_SET_NULL(sBerryBlender);
             SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
             return;
@@ -2999,12 +3025,14 @@ static void CB2_CheckPlayAgainLocal(void)
     case 10:
         if (!gPaletteFade.active)
         {
+            if (!ReleaseBlenderDisplay())
+                return;
+
             if (sBerryBlender->playAgainState == PLAY_AGAIN_YES)
                 SetMainCallback2(DoBerryBlending);
             else
                 SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
 
-            ReleaseBlenderDisplay();
             FREE_AND_SET_NULL(sBerryBlender);
             return;
         }
@@ -3216,10 +3244,14 @@ static void CreateParticleSprites(void)
         y = gSineTable[(rand & 0xFF)] / 4;
 
         spriteId = CreateSprite(&sSpriteTemplate_Particles, x + 120, y + 80, 1);
-        gSprites[spriteId].data[0] = 16 - (Random() % 32);
-        gSprites[spriteId].data[1] = 16 - (Random() % 32);
-
-        gSprites[spriteId].callback = SpriteCB_Particle;
+        x = 16 - (Random() % 32);
+        y = 16 - (Random() % 32);
+        if (spriteId < MAX_SPRITES)
+        {
+            gSprites[spriteId].data[0] = x;
+            gSprites[spriteId].data[1] = y;
+            gSprites[spriteId].callback = SpriteCB_Particle;
+        }
     }
 }
 
@@ -3249,87 +3281,71 @@ static void SetPlayerBerryData(u8 playerId, u16 itemId)
     ConvertItemToBlenderBerry(&sBerryBlender->blendedBerries[playerId], itemId);
 }
 
-#define sState  data[0]
-#define sYPos   data[1]
-#define sDelay  data[2]
-#define sAnimId data[3]
-
-static void SpriteCB_CountdownNumber(struct Sprite *sprite)
+static void StartBlenderCountdown(void)
 {
-    switch (sprite->sState)
-    {
-    case 0:
-        sprite->sYPos += 8;
-        if (sprite->sYPos > GBA_DISPLAY_HEIGHT / 2 + 8)
-        {
-            sprite->sYPos = GBA_DISPLAY_HEIGHT / 2 + 8;
-            sprite->sState++;
-            PlaySE(SE_BALL_BOUNCE_1);
-        }
-        break;
-    case 1:
-        if (++sprite->sDelay > 20)
-        {
-            sprite->sState++;
-            sprite->sDelay = 0;
-        }
-        break;
-    case 2:
-        sprite->sYPos += 4;
-        if (sprite->sYPos > GBA_DISPLAY_HEIGHT + 16)
-        {
-            if (++sprite->sAnimId == 3)
-            {
-                DestroySprite(sprite);
-                CreateSprite(&sSpriteTemplate_Start, 120, -20, 2);
-            }
-            else
-            {
-                sprite->sState = 0;
-                sprite->sYPos = -16;
-                StartSpriteAnim(sprite, sprite->sAnimId);
-            }
-        }
-        break;
-    }
-
-    sprite->y2 = sprite->sYPos;
+    sBerryBlender->countdownSpriteId = CreateSprite(&sSpriteTemplate_CountdownNumbers, 120, -16, 3);
+    sBerryBlender->countdownState = 0;
+    sBerryBlender->countdownDelay = 0;
+    sBerryBlender->countdownNumber = 0;
+    sBerryBlender->countdownY = 0;
 }
 
-#undef sState
-#undef sYPos
-#undef sDelay
-#undef sAnimId
-
-static void SpriteCB_Start(struct Sprite *sprite)
+static void UpdateBlenderCountdown(void)
 {
-    switch (sprite->data[0])
+    u8 spriteId = sBerryBlender->countdownSpriteId;
+    bool8 showingStart = sBerryBlender->countdownNumber == 3;
+    s16 stopY = showingStart ? 92 : GBA_DISPLAY_HEIGHT / 2 + 8;
+
+    switch (sBerryBlender->countdownState)
     {
     case 0:
-        sprite->data[1] += 8;
-        if (sprite->data[1] > 92)
+        sBerryBlender->countdownY += 8;
+        if (sBerryBlender->countdownY > stopY)
         {
-            sprite->data[1] = 92;
-            sprite->data[0]++;
-            PlaySE(SE_PIN);
+            sBerryBlender->countdownY = stopY;
+            sBerryBlender->countdownState++;
+            PlaySE(showingStart ? SE_PIN : SE_BALL_BOUNCE_1);
         }
         break;
     case 1:
-        sprite->data[2] += 1;
-        if (sprite->data[2] > 20)
-            sprite->data[0]++;
+        if (++sBerryBlender->countdownDelay > 20)
+        {
+            sBerryBlender->countdownState++;
+            sBerryBlender->countdownDelay = 0;
+        }
         break;
     case 2:
-        sprite->data[1] += 4;
-        if (sprite->data[1] > GBA_DISPLAY_HEIGHT + 16)
+        sBerryBlender->countdownY += 4;
+        if (sBerryBlender->countdownY > GBA_DISPLAY_HEIGHT + 16)
         {
-            sBerryBlender->mainState++;
-            DestroySprite(sprite);
+            if (showingStart || ++sBerryBlender->countdownNumber == 3)
+            {
+                if (spriteId < MAX_SPRITES)
+                    DestroySprite(&gSprites[spriteId]);
+                if (showingStart)
+                {
+                    sBerryBlender->countdownSpriteId = MAX_SPRITES;
+                    sBerryBlender->mainState++;
+                }
+                else
+                {
+                    sBerryBlender->countdownState = 0;
+                    sBerryBlender->countdownY = 0;
+                    sBerryBlender->countdownSpriteId = CreateSprite(&sSpriteTemplate_Start, 120, -20, 2);
+                }
+                return;
+            }
+
+            sBerryBlender->countdownState = 0;
+            sBerryBlender->countdownY = -16;
+            if (spriteId < MAX_SPRITES)
+                StartSpriteAnim(&gSprites[spriteId], sBerryBlender->countdownNumber);
         }
         break;
     }
 
-    sprite->y2 = sprite->data[1];
+    if (spriteId < MAX_SPRITES)
+        gSprites[spriteId].y2 = sBerryBlender->countdownY;
 }
 
 static void TryUpdateProgressBar(u16 current, u16 limit)
@@ -3374,6 +3390,10 @@ static void UpdateProgressBar(u16 value, u16 limit)
         vram[11 + i] = PROGRESS_BAR_EMPTY_TOP;
         vram[43 + i] = PROGRESS_BAR_EMPTY_BOTTOM;
     }
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange(vram + 11, i * sizeof(*vram));
+    InvalidateBgTilemapVramRange(vram + 43, i * sizeof(*vram));
+#endif
 }
 
 static u32 ArrowSpeedToRPM(u16 speed)
@@ -3402,6 +3422,10 @@ static void UpdateRPM(u16 speed)
     *((u16 *)(BG_SCREEN_ADDR(12) + 0x45C)) = digits[2] + RPM_DIGIT;
     *((u16 *)(BG_SCREEN_ADDR(12) + 0x460)) = digits[1] + RPM_DIGIT;
     *((u16 *)(BG_SCREEN_ADDR(12) + 0x462)) = digits[0] + RPM_DIGIT;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange((void *)(BG_SCREEN_ADDR(12) + 0x458), 3 * sizeof(u16));
+    InvalidateBgTilemapVramRange((void *)(BG_SCREEN_ADDR(12) + 0x460), 2 * sizeof(u16));
+#endif
 }
 
 // Passed a pointer to the bg x/y
@@ -3516,7 +3540,11 @@ static bool8 PrintBlendingResults(void)
         if (++sBerryBlender->framesToWait > 20)
         {
             for (i = 0; i < NUM_SCORE_TYPES; i++)
-                DestroySprite(&gSprites[sBerryBlender->scoreIconIds[i]]);
+            {
+                if (sBerryBlender->scoreIconIds[i] < MAX_SPRITES)
+                    DestroySprite(&gSprites[sBerryBlender->scoreIconIds[i]]);
+                sBerryBlender->scoreIconIds[i] = MAX_SPRITES;
+            }
 
             sBerryBlender->framesToWait = 0;
             sBerryBlender->mainState++;
@@ -3698,6 +3726,18 @@ static void SortScores(void)
     }
 }
 
+static void CreateRankingScoreIcon(u8 score, s16 x, u8 animation)
+{
+    u8 spriteId = CreateSprite(&sSpriteTemplate_ScoreSymbols, x, 52, 0);
+
+    sBerryBlender->scoreIconIds[score] = spriteId;
+    if (spriteId < MAX_SPRITES)
+    {
+        StartSpriteAnim(&gSprites[spriteId], animation);
+        gSprites[spriteId].callback = SpriteCallbackDummy;
+    }
+}
+
 static bool8 PrintBlendingRanking(void)
 {
     u16 i;
@@ -3729,17 +3769,9 @@ static bool8 PrintBlendingRanking(void)
         xPos = GetStringCenterAlignXOffset(FONT_NORMAL, sText_Ranking, 168);
         Blender_AddTextPrinter(WIN_RESULTS, sText_Ranking, xPos, 1, TEXT_SKIP_DRAW, 0);
 
-        sBerryBlender->scoreIconIds[SCORE_BEST] = CreateSprite(&sSpriteTemplate_ScoreSymbols, 128, 52, 0);
-        StartSpriteAnim(&gSprites[sBerryBlender->scoreIconIds[SCORE_BEST]], SCOREANIM_BEST_STATIC);
-        gSprites[sBerryBlender->scoreIconIds[SCORE_BEST]].callback = SpriteCallbackDummy;
-
-        sBerryBlender->scoreIconIds[SCORE_GOOD] = CreateSprite(&sSpriteTemplate_ScoreSymbols, 160, 52, 0);
-        // implicitly uses SCOREANIM_GOOD, no need to assign
-        gSprites[sBerryBlender->scoreIconIds[SCORE_GOOD]].callback = SpriteCallbackDummy;
-
-        sBerryBlender->scoreIconIds[SCORE_MISS] = CreateSprite(&sSpriteTemplate_ScoreSymbols, 192, 52, 0);
-        StartSpriteAnim(&gSprites[sBerryBlender->scoreIconIds[SCORE_MISS]], SCOREANIM_MISS);
-        gSprites[sBerryBlender->scoreIconIds[SCORE_MISS]].callback = SpriteCallbackDummy;
+        CreateRankingScoreIcon(SCORE_BEST, 128, SCOREANIM_BEST_STATIC);
+        CreateRankingScoreIcon(SCORE_GOOD, 160, SCOREANIM_GOOD);
+        CreateRankingScoreIcon(SCORE_MISS, 192, SCOREANIM_MISS);
 
         SortScores();
 

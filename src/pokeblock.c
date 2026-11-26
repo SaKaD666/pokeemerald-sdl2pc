@@ -752,7 +752,8 @@ static void MovePokeblockMenuCursor(s32 pkblId, bool8 onInit, struct ListMenu *l
     if (onInit != TRUE)
     {
         PlaySE(SE_SELECT);
-        gSprites[sPokeblockMenu->pokeblockCaseSpriteId].callback = SpriteCB_ShakePokeblockCase;
+        if (sPokeblockMenu->pokeblockCaseSpriteId < MAX_SPRITES)
+            gSprites[sPokeblockMenu->pokeblockCaseSpriteId].callback = SpriteCB_ShakePokeblockCase;
     }
 
     if (!sPokeblockMenu->isSwapping)
@@ -936,6 +937,10 @@ static void DestroyScrollArrows(void)
 
 u8 CreatePokeblockCaseSprite(s16 x, s16 y, u8 subpriority)
 {
+    if (GetSpriteTileStartByTag(sSpriteTemplate_PokeblockCase.tileTag) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(sSpriteTemplate_PokeblockCase.paletteTag) == 0xFF)
+        return SPRITE_NONE;
+
     return CreateSprite(&sSpriteTemplate_PokeblockCase, x, y, subpriority);
 }
 
@@ -952,17 +957,21 @@ static void SpriteCB_ShakePokeblockCase(struct Sprite *sprite)
     case 0:
         sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
         sprite->affineAnims = sAffineAnims_PokeblockCaseShake;
-        InitSpriteAffineAnim(sprite);
+        if (!InitSpriteAffineAnim(sprite))
+        {
+            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+            sprite->callback = SpriteCallbackDummy;
+            break;
+        }
         sprite->sState = 1;
         sprite->sTimer = 0;
         break;
     case 1:
         if (++sprite->sTimer > 11)
         {
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+            FreeSpriteOamMatrix(sprite);
             sprite->sState = 0;
             sprite->sTimer = 0;
-            FreeOamMatrix(sprite->oam.matrixNum);
             sprite->callback = SpriteCallbackDummy;
         }
         break;

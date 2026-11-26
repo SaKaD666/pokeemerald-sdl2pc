@@ -171,6 +171,8 @@ struct NamingScreenData
     u8 bgToHide;
     u8 currentPage;
     u8 cursorSpriteId;
+    s16 cursorX;
+    s16 cursorY;
     u8 swapBtnFrameSpriteId;
     u8 keyRepeatStartDelayCopy;
     const struct NamingScreenTemplate *template;
@@ -1140,6 +1142,11 @@ static void CreateSprites(void)
 static void CreateCursorSprite(void)
 {
     sNamingScreen->cursorSpriteId = CreateSprite(&sSpriteTemplate_Cursor, 38, 88, 1);
+    if (sNamingScreen->cursorSpriteId >= MAX_SPRITES)
+    {
+        SetCursorPos(0, 0);
+        return;
+    }
     SetCursorInvisibility(TRUE);
     gSprites[sNamingScreen->cursorSpriteId].oam.priority = 1;
     gSprites[sNamingScreen->cursorSpriteId].oam.objMode = ST_OAM_OBJ_BLEND;
@@ -1150,8 +1157,14 @@ static void CreateCursorSprite(void)
 
 static void SetCursorPos(s16 x, s16 y)
 {
-    struct Sprite *cursorSprite = &gSprites[sNamingScreen->cursorSpriteId];
+    struct Sprite *cursorSprite;
 
+    sNamingScreen->cursorX = x;
+    sNamingScreen->cursorY = y;
+    if (sNamingScreen->cursorSpriteId >= MAX_SPRITES)
+        return;
+
+    cursorSprite = &gSprites[sNamingScreen->cursorSpriteId];
     if (x < sPageColumnCounts[CurrentPageToKeyboardId()])
         cursorSprite->x = sPageColumnXPos[CurrentPageToKeyboardId()][x] + 38;
     else
@@ -1166,10 +1179,8 @@ static void SetCursorPos(s16 x, s16 y)
 
 static void GetCursorPos(s16 *x, s16 *y)
 {
-    struct Sprite *cursorSprite = &gSprites[sNamingScreen->cursorSpriteId];
-
-    *x = cursorSprite->sX;
-    *y = cursorSprite->sY;
+    *x = sNamingScreen->cursorX;
+    *y = sNamingScreen->cursorY;
 }
 
 static void MoveCursorToOKButton(void)
@@ -1179,6 +1190,9 @@ static void MoveCursorToOKButton(void)
 
 static void SetCursorInvisibility(bool8 invisible)
 {
+    if (sNamingScreen->cursorSpriteId >= MAX_SPRITES)
+        return;
+
     gSprites[sNamingScreen->cursorSpriteId].data[4] &= 0xFF00;
     gSprites[sNamingScreen->cursorSpriteId].data[4] |= invisible; // sInvisible
     StartSpriteAnim(&gSprites[sNamingScreen->cursorSpriteId], 0);
@@ -1186,18 +1200,25 @@ static void SetCursorInvisibility(bool8 invisible)
 
 static void SetCursorFlashing(bool8 flashing)
 {
+    if (sNamingScreen->cursorSpriteId >= MAX_SPRITES)
+        return;
+
     gSprites[sNamingScreen->cursorSpriteId].data[4] &= 0xFF;
     gSprites[sNamingScreen->cursorSpriteId].data[4] |= flashing << 8; // sFlashing
 }
 
 static void SquishCursor(void)
 {
+    if (sNamingScreen->cursorSpriteId >= MAX_SPRITES)
+        return;
+
     StartSpriteAnim(&gSprites[sNamingScreen->cursorSpriteId], 1);
 }
 
 static bool8 IsCursorAnimFinished(void)
 {
-    return gSprites[sNamingScreen->cursorSpriteId].animEnded;
+    return sNamingScreen->cursorSpriteId >= MAX_SPRITES
+        || gSprites[sNamingScreen->cursorSpriteId].animEnded;
 }
 
 static const u8 sButtonKeyRoles[] = {KEY_ROLE_PAGE, KEY_ROLE_BACKSPACE, KEY_ROLE_OK};
@@ -1247,16 +1268,30 @@ static void CreatePageSwapButtonSprites(void)
     u8 buttonSpriteId;
 
     frameSpriteId = CreateSprite(&sSpriteTemplate_PageSwapFrame, 204, 88, 0);
-    sNamingScreen->swapBtnFrameSpriteId = frameSpriteId;
+    sNamingScreen->swapBtnFrameSpriteId = MAX_SPRITES;
+    if (frameSpriteId >= MAX_SPRITES)
+        return;
     SetSubspriteTables(&gSprites[frameSpriteId], sSubspriteTable_PageSwapFrame);
     gSprites[frameSpriteId].invisible = TRUE;
 
     textSpriteId = CreateSprite(&sSpriteTemplate_PageSwapText, 204, 84, 1);
+    if (textSpriteId >= MAX_SPRITES)
+    {
+        DestroySprite(&gSprites[frameSpriteId]);
+        return;
+    }
     gSprites[frameSpriteId].sTextSpriteId = textSpriteId;
     SetSubspriteTables(&gSprites[textSpriteId], sSubspriteTable_PageSwapText);
     gSprites[textSpriteId].invisible = TRUE;
 
     buttonSpriteId = CreateSprite(&sSpriteTemplate_PageSwapButton, 204, 83, 2);
+    if (buttonSpriteId >= MAX_SPRITES)
+    {
+        DestroySprite(&gSprites[textSpriteId]);
+        DestroySprite(&gSprites[frameSpriteId]);
+        return;
+    }
+    sNamingScreen->swapBtnFrameSpriteId = frameSpriteId;
     gSprites[buttonSpriteId].oam.priority = 1;
     gSprites[frameSpriteId].sButtonSpriteId = buttonSpriteId;
     gSprites[buttonSpriteId].invisible = TRUE;
@@ -1264,7 +1299,11 @@ static void CreatePageSwapButtonSprites(void)
 
 static void StartPageSwapButtonAnim(void)
 {
-    struct Sprite *sprite = &gSprites[sNamingScreen->swapBtnFrameSpriteId];
+    struct Sprite *sprite;
+
+    if (sNamingScreen->swapBtnFrameSpriteId >= MAX_SPRITES)
+        return;
+    sprite = &gSprites[sNamingScreen->swapBtnFrameSpriteId];
 
     sprite->sState = 2; // go to PageSwapSprite_SlideOff
     sprite->sPage = sNamingScreen->currentPage;
@@ -1342,8 +1381,11 @@ static const u16 sPageSwapGfxTags[] = {
 
 static void SetPageSwapButtonGfx(u8 page, struct Sprite *text, struct Sprite *button)
 {
-    button->oam.paletteNum = IndexOfSpritePaletteTag(sPageSwapPalTags[page]);
+    SetSpritePaletteFromTag(button, sPageSwapPalTags[page]);
     text->sheetTileStart = GetSpriteTileStartByTag(sPageSwapGfxTags[page]);
+#ifdef PLATFORM_SDL2
+    SetSpriteSheetTileOffset(text, 0);
+#endif
     text->subspriteTableNum = page;
 }
 
@@ -1357,10 +1399,14 @@ static void CreateBackOkSprites(void)
     u8 spriteId;
 
     spriteId = CreateSprite(&sSpriteTemplate_BackButton, 204, 116, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_Button);
     gSprites[spriteId].invisible = TRUE;
 
     spriteId = CreateSprite(&sSpriteTemplate_OkButton, 204, 140, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_Button);
     gSprites[spriteId].invisible = TRUE;
 }
@@ -1373,12 +1419,16 @@ static void CreateTextEntrySprites(void)
 
     xPos = sNamingScreen->inputCharBaseXPos - 5;
     spriteId = CreateSprite(&sSpriteTemplate_InputArrow, xPos, 56, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 3;
     gSprites[spriteId].invisible = TRUE;
     xPos = sNamingScreen->inputCharBaseXPos;
     for (i = 0; i < sNamingScreen->template->maxChars; i++, xPos += 8)
     {
         spriteId = CreateSprite(&sSpriteTemplate_Underscore, xPos + 3, 60, 0);
+        if (spriteId >= MAX_SPRITES)
+            return;
         gSprites[spriteId].oam.priority = 3;
         gSprites[spriteId].data[0] = i;
         gSprites[spriteId].invisible = TRUE;
@@ -1421,6 +1471,8 @@ static void NamingScreen_CreatePlayerIcon(void)
 
     rivalGfxId = GetRivalAvatarGraphicsIdByStateIdAndGender(PLAYER_AVATAR_STATE_NORMAL, sNamingScreen->monSpecies);
     spriteId = CreateObjectGraphicsSprite(rivalGfxId, SpriteCallbackDummy, 56, 37, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 3;
     StartSpriteAnim(&gSprites[spriteId], ANIM_STD_GO_SOUTH);
 }
@@ -1430,6 +1482,8 @@ static void NamingScreen_CreatePCIcon(void)
     u8 spriteId;
 
     spriteId = CreateSprite(&sSpriteTemplate_PCIcon, 56, 41, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_PCIcon);
     gSprites[spriteId].oam.priority = 3;
 }
@@ -1440,6 +1494,8 @@ static void NamingScreen_CreateMonIcon(void)
 
     LoadMonIconPalettes();
     spriteId = CreateMonIcon(sNamingScreen->monSpecies, SpriteCallbackDummy, 56, 40, 0, sNamingScreen->monPersonality, 1);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 3;
 }
 
@@ -1448,6 +1504,8 @@ static void NamingScreen_CreateWaldaDadIcon(void)
     u8 spriteId;
 
     spriteId = CreateObjectGraphicsSprite(OBJ_EVENT_GFX_MAN_1, SpriteCallbackDummy, 56, 37, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 3;
     StartSpriteAnim(&gSprites[spriteId], ANIM_STD_GO_SOUTH);
 }

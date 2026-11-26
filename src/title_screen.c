@@ -423,30 +423,28 @@ static void SpriteCB_PressStartCopyrightBanner(struct Sprite *sprite)
     }
 }
 
-static void CreatePressStartBanner(s16 x, s16 y)
+static void CreateTitleTextBanner(s16 x, s16 y, bool8 pressStart)
 {
+    u8 spriteIds[NUM_PRESS_START_FRAMES > NUM_COPYRIGHT_FRAMES ? NUM_PRESS_START_FRAMES : NUM_COPYRIGHT_FRAMES];
+    u8 count = pressStart ? NUM_PRESS_START_FRAMES : NUM_COPYRIGHT_FRAMES;
+    u8 firstAnim = pressStart ? 0 : NUM_PRESS_START_FRAMES;
     u8 i;
-    u8 spriteId;
 
     x -= 64;
-    for (i = 0; i < NUM_PRESS_START_FRAMES; i++, x += 32)
+    for (i = 0; i < count; i++, x += 32)
     {
-        spriteId = CreateSprite(&sStartCopyrightBannerSpriteTemplate, x, y, 0);
-        StartSpriteAnim(&gSprites[spriteId], i);
-        gSprites[spriteId].sAnimate = TRUE;
-    }
-}
+        u8 spriteId = CreateSprite(&sStartCopyrightBannerSpriteTemplate, x, y, 0);
 
-static void CreateCopyrightBanner(s16 x, s16 y)
-{
-    u8 i;
-    u8 spriteId;
+        if (spriteId >= MAX_SPRITES)
+        {
+            while (i > 0)
+                DestroySprite(&gSprites[spriteIds[--i]]);
+            return;
+        }
 
-    x -= 64;
-    for (i = 0; i < NUM_COPYRIGHT_FRAMES; i++, x += 32)
-    {
-        spriteId = CreateSprite(&sStartCopyrightBannerSpriteTemplate, x, y, 0);
-        StartSpriteAnim(&gSprites[spriteId], i + NUM_PRESS_START_FRAMES);
+        spriteIds[i] = spriteId;
+        StartSpriteAnim(&gSprites[spriteId], firstAnim + i);
+        gSprites[spriteId].sAnimate = pressStart;
     }
 }
 
@@ -525,34 +523,29 @@ static void SpriteCB_PokemonLogoShine_Fast(struct Sprite *sprite)
 
 static void StartPokemonLogoShine(u8 mode)
 {
-    u8 spriteId;
+    static const s16 xCoords[] = {0, 0, -80};
+    u8 spriteIds[ARRAY_COUNT(xCoords)];
+    u8 count = mode == SHINE_MODE_DOUBLE ? ARRAY_COUNT(xCoords) : 1;
+    u8 i;
 
-    switch (mode)
+    for (i = 0; i < count; i++)
     {
-    case SHINE_MODE_SINGLE_NO_BG_COLOR:
-    case SHINE_MODE_SINGLE:
-        // Create one regular shine sprite.
-        // If mode is SHINE_MODE_SINGLE it will also change the background color.
-        spriteId = CreateSprite(&sPokemonLogoShineSpriteTemplate, 0, 68, 0);
-        gSprites[spriteId].oam.objMode = ST_OAM_OBJ_WINDOW;
-        gSprites[spriteId].sMode = mode;
-        break;
-    case SHINE_MODE_DOUBLE:
-        // Create an invisible sprite with mode set to update the background color
-        spriteId = CreateSprite(&sPokemonLogoShineSpriteTemplate, 0, 68, 0);
-        gSprites[spriteId].oam.objMode = ST_OAM_OBJ_WINDOW;
-        gSprites[spriteId].sMode = mode;
-        gSprites[spriteId].invisible = TRUE;
+        spriteIds[i] = CreateSprite(&sPokemonLogoShineSpriteTemplate, xCoords[i], 68, 0);
+        if (spriteIds[i] >= MAX_SPRITES)
+        {
+            while (i > 0)
+                DestroySprite(&gSprites[spriteIds[--i]]);
+            return;
+        }
+        gSprites[spriteIds[i]].oam.objMode = ST_OAM_OBJ_WINDOW;
+    }
 
-        // Create two faster shine sprites
-        spriteId = CreateSprite(&sPokemonLogoShineSpriteTemplate, 0, 68, 0);
-        gSprites[spriteId].callback = SpriteCB_PokemonLogoShine_Fast;
-        gSprites[spriteId].oam.objMode = ST_OAM_OBJ_WINDOW;
-
-        spriteId = CreateSprite(&sPokemonLogoShineSpriteTemplate, -80, 68, 0);
-        gSprites[spriteId].callback = SpriteCB_PokemonLogoShine_Fast;
-        gSprites[spriteId].oam.objMode = ST_OAM_OBJ_WINDOW;
-        break;
+    gSprites[spriteIds[0]].sMode = mode;
+    if (mode == SHINE_MODE_DOUBLE)
+    {
+        gSprites[spriteIds[0]].invisible = TRUE;
+        gSprites[spriteIds[1]].callback = SpriteCB_PokemonLogoShine_Fast;
+        gSprites[spriteIds[2]].callback = SpriteCB_PokemonLogoShine_Fast;
     }
 }
 
@@ -706,7 +699,7 @@ static void Task_TitleScreenPhase1(u8 taskId)
     }
     else
     {
-        u8 spriteId;
+        u8 leftSpriteId, rightSpriteId;
 
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_1 | DISPCNT_OBJ_1D_MAP | DISPCNT_BG2_ON | DISPCNT_OBJ_ON);
         SetGpuReg(REG_OFFSET_WININ, 0);
@@ -715,14 +708,21 @@ static void Task_TitleScreenPhase1(u8 taskId)
         SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(16, 0));
         SetGpuReg(REG_OFFSET_BLDY, 0);
 
-        // Create left side of version banner
-        spriteId = CreateSprite(&sVersionBannerLeftSpriteTemplate, VERSION_BANNER_LEFT_X, VERSION_BANNER_Y, 0);
-        gSprites[spriteId].sAlphaBlendIdx = ARRAY_COUNT(gTitleScreenAlphaBlend);
-        gSprites[spriteId].sParentTaskId = taskId;
-
-        // Create right side of version banner
-        spriteId = CreateSprite(&sVersionBannerRightSpriteTemplate, VERSION_BANNER_RIGHT_X, VERSION_BANNER_Y, 0);
-        gSprites[spriteId].sParentTaskId = taskId;
+        leftSpriteId = CreateSprite(&sVersionBannerLeftSpriteTemplate, VERSION_BANNER_LEFT_X, VERSION_BANNER_Y, 0);
+        if (leftSpriteId < MAX_SPRITES)
+        {
+            rightSpriteId = CreateSprite(&sVersionBannerRightSpriteTemplate, VERSION_BANNER_RIGHT_X, VERSION_BANNER_Y, 0);
+            if (rightSpriteId < MAX_SPRITES)
+            {
+                gSprites[leftSpriteId].sAlphaBlendIdx = ARRAY_COUNT(gTitleScreenAlphaBlend);
+                gSprites[leftSpriteId].sParentTaskId = taskId;
+                gSprites[rightSpriteId].sParentTaskId = taskId;
+            }
+            else
+            {
+                DestroySprite(&gSprites[leftSpriteId]);
+            }
+        }
 
         gTasks[taskId].tCounter = 144;
         gTasks[taskId].func = Task_TitleScreenPhase2;
@@ -760,8 +760,8 @@ static void Task_TitleScreenPhase2(u8 taskId)
                                     | DISPCNT_BG1_ON
                                     | DISPCNT_BG2_ON
                                     | DISPCNT_OBJ_ON);
-        CreatePressStartBanner(START_BANNER_X, 108);
-        CreateCopyrightBanner(START_BANNER_X, 148);
+        CreateTitleTextBanner(START_BANNER_X, 108, TRUE);
+        CreateTitleTextBanner(START_BANNER_X, 148, FALSE);
         gTasks[taskId].tBg1Y = 0;
         gTasks[taskId].func = Task_TitleScreenPhase3;
     }

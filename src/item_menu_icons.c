@@ -424,7 +424,7 @@ static const struct SpriteTemplate sBerryCheckCircleSpriteTemplate =
 void RemoveBagSprite(u8 id)
 {
     u8 *spriteId = &gBagMenu->spriteIds[id];
-    if (*spriteId != SPRITE_NONE)
+    if (*spriteId < MAX_SPRITES)
     {
         FreeSpriteTilesByTag(id + TAG_BAG_GFX);
         FreeSpritePaletteByTag(id + TAG_BAG_GFX);
@@ -445,7 +445,12 @@ void AddBagVisualSprite(u8 bagPocketId)
 
 void SetBagVisualPocketId(u8 bagPocketId, bool8 isSwitchingPockets)
 {
-    struct Sprite *sprite = &gSprites[gBagMenu->spriteIds[ITEMMENUSPRITE_BAG]];
+    u8 spriteId = gBagMenu->spriteIds[ITEMMENUSPRITE_BAG];
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+    sprite = &gSprites[spriteId];
     if (isSwitchingPockets)
     {
         sprite->y2 = -5;
@@ -476,7 +481,12 @@ static void SpriteCB_BagVisualSwitchingPockets(struct Sprite *sprite)
 
 void ShakeBagSprite(void)
 {
-    struct Sprite *sprite = &gSprites[gBagMenu->spriteIds[ITEMMENUSPRITE_BAG]];
+    u8 spriteId = gBagMenu->spriteIds[ITEMMENUSPRITE_BAG];
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+    sprite = &gSprites[spriteId];
     if (sprite->affineAnimEnded)
     {
         StartSpriteAffineAnim(sprite, ANIM_BAG_SHAKE);
@@ -497,9 +507,27 @@ static void SpriteCB_ShakeBagSprite(struct Sprite *sprite)
 void AddSwitchPocketRotatingBallSprite(s16 rotationDirection)
 {
     u8 *spriteId = &gBagMenu->spriteIds[ITEMMENUSPRITE_BALL];
-    LoadSpriteSheet(&sRotatingBallTable);
-    LoadSpritePalette(&sRotatingBallPaletteTable);
+    if (*spriteId < MAX_SPRITES)
+        return;
+
+    if (LoadSpriteSheet(&sRotatingBallTable) == SPRITE_TILE_NONE)
+        return;
+
+    if (LoadSpritePalette(&sRotatingBallPaletteTable) == 0xFF)
+    {
+        FreeSpriteTilesByTag(TAG_ROTATING_BALL_GFX);
+        return;
+    }
+
     *spriteId = CreateSprite(&sRotatingBallSpriteTemplate, 16 + BAG_VIEW_X, 16 + BAG_VIEW_Y, 0);
+    if (*spriteId >= MAX_SPRITES)
+    {
+        FreeSpriteTilesByTag(TAG_ROTATING_BALL_GFX);
+        FreeSpritePaletteByTag(TAG_ROTATING_BALL_GFX);
+        *spriteId = SPRITE_NONE;
+        return;
+    }
+
     gSprites[*spriteId].data[0] = rotationDirection;
 }
 
@@ -517,7 +545,12 @@ static void SpriteCB_SwitchPocketRotatingBallInit(struct Sprite *sprite)
     else
         sprite->affineAnims = sRotatingBallAnimCmds_FullRotation;
 
-    InitSpriteAffineAnim(sprite);
+    if (!InitSpriteAffineAnim(sprite))
+    {
+        sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+        RemoveBagSprite(ITEMMENUSPRITE_BALL);
+        return;
+    }
     sprite->data[1] = sprite->centerToCornerVecX;
     sprite->data[1] = sprite->centerToCornerVecY;
     UpdateSwitchPocketRotatingBallCoords(sprite);
@@ -650,7 +683,7 @@ u8 CreateSpinningBerrySprite(u8 berryId, u8 x, u8 y, bool8 startAffine)
     FreeSpritePaletteByTag(TAG_BERRY_PIC_PAL);
     LoadBerryGfx(berryId);
     spriteId = CreateSprite(&sBerryPicRotatingSpriteTemplate, x, y, 0);
-    if (startAffine == TRUE)
+    if (spriteId < MAX_SPRITES && startAffine == TRUE)
         StartSpriteAffineAnim(&gSprites[spriteId], 1);
 
     return spriteId;

@@ -8,6 +8,9 @@
 #include "gpu_regs.h"
 #include "platform/dma.h"
 #include "platform/framedraw.h"
+#ifdef PLATFORM_SDL2
+#include "sprite.h"
+#endif
 
 #define mosaicBGEffectX (REG_MOSAIC & 0xF)
 #define mosaicBGEffectY ((REG_MOSAIC >> 4) & 0xF)
@@ -68,6 +71,7 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
     uint16_t *pal = (uint16_t *)PLTT;
     const struct FieldTileSource *const *fieldSources = NULL;
 #ifdef PLATFORM_SDL2
+    u32 mapEntryLimit = (BG_VRAM_SIZE - screenBaseBlock * BG_SCREEN_SIZE) / sizeof(*bgmap);
     bool fieldUi = bgNum == 0 && screenBaseBlock == FIELD_UI_MAP_BASE
                 && charBaseBlock == FIELD_UI_CHAR_BASE && (control >> 14) == FIELD_UI_SCREEN_SIZE
                 && bitsPerPixel == 4 && IsWideFieldUi();
@@ -99,10 +103,19 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
         unsigned int blockY = mapHeight == 64 ? yy / 256 : 0;
         unsigned int block = blockY * (mapWidth / 32) + blockX;
         unsigned int tileIndex = block * 0x400 + ((yy & 0xFF) / 8) * 32 + (xx & 0xFF) / 8;
+#ifdef PLATFORM_SDL2
+        if (tileIndex >= mapEntryLimit)
+            continue;
+#endif
         uint16_t entry = bgmap[tileIndex];
 
         unsigned int tileNum = entry & 0x3FF;
         unsigned int paletteNum = (entry >> 12) & 0xF;
+#ifdef PLATFORM_SDL2
+        u8 banks = GetPublishedBgTilemapEntryBanks(bgNum, control, sizeof(*bgmap), tileIndex);
+        if (banks & BG_TILEMAP_PALETTE_BANK)
+            paletteNum += BG_PLTT_SIZE / PLTT_SIZE_4BPP;
+#endif
         
         unsigned int tileX = xx % 8;
         unsigned int tileY = yy % 8;
@@ -120,13 +133,31 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
             tileLocX /= 2;
 
         const struct FieldTileSource *source = fieldSources == NULL ? NULL : GetDisplayedFieldTileSource(fieldSources, tileIndex);
-        const uint8_t *tileData = bgtiles + tileLoc;
+        const uint8_t *tileData;
 #ifdef PLATFORM_SDL2
-        if (fieldUi && tileLoc >= BG_CHAR_SIZE)
+        if (banks & BG_TILEMAP_TILE_BANK)
+        {
+            u32 offset = charBaseBlock * BG_CHAR_SIZE + tileLoc;
+
+            if (offset + bitsPerPixel * 8 > BG_VRAM_EXT_SIZE)
+                continue;
+
+            tileData = (const u8 *)(BG_VRAM_EXT + offset);
+        }
+        else if (fieldUi && tileLoc >= BG_CHAR_SIZE)
             tileData = gFieldUiUpperTiles + tileLoc - BG_CHAR_SIZE;
+        else
 #endif
         if (source != NULL && tileNum >= NUM_TILES_IN_PRIMARY)
             tileData = source->tiles + (tileNum - NUM_TILES_IN_PRIMARY) * TILE_SIZE_4BPP;
+        else
+        {
+#ifdef PLATFORM_SDL2
+            if (charBaseBlock * BG_CHAR_SIZE + tileLoc + bitsPerPixel * 8 > BG_VRAM_SIZE)
+                continue;
+#endif
+            tileData = bgtiles + tileLoc;
+        }
 
         uint8_t pixel = tileData[tileLocY + tileLocX];
 
@@ -145,7 +176,17 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
             }
         }
         else {
+#ifdef PLATFORM_SDL2
+            unsigned int colorIndex = pixel;
+
+            if (pixel == 0)
+                continue;
+            if (banks & BG_TILEMAP_PALETTE_BANK)
+                colorIndex += BG_PLTT_SIZE / sizeof(*pal);
+            line[x] = pal[colorIndex] | 0x8000;
+#else
             line[x] = pal[pixel] | 0x8000;
+#endif
         }
     }
 }
@@ -230,6 +271,9 @@ static void RenderRotScaleBGScanline(int bgNum, uint16_t control, uint16_t x, ui
     uint8_t *bgtiles = (uint8_t *)(VRAM_ + charBaseBlock * 0x4000);
     uint8_t *bgmap = (uint8_t *)(VRAM_ + screenBaseBlock * 0x800);
     uint16_t *pal = (uint16_t *)PLTT;
+#ifdef PLATFORM_SDL2
+    u32 mapEntryLimit = (BG_VRAM_SIZE - screenBaseBlock * BG_SCREEN_SIZE) / sizeof(*bgmap);
+#endif
 
     if (control & BGCNT_MOSAIC)
         lineNum = applyBGVerticalMosaicEffect(lineNum);
@@ -288,55 +332,49 @@ static void RenderRotScaleBGScanline(int bgNum, uint16_t control, uint16_t x, ui
     int realX = currentX;
     int realY = currentY;
 
-    if (bgcnt->areaOverflowMode)
+    for (int x = 0; x < DISPLAY_WIDTH; x++, realX += pa, realY += pc)
     {
-        for (int x = 0; x < DISPLAY_WIDTH; x++)
+        int pixelX = realX >> 8;
+        int pixelY = realY >> 8;
+
+        if (bgcnt->areaOverflowMode)
         {
-            int xxx = (realX >> 8) & maskX;
-            int yyy = (realY >> 8) & maskY;
-
-            int tile = bgmap[(xxx >> 3) + ((yyy >> 3) << yshift)];
-
-            int tileX = xxx & 7;
-            int tileY = yyy & 7;
-
-            uint8_t pixel = bgtiles[(tile << 6) + (tileY << 3) + tileX];
-
-            if (pixel != 0) {
-                line[x] = pal[pixel] | 0x8000;
-            }
-
-            realX += pa;
-            realY += pc;
+            pixelX &= maskX;
+            pixelY &= maskY;
         }
-    }
-    else
-    {
-        for (int x = 0; x < DISPLAY_WIDTH; x++)
+        else if (pixelX < 0 || pixelY < 0 || pixelX >= sizeX || pixelY >= sizeY)
         {
-            int xxx = (realX >> 8);
-            int yyy = (realY >> 8);
-
-            if (xxx < 0 || yyy < 0 || xxx >= sizeX || yyy >= sizeY)
-            {
-                //line[x] = 0x80000000;
-            }
-            else
-            {
-                int tile = bgmap[(xxx >> 3) + ((yyy >> 3) << yshift)];
-
-                int tileX = xxx & 7;
-                int tileY = yyy & 7;
-
-                uint8_t pixel = bgtiles[(tile << 6) + (tileY << 3) + tileX];
-
-                if (pixel != 0) {
-                    line[x] = pal[pixel] | 0x8000;
-                }
-            }
-            realX += pa;
-            realY += pc;
+            continue;
         }
+
+        u32 entry = (pixelX >> 3) + ((pixelY >> 3) << yshift);
+#ifdef PLATFORM_SDL2
+        if (entry >= mapEntryLimit)
+            continue;
+#endif
+        u32 tileOffset = bgmap[entry] * TILE_SIZE_8BPP;
+        u32 pixelOffset = (pixelY & 7) * 8 + (pixelX & 7);
+        const u8 *tile = bgtiles + tileOffset;
+        unsigned int paletteOffset = 0;
+
+#ifdef PLATFORM_SDL2
+        u8 banks = GetPublishedBgTilemapEntryBanks(bgNum, control, sizeof(*bgmap), entry);
+        if (banks & BG_TILEMAP_TILE_BANK)
+        {
+            u32 offset = charBaseBlock * BG_CHAR_SIZE + tileOffset;
+
+            if (offset + TILE_SIZE_8BPP > BG_VRAM_EXT_SIZE)
+                continue;
+
+            tile = (const u8 *)(BG_VRAM_EXT + offset);
+        }
+        if (banks & BG_TILEMAP_PALETTE_BANK)
+            paletteOffset = BG_PLTT_SIZE / sizeof(*pal);
+#endif
+
+        u8 pixel = tile[pixelOffset];
+        if (pixel != 0)
+            line[x] = pal[paletteOffset + pixel] | 0x8000;
     }
     //the only way i could figure out how to get accurate mosaic on affine bgs 
     //luckily i dont think pokemon emerald uses mosaic on affine bgs
@@ -495,7 +533,7 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
         puts("2-D OBJ Character mapping not supported.");
     }
 
-    for (i = 127; i >= 0; i--)
+    for (i = OAM_ENTRY_COUNT - 1; i >= 0; i--)
     {
         struct OamData *oam = &((struct OamData *)OAM)[i];
         unsigned int width;
@@ -548,6 +586,20 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
 
         if (isAffine)
         {
+#ifdef PLATFORM_SDL2
+            u16 param = oam->affineParam;
+            u8 matrixNum = oam->matrixNum;
+            if ((param & ~OAM_AFFINE_HANDLE_MASK) == OAM_AFFINE_HANDLE_TAG)
+                matrixNum = param & OAM_AFFINE_HANDLE_MASK;
+            if (matrixNum >= OAM_MATRIX_COUNT)
+                continue;
+
+            const struct OamMatrix *affine = &gPublishedOamMatrices[matrixNum];
+            matrix[0][0] = affine->a;
+            matrix[0][1] = affine->b;
+            matrix[1][0] = affine->c;
+            matrix[1][1] = affine->d;
+#else
             //TODO: there is probably a better way to do this
             u8 matrixNum = oam->matrixNum * 4;
 
@@ -560,6 +612,7 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
             matrix[0][1] = oam2->affineParam;
             matrix[1][0] = oam3->affineParam;
             matrix[1][1] = oam4->affineParam;
+#endif
 
             if (doubleSizeOrDisabled) // double size for affine
             {
@@ -586,11 +639,27 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
             bool flipX  = !isAffine && ((oam->matrixNum >> 3) & 1);
             bool flipY  = !isAffine && ((oam->matrixNum >> 4) & 1);
             bool is8BPP  = oam->bpp & 1;
+            unsigned int tileNum = oam->tileNum;
+            unsigned int paletteNum = oam->paletteNum;
+#ifdef PLATFORM_SDL2
+            const struct OamResourceHandles *handles = &gOamResourceHandles[i];
+            if (handles->hasHandles)
+            {
+                if (handles->tile >= TOTAL_OBJ_TILE_COUNT || handles->tileBase >= TOTAL_OBJ_TILE_COUNT
+                 || handles->tile / LEGACY_OBJ_TILE_COUNT != handles->tileBank)
+                    continue;
+
+                tileNum = handles->tile;
+                if (handles->palette < OBJ_PLTT_CAPACITY / PLTT_SIZE_4BPP)
+                    paletteNum = handles->palette;
+            }
+            unsigned int tileLimit = (tileNum / LEGACY_OBJ_TILE_COUNT + 1) * LEGACY_OBJ_TILE_COUNT;
+#endif
 
             for (int local_x = -half_width; local_x <= half_width; local_x++)
             {
                 uint8_t *tiledata = (uint8_t *)objtiles;
-                uint16_t *palette = (uint16_t *)(PLTT + 0x200);
+                uint16_t *palette = (uint16_t *)OBJ_PLTT;
                 int local_mosaicX;
                 int tex_x;
                 int tex_y;
@@ -627,19 +696,26 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
                 int block_y = tex_y / 8;
                 int block_offset = ((block_y * (REG_DISPCNT & 0x40 ? (width / 8) : 16)) + block_x);
                 uint16_t pixel = 0;
+                unsigned int pixelTile = tileNum + block_offset * (is8BPP ? 2 : 1);
 
+#ifdef PLATFORM_SDL2
+                if (!handles->hasHandles)
+                    pixelTile %= LEGACY_OBJ_TILE_COUNT;
+                if (pixelTile + (is8BPP ? 1 : 0) >= tileLimit)
+                    continue;
+#endif
                 if (!is8BPP)
                 {
-                    pixel = tiledata[(block_offset + oam->tileNum) * 32 + (tile_y * 4) + (tile_x / 2)];
+                    pixel = tiledata[pixelTile * TILE_SIZE_4BPP + (tile_y * 4) + (tile_x / 2)];
                     if (tile_x & 1)
                         pixel >>= 4;
                     else
                         pixel &= 0xF;
-                    palette += oam->paletteNum * 16;
+                    palette += paletteNum * 16;
                 }
                 else
                 {
-                    pixel = tiledata[(block_offset * 2 + oam->tileNum) * 32 + (tile_y * 8) + tile_x];
+                    pixel = tiledata[pixelTile * TILE_SIZE_4BPP + (tile_y * 8) + tile_x];
                 }
 
                 if (pixel != 0)

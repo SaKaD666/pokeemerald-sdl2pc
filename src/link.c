@@ -18,6 +18,9 @@
 #include "task.h"
 #include "scanline_effect.h"
 #include "menu.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#endif
 #include "text.h"
 #include "strings.h"
 #include "constants/songs.h"
@@ -1137,6 +1140,9 @@ static void LinkTest_PrintNumChar(char val, u8 x, u8 y)
 
     vAddr = (u16 *)BG_SCREEN_ADDR(gLinkTestBGInfo.screenBaseBlock);
     vAddr[y * 32 + x] = (gLinkTestBGInfo.paletteNum << 12) | (val + 1 + gLinkTestBGInfo.baseChar);
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange(&vAddr[y * 32 + x], sizeof(*vAddr));
+#endif
 }
 
 static void LinkTest_PrintChar(char val, u8 x, u8 y)
@@ -1145,6 +1151,9 @@ static void LinkTest_PrintChar(char val, u8 x, u8 y)
 
     vAddr = (u16 *)BG_SCREEN_ADDR(gLinkTestBGInfo.screenBaseBlock);
     vAddr[y * 32 + x] = (gLinkTestBGInfo.paletteNum << 12) | (val + gLinkTestBGInfo.baseChar);
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange(&vAddr[y * 32 + x], sizeof(*vAddr));
+#endif
 }
 
 static void LinkTest_PrintHex(u32 num, u8 x, u8 y, u8 length)
@@ -1602,6 +1611,11 @@ void CB2_LinkError(void)
     m4aMPlayStop(&gMPlayInfo_SE1);
     m4aMPlayStop(&gMPlayInfo_SE2);
     m4aMPlayStop(&gMPlayInfo_SE3);
+#ifdef PLATFORM_SDL2
+    SetVBlankCallback(NULL);
+    ClearDma3Requests();
+#endif
+    ResetTempTileDataBuffers();
     InitHeap(gHeap, HEAP_SIZE);
     ResetSpriteData();
     FreeAllSpritePalettes();
@@ -1624,7 +1638,6 @@ void CB2_LinkError(void)
     if (InitWindows(sLinkErrorWindowTemplates))
     {
         DeactivateAllTextPrinters();
-        ResetTempTileDataBuffers();
         SetGpuReg(REG_OFFSET_BLDCNT, 0);
         SetGpuReg(REG_OFFSET_BLDALPHA, 0);
         SetGpuReg(REG_OFFSET_BG0HOFS, 0);

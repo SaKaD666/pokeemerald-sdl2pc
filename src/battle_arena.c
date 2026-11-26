@@ -380,6 +380,18 @@ void CallBattleArenaFunction(void)
     sArenaFunctions[gSpecialVar_0x8004]();
 }
 
+static void CreateJudgmentIcon(u8 x, u8 y, u8 anim)
+{
+    u8 spriteId;
+
+    if (GetSpriteTileStartByTag(TAG_JUDGMENT_ICON) == SPRITE_TILE_NONE)
+        return;
+
+    spriteId = CreateSprite(&sSpriteTemplate_JudgmentIcon, x, y, 0);
+    if (spriteId < MAX_SPRITES)
+        StartSpriteAnim(&gSprites[spriteId], anim);
+}
+
 u8 BattleArena_ShowJudgmentWindow(u8 *state)
 {
     int i;
@@ -427,12 +439,9 @@ u8 BattleArena_ShowJudgmentWindow(u8 *state)
         {
             SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL | WININ_WIN1_ALL);
 
-            // Create dividing line for the the score totals at the bottom
+            // Create dividing line for the score totals at the bottom
             for (i = 0; i < 8; i++)
-            {
-                u8 spriteId = CreateSprite(&sSpriteTemplate_JudgmentIcon, 64 + i * 16, 84, 0);
-                StartSpriteAnim(&gSprites[spriteId], ANIM_ICON_LINE);
-            }
+                CreateJudgmentIcon(64 + i * 16, 84, ANIM_ICON_LINE);
             result = ARENA_RESULT_STEP_DONE;
             (*state)++;
         }
@@ -556,8 +565,7 @@ static void ShowJudgmentSprite(u8 x, u8 y, u8 category, u8 battler)
         animNum = ANIM_ICON_X;
     }
 
-    pointsPlayer = CreateSprite(&sSpriteTemplate_JudgmentIcon, x, y, 0);
-    StartSpriteAnim(&gSprites[pointsPlayer], animNum);
+    CreateJudgmentIcon(x, y, animNum);
 }
 
 static void SpriteCB_JudgmentIcon(struct Sprite *sprite)

@@ -11,6 +11,7 @@
 #include "image_processing_effects.h"
 #include "international_string_util.h"
 #include "main.h"
+#include "menu.h"
 #include "lilycove_lady.h"
 #include "palette.h"
 #include "random.h"
@@ -184,11 +185,22 @@ static void CB2_HoldContestPainting(void)
 
 static void CB2_QuitContestPainting(void)
 {
+    void *tilemap;
+
+#ifdef PLATFORM_SDL2
+    SetVBlankCallback(NULL);
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+    ClearScheduledBgCopiesToVram();
+    ReleaseOamSlots(0, 1);
+#endif
     SetMainCallback2(gMain.savedCallback);
     FREE_AND_SET_NULL(gContestPaintingMonPalette);
     FREE_AND_SET_NULL(gContestMonPixels);
     RemoveWindow(sWindowId);
-    Free(GetBgTilemapBuffer(1));
+    tilemap = GetBgTilemapBuffer(1);
+    UnsetBgTilemapBuffer(1);
+    Free(tilemap);
     FreeMonSpritesGfx();
 }
 
@@ -465,6 +477,9 @@ static void LoadContestPaintingFrame(u8 contestWinnerId, bool8 isForArtist)
         // Re-set the entire top row to the first top frame part
         for (x = 0; x < 16; x++)
             VRAM_PICTURE_DATA(x + 7, 2) = (*gContestMonPixels)[2][7];
+#ifdef PLATFORM_SDL2
+        InvalidateBgTilemapVramRange(&VRAM_PICTURE_DATA(0, 0), 20 * 32 * sizeof(u16));
+#endif
     }
     else if (contestWinnerId < MUSEUM_CONTEST_WINNERS_START)
     {
@@ -505,6 +520,10 @@ static void LoadContestPaintingFrame(u8 contestWinnerId, bool8 isForArtist)
 
 static void InitPaintingMonOamData(u8 contestWinnerId)
 {
+#ifdef PLATFORM_SDL2
+    if (!ReserveOamSlots(0, 1))
+        return;
+#endif
     gMain.oamBuffer[0] = sContestPaintingMonOamData;
     gMain.oamBuffer[0].tileNum = 0;
 
@@ -518,6 +537,9 @@ static void InitPaintingMonOamData(u8 contestWinnerId)
         gMain.oamBuffer[0].x = 88; // Duplicated code
         gMain.oamBuffer[0].y = 24;
     }
+#ifdef PLATFORM_SDL2
+    SetReservedOamSlotHandles(0, 0, 0, 0);
+#endif
 }
 
 static u8 GetImageEffectForContestWinner(u8 contestWinnerId)

@@ -6192,10 +6192,21 @@ static void PutMonIconOnLvlUpBanner(void)
     iconPalSheet.data = iconPal;
     iconPalSheet.tag = TAG_LVLUP_BANNER_MON_ICON;
 
-    LoadSpriteSheet(&iconSheet);
-    LoadSpritePalette(&iconPalSheet);
+    if (LoadSpriteSheet(&iconSheet) == SPRITE_TILE_NONE)
+        return;
+    if (LoadSpritePalette(&iconPalSheet) == 0xFF)
+    {
+        FreeSpriteTilesByTag(TAG_LVLUP_BANNER_MON_ICON);
+        return;
+    }
 
     spriteId = CreateSprite(&sSpriteTemplate_MonIconOnLvlUpBanner, 256, 10, 0);
+    if (spriteId >= MAX_SPRITES)
+    {
+        FreeSpriteTilesByTag(TAG_LVLUP_BANNER_MON_ICON);
+        FreeSpritePaletteByTag(TAG_LVLUP_BANNER_MON_ICON);
+        return;
+    }
     gSprites[spriteId].sDestroy = FALSE;
     gSprites[spriteId].sXOffset = gBattle_BG2_X;
 }

@@ -272,6 +272,8 @@ void FreeRegionMapSubstruct2(void)
     FreeRegionMapIconResources();
     FreeCityZoomViewGfx();
     RemoveWindow(state->infoWindowId);
+    if (GetBgTilemapBuffer(1) == state->tilemapBuffer)
+        UnsetBgTilemapBuffer(1);
     FreePokenavSubstruct(POKENAV_SUBSTRUCT_REGION_MAP);
     FreePokenavSubstruct(POKENAV_SUBSTRUCT_REGION_MAP_ZOOM);
     SetPokenavVBlankCallback();
@@ -477,6 +479,12 @@ static u32 LoopedTask_ExitRegionMap(s32 taskState)
         HideBg(2);
         HideBg(3);
         return LT_INC_AND_PAUSE;
+#ifdef PLATFORM_SDL2
+    case 3:
+        if (IsDma3ManagerBusyWithBgCopy())
+            return LT_PAUSE;
+        break;
+#endif
     }
 
     return LT_FINISH;
@@ -681,10 +689,9 @@ static void CreateCityZoomTextSprites(void)
         sprite = &gSprites[spriteId];
         sprite->data[0] = 0;
         sprite->data[1] = i * 4;
-        sprite->data[2] = sprite->oam.tileNum;
         sprite->data[3] = 150;
         sprite->data[4] = i * 4;
-        sprite->oam.tileNum += i * 4;
+        SetSpriteSheetTileOffset(sprite, i * 4);
         state->cityZoomTextSprites[i] = sprite;
     }
 }
@@ -704,7 +711,7 @@ static void SpriteCB_CityZoomText(struct Sprite *sprite)
     if (++sprite->data[1] > 60)
         sprite->data[1] = 0;
 
-    sprite->oam.tileNum = sprite->data[2] + sprite->data[1];
+    SetSpriteSheetTileOffset(sprite, sprite->data[1]);
     if (sprite->data[5] < 4)
     {
         if (sprite->data[0] == 0)

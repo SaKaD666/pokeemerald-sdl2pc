@@ -840,7 +840,8 @@ static void CloseUsePokeblockMenu(void)
         SetMainCallback2(sInfo->exitCallback);
         FreeConditionSparkles(sMenu->sparkles);
         for (i = 0; i < ARRAY_COUNT(sMenu->selectionIconSpriteIds); i++)
-            DestroySprite(&gSprites[sMenu->selectionIconSpriteIds[i]]);
+            if (sMenu->selectionIconSpriteIds[i] < MAX_SPRITES)
+                DestroySprite(&gSprites[sMenu->selectionIconSpriteIds[i]]);
 
         FreeSpriteTilesByTag(TAG_UP_DOWN);
         FreeSpriteTilesByTag(TAG_CONDITION);
@@ -848,9 +849,10 @@ static void CloseUsePokeblockMenu(void)
         FreeSpritePaletteByTag(TAG_CONDITION);
 
         for (i = 0; i < ARRAY_COUNT(sMenu->condition); i++)
-            DestroySprite(sMenu->condition[i]);
+            if (sMenu->condition[i] != NULL)
+                DestroySprite(sMenu->condition[i]);
 
-        if (sMenu->curMonSpriteId != SPRITE_NONE)
+        if (sMenu->curMonSpriteId < MAX_SPRITES)
             DestroySprite(&gSprites[sMenu->curMonSpriteId]);
 
         SetVBlankCallback(NULL);
@@ -1117,19 +1119,19 @@ static void LoadAndCreateUpDownSprites(void)
 {
     u16 i;
 
-    LoadSpriteSheet(&sSpriteSheet_UpDown);
-    LoadSpritePalette(&sSpritePalette_UpDown);
     sInfo->numEnhancements = 0;
+    if (LoadSpriteSheet(&sSpriteSheet_UpDown) == SPRITE_TILE_NONE
+     || LoadSpritePalette(&sSpritePalette_UpDown) == 0xFF)
+        return;
 
     for (i = 0; i < CONDITION_COUNT; i++)
     {
         if (sInfo->enhancements[i] != 0)
         {
             u16 spriteId = CreateSprite(&sSpriteTemplate_UpDown, sUpDownCoordsOnGraph[i][0], sUpDownCoordsOnGraph[i][1], 0);
-            if (spriteId != MAX_SPRITES)
+            if (spriteId < MAX_SPRITES)
             {
-                if (sInfo->enhancements[i] != 0) // Always true here
-                    gSprites[spriteId].callback = SpriteCB_UpDown;
+                gSprites[spriteId].callback = SpriteCB_UpDown;
                 sInfo->numEnhancements++;
             }
         }
@@ -1215,16 +1217,22 @@ static void UpdateMonPic(u8 loadId)
     struct SpriteSheet spriteSheet;
     struct SpritePalette spritePal;
 
-    if (sMenu->curMonSpriteId == SPRITE_NONE)
+    if (sMenu->curMonSpriteId >= MAX_SPRITES)
     {
         LoadConditionMonPicTemplate(&spriteSheet, &spriteTemplate, &spritePal);
         spriteSheet.data = sMenu->partySheets[loadId];
         spritePal.data = sMenu->partyPalettes[loadId];
-        sMenu->curMonPalette = LoadSpritePalette(&spritePal);
         sMenu->curMonSheet = LoadSpriteSheet(&spriteSheet);
+        if (sMenu->curMonSheet == SPRITE_TILE_NONE)
+            return;
+        sMenu->curMonPalette = LoadSpritePalette(&spritePal);
+        if (sMenu->curMonPalette == 0xFF)
+        {
+            FreeSpriteTilesByTag(TAG_CONDITION_MON);
+            return;
+        }
         spriteId = CreateSprite(&spriteTemplate, 38, 104, 0);
-        sMenu->curMonSpriteId = spriteId;
-        if (spriteId == MAX_SPRITES)
+        if (spriteId >= MAX_SPRITES)
         {
             FreeSpriteTilesByTag(TAG_CONDITION_MON);
             FreeSpritePaletteByTag(TAG_CONDITION_MON);
@@ -1262,8 +1270,8 @@ static void LoadAndCreateSelectionIcons(void)
     // Fill Poké Ball selection icons up to number in party
     for (i = 0; i < sMenu->info.numSelections - 1; i++)
     {
-        spriteId = CreateSprite(&spriteTemplate, 226, (i * 20) + 8, 0);
-        if (spriteId != MAX_SPRITES)
+        spriteId = CreateConditionSelectionIcon(&spriteTemplate, 226, (i * 20) + 8);
+        if (spriteId < MAX_SPRITES)
         {
             sMenu->selectionIconSpriteIds[i] = spriteId;
             gSprites[spriteId].data[0] = i;
@@ -1271,7 +1279,7 @@ static void LoadAndCreateSelectionIcons(void)
         }
         else
         {
-            sMenu->selectionIconSpriteIds[i] = -1;
+            sMenu->selectionIconSpriteIds[i] = SPRITE_NONE;
         }
     }
 
@@ -1279,23 +1287,23 @@ static void LoadAndCreateSelectionIcons(void)
     spriteTemplate.tileTag = TAG_CONDITION_BALL_PLACEHOLDER;
     for (; i < PARTY_SIZE; i++)
     {
-        spriteId = CreateSprite(&spriteTemplate, 230, (i * 20) + 8, 0);
-        if (spriteId != MAX_SPRITES)
+        spriteId = CreateConditionSelectionIcon(&spriteTemplate, 230, (i * 20) + 8);
+        if (spriteId < MAX_SPRITES)
         {
             sMenu->selectionIconSpriteIds[i] = spriteId;
             gSprites[spriteId].oam.size = 0;
         }
         else
         {
-            sMenu->selectionIconSpriteIds[i] = -1;
+            sMenu->selectionIconSpriteIds[i] = SPRITE_NONE;
         }
     }
 
     // Add cancel selection icon at bottom
     spriteTemplate.tileTag = TAG_CONDITION_CANCEL;
     spriteTemplate.callback = SpriteCB_SelectionIconCancel;
-    spriteId = CreateSprite(&spriteTemplate, 222, (i * 20) + 8, 0);
-    if (spriteId != MAX_SPRITES)
+    spriteId = CreateConditionSelectionIcon(&spriteTemplate, 222, (i * 20) + 8);
+    if (spriteId < MAX_SPRITES)
     {
         sMenu->selectionIconSpriteIds[i] = spriteId;
         gSprites[spriteId].oam.shape = SPRITE_SHAPE(32x16);
@@ -1303,7 +1311,7 @@ static void LoadAndCreateSelectionIcons(void)
     }
     else
     {
-        sMenu->selectionIconSpriteIds[i] = -1;
+        sMenu->selectionIconSpriteIds[i] = SPRITE_NONE;
     }
 
     LoadConditionSparkle(&spriteSheet2, &spritePal2);
@@ -1588,9 +1596,9 @@ static void SpriteCB_SelectionIconPokeball(struct Sprite *sprite)
 static void SpriteCB_SelectionIconCancel(struct Sprite *sprite)
 {
     if (sMenu->info.curSelection == sMenu->info.numSelections - 1)
-        sprite->oam.paletteNum = IndexOfSpritePaletteTag(TAG_CONDITION_BALL);
+        SetSpritePaletteFromTag(sprite, TAG_CONDITION_BALL);
     else
-        sprite->oam.paletteNum = IndexOfSpritePaletteTag(TAG_CONDITION_CANCEL);
+        SetSpritePaletteFromTag(sprite, TAG_CONDITION_CANCEL);
 }
 
 // Calculate the max id for sparkles/stars that appear around the Pokémon on the condition screen
@@ -1629,8 +1637,8 @@ static void CreateConditionSprite(void)
 
     for (i = 0, xDiff = 64, xStart = -96; i < 2; i++)
     {
-        u8 spriteId = CreateSprite(template, i * xDiff + xStart, yStart, 0);
-        if (spriteId != MAX_SPRITES)
+        u8 spriteId = CreateConditionSelectionIcon(template, i * xDiff + xStart, yStart);
+        if (spriteId < MAX_SPRITES)
         {
             gSprites[spriteId].sSpeed = speed;
             gSprites[spriteId].sTargetX = (i * xDiff) | 0x20;

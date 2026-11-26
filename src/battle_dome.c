@@ -51,6 +51,7 @@
 struct TourneyTreeInfoCard
 {
     u8 spriteIds[NUM_INFOCARD_SPRITES];
+    u8 scrollArrowSpriteIds[4];
     u8 pos;
     u8 tournamentIds[NUM_INFOCARD_TRAINERS];
 };
@@ -1484,6 +1485,8 @@ static const u8 sTourneyTreePokeballCoords[DOME_TOURNAMENT_TRAINERS_COUNT + DOME
     {137,  89}, // Right side semifinal match
     {120,  89}, // Final match
 };
+
+static EWRAM_DATA u8 sTourneyTreeButtonSpriteIds[TOURNEY_TREE_CLOSE_BUTTON + 1] = {0};
 
 // Tile values from tourney_tree.png for the highlighted lines of the tourney tree.
 // These tiles will be used to replace the existing, unhighlighted line tiles on the tourney tree tilemap.
@@ -3053,6 +3056,21 @@ static void ShowDomeOpponentInfo(void)
 }
 
 // For showing the opponent info card or the match info card
+static u8 CreateInfoCardScrollArrow(const struct SpriteTemplate *template, s16 x, s16 y,
+                                   u8 anim, u8 taskId, bool8 invisible)
+{
+    u8 spriteId = CreateSprite(template, x, y, 0);
+
+    if (spriteId >= MAX_SPRITES)
+        return SPRITE_NONE;
+
+    StartSpriteAnim(&gSprites[spriteId], anim);
+    gSprites[spriteId].data[0] = taskId;
+    gSprites[spriteId].data[1] = anim;
+    gSprites[spriteId].invisible = invisible;
+    return spriteId;
+}
+
 static void Task_ShowTourneyInfoCard(u8 taskId)
 {
     int i;
@@ -3141,31 +3159,13 @@ static void Task_ShowTourneyInfoCard(u8 taskId)
             DisplayTrainerInfoOnCard(0, tournamentId);
         }
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_BG_ALL_ON | DISPCNT_OBJ_1D_MAP);
-        if (mode != INFOCARD_NEXT_OPPONENT)
+        memset(sInfoCard->scrollArrowSpriteIds, SPRITE_NONE, sizeof(sInfoCard->scrollArrowSpriteIds));
+        if (mode != INFOCARD_NEXT_OPPONENT && GetSpriteTileStartByTag(TAG_BUTTONS) != SPRITE_TILE_NONE)
         {
-            // Scroll up arrow
-            id = CreateSprite(&sVerticalScrollArrowSpriteTemplate, 120, 4, 0);
-            StartSpriteAnim(&gSprites[id], 0);
-            gSprites[id].data[0] = i;
-
-            // Scroll down arrow
-            id = CreateSprite(&sVerticalScrollArrowSpriteTemplate, 120, 156, 0);
-            StartSpriteAnim(&gSprites[id], 1);
-            gSprites[id].data[0] = i;
-
-            // Scroll left arrow
-            id = CreateSprite(&sHorizontalScrollArrowSpriteTemplate, 6, 80, 0);
-            StartSpriteAnim(&gSprites[id], 0);
-            gSprites[id].data[0] = i;
-            gSprites[id].data[1] = 0;
-            if (mode == INFOCARD_TRAINER)
-                gSprites[id].invisible = TRUE;
-
-            // Scroll right arrow
-            id = CreateSprite(&sHorizontalScrollArrowSpriteTemplate, 234, 80, 0);
-            StartSpriteAnim(&gSprites[id], 1);
-            gSprites[id].data[0] = i;
-            gSprites[id].data[1] = 1;
+            sInfoCard->scrollArrowSpriteIds[0] = CreateInfoCardScrollArrow(&sVerticalScrollArrowSpriteTemplate, 120, 4, 0, i, FALSE);
+            sInfoCard->scrollArrowSpriteIds[1] = CreateInfoCardScrollArrow(&sVerticalScrollArrowSpriteTemplate, 120, 156, 1, i, FALSE);
+            sInfoCard->scrollArrowSpriteIds[2] = CreateInfoCardScrollArrow(&sHorizontalScrollArrowSpriteTemplate, 6, 80, 0, i, mode == INFOCARD_TRAINER);
+            sInfoCard->scrollArrowSpriteIds[3] = CreateInfoCardScrollArrow(&sHorizontalScrollArrowSpriteTemplate, 234, 80, 1, i, FALSE);
         }
         DestroyTask(taskId);
         break;
@@ -3584,7 +3584,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 2)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollUp;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3595,7 +3595,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollUp;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3608,7 +3608,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 10)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollUp;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3619,7 +3619,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollUp;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3700,7 +3700,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 2)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollDown;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3711,7 +3711,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollDown;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3724,7 +3724,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 10)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollDown;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3735,7 +3735,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollDown;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3783,7 +3783,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 2)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3794,7 +3794,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3807,7 +3807,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 10)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3818,7 +3818,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3866,7 +3866,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 2)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3877,7 +3877,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3890,7 +3890,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 10)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3901,7 +3901,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollLeft;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3947,7 +3947,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 2)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3958,7 +3958,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -3971,7 +3971,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 10)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -3982,7 +3982,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -4030,7 +4030,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 2)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -4041,7 +4041,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot ^ 1;
@@ -4054,7 +4054,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 10)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_TrainerIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -4065,7 +4065,7 @@ static void Task_HandleInfoCardInput(u8 taskId)
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                     {
                         gSprites[sInfoCard->spriteIds[i]].callback = SpriteCB_MonIconCardScrollRight;
                         gSprites[sInfoCard->spriteIds[i]].data[0] = gTasks[taskId].tUsingAlternateSlot;
@@ -4135,12 +4135,12 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 2)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                         FreeAndDestroyTrainerPicSprite(sInfoCard->spriteIds[i]);
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                         FreeAndDestroyMonIconSprite(&gSprites[sInfoCard->spriteIds[i]]);
                 }
             }
@@ -4148,15 +4148,19 @@ static void Task_HandleInfoCardInput(u8 taskId)
             {
                 if (i < 10)
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                         FreeAndDestroyTrainerPicSprite(sInfoCard->spriteIds[i]);
                 }
                 else
                 {
-                    if (sInfoCard->spriteIds[i] != SPRITE_NONE)
+                    if (sInfoCard->spriteIds[i] < MAX_SPRITES)
                         FreeAndDestroyMonIconSprite(&gSprites[sInfoCard->spriteIds[i]]);
                 }
             }
+
+            for (i = 0; i < ARRAY_COUNT(sInfoCard->scrollArrowSpriteIds); i++)
+                if (sInfoCard->scrollArrowSpriteIds[i] < MAX_SPRITES)
+                    DestroySprite(&gSprites[sInfoCard->scrollArrowSpriteIds[i]]);
 
             FreeMonIconPalettes();
             FREE_AND_SET_NULL(sInfoCard);
@@ -4353,8 +4357,11 @@ static void DisplayTrainerInfoOnCard(u8 flags, u8 trainerTourneyId)
     else
         sInfoCard->spriteIds[arrId] = CreateTrainerPicSprite(GetFrontierTrainerFrontSpriteId(trainerId), TRUE, x + 48, y + 64, palSlot + 12, TAG_NONE);
 
-    if (flags & MOVE_CARD)
-        gSprites[sInfoCard->spriteIds[arrId]].invisible = TRUE;
+    if (sInfoCard->spriteIds[arrId] < MAX_SPRITES)
+    {
+        if (flags & MOVE_CARD)
+            gSprites[sInfoCard->spriteIds[arrId]].invisible = TRUE;
+    }
 
     // Create party mon icons
     for (i = 0; i < FRONTIER_PARTY_SIZE; i++)
@@ -4366,7 +4373,6 @@ static void DisplayTrainerInfoOnCard(u8 flags, u8 trainerTourneyId)
                                                                   x | sInfoTrainerMonX[i],
                                                                   y + sInfoTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         }
         else if (trainerId == TRAINER_FRONTIER_BRAIN)
         {
@@ -4375,7 +4381,6 @@ static void DisplayTrainerInfoOnCard(u8 flags, u8 trainerTourneyId)
                                                                   x | sInfoTrainerMonX[i],
                                                                   y + sInfoTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         }
         else
         {
@@ -4384,9 +4389,12 @@ static void DisplayTrainerInfoOnCard(u8 flags, u8 trainerTourneyId)
                                                                   x | sInfoTrainerMonX[i],
                                                                   y + sInfoTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         }
 
+        if (sInfoCard->spriteIds[2 + i + arrId] >= MAX_SPRITES)
+            continue;
+
+        gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         if (flags & MOVE_CARD)
             gSprites[sInfoCard->spriteIds[2 + i + arrId]].invisible = TRUE;
     }
@@ -4827,10 +4835,13 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
     else
         sInfoCard->spriteIds[arrId] = CreateTrainerPicSprite(GetFrontierTrainerFrontSpriteId(trainerIds[0]), TRUE, x + 48, y + 88, palSlot + 12, TAG_NONE);
 
-    if (flags & MOVE_CARD)
-        gSprites[sInfoCard->spriteIds[arrId]].invisible = TRUE;
-    if (lost[0])
-        gSprites[sInfoCard->spriteIds[arrId]].oam.paletteNum = 3;
+    if (sInfoCard->spriteIds[arrId] < MAX_SPRITES)
+    {
+        if (flags & MOVE_CARD)
+            gSprites[sInfoCard->spriteIds[arrId]].invisible = TRUE;
+        if (lost[0])
+            SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[arrId]], 3);
+    }
 
     // Draw right trainer sprite.
     if (trainerIds[1] == TRAINER_PLAYER)
@@ -4840,10 +4851,13 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
     else
         sInfoCard->spriteIds[1 + arrId] = CreateTrainerPicSprite(GetFrontierTrainerFrontSpriteId(trainerIds[1]), TRUE, x + 192, y + 88, palSlot + 13, TAG_NONE);
 
-    if (flags & MOVE_CARD)
-        gSprites[sInfoCard->spriteIds[1 + arrId]].invisible = TRUE;
-    if (lost[1])
-        gSprites[sInfoCard->spriteIds[1 + arrId]].oam.paletteNum = 3;
+    if (sInfoCard->spriteIds[1 + arrId] < MAX_SPRITES)
+    {
+        if (flags & MOVE_CARD)
+            gSprites[sInfoCard->spriteIds[1 + arrId]].invisible = TRUE;
+        if (lost[1])
+            SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[1 + arrId]], 3);
+    }
 
     // Draw left trainer's Pokémon icons.
     for (i = 0; i < FRONTIER_PARTY_SIZE; i++)
@@ -4855,7 +4869,6 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
                                                                   x | sLeftTrainerMonX[i],
                                                                   y + sLeftTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         }
         else if (trainerIds[0] == TRAINER_FRONTIER_BRAIN)
         {
@@ -4864,7 +4877,6 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
                                                                   x | sLeftTrainerMonX[i],
                                                                   y + sLeftTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         }
         else
         {
@@ -4873,14 +4885,17 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
                                                                   x | sLeftTrainerMonX[i],
                                                                   y + sLeftTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         }
 
+        if (sInfoCard->spriteIds[2 + i + arrId] >= MAX_SPRITES)
+            continue;
+
+        gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.priority = 0;
         if (flags & MOVE_CARD)
             gSprites[sInfoCard->spriteIds[2 + i + arrId]].invisible = TRUE;
         if (lost[0])
         {
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.paletteNum = 3;
+            SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[2 + i + arrId]], 3);
             gSprites[sInfoCard->spriteIds[2 + i + arrId]].sMonIconStill = TRUE;
         }
     }
@@ -4895,7 +4910,6 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
                                                                   x | sRightTrainerMonX[i],
                                                                   y + sRightTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[5 + i + arrId]].oam.priority = 0;
         }
         else if (trainerIds[1] == TRAINER_FRONTIER_BRAIN)
         {
@@ -4904,7 +4918,6 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
                                                                   x | sRightTrainerMonX[i],
                                                                   y + sRightTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[5 + i + arrId]].oam.priority = 0;
         }
         else
         {
@@ -4913,14 +4926,17 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
                                                                   x | sRightTrainerMonX[i],
                                                                   y + sRightTrainerMonY[i],
                                                                   0, 0, TRUE);
-            gSprites[sInfoCard->spriteIds[5 + i + arrId]].oam.priority = 0;
         }
 
+        if (sInfoCard->spriteIds[5 + i + arrId] >= MAX_SPRITES)
+            continue;
+
+        gSprites[sInfoCard->spriteIds[5 + i + arrId]].oam.priority = 0;
         if (flags & MOVE_CARD)
             gSprites[sInfoCard->spriteIds[5 + i + arrId]].invisible = TRUE;
         if (lost[1])
         {
-            gSprites[sInfoCard->spriteIds[5 + i + arrId]].oam.paletteNum = 3;
+            SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[5 + i + arrId]], 3);
             gSprites[sInfoCard->spriteIds[5 + i + arrId]].sMonIconStill = TRUE;
         }
     }
@@ -5025,10 +5041,18 @@ static void ShowPreviousDomeTourneyTree(void)
 #define STATE_SHOW_INFOCARD_MATCH   5
 #define STATE_CLOSE_TOURNEY_TREE    7
 
+static void AnimateTourneyTreeButton(u8 position, u8 anim)
+{
+    u8 spriteId = sTourneyTreeButtonSpriteIds[position];
+
+    if (spriteId < MAX_SPRITES)
+        StartSpriteAnim(&gSprites[spriteId], anim);
+}
+
 static void Task_HandleTourneyTreeInput(u8 taskId)
 {
     u8 newTaskId = 0;
-    int spriteId = gTasks[taskId].data[1];
+    int cursorPosition = gTasks[taskId].data[1];
 
     switch (gTasks[taskId].tState)
     {
@@ -5037,7 +5061,7 @@ static void Task_HandleTourneyTreeInput(u8 taskId)
         {
             BeginNormalPaletteFade(PALETTES_ALL, 0, 0x10, 0, RGB_BLACK);
             gTasks[taskId].tState = STATE_WAIT_FADE;
-            StartSpriteAnim(&gSprites[spriteId], 1);
+            AnimateTourneyTreeButton(cursorPosition, 1);
         }
         break;
     case STATE_WAIT_FADE:
@@ -5072,12 +5096,11 @@ static void Task_HandleTourneyTreeInput(u8 taskId)
             FREE_AND_SET_NULL(sTilemapBuffer);
             newTaskId = CreateTask(Task_ShowTourneyInfoCard, 0);
             gTasks[newTaskId].tState = 0;
-            gTasks[newTaskId].tTournamentId = sTourneyTreeTrainerIds[spriteId];
+            gTasks[newTaskId].tTournamentId = sTourneyTreeTrainerIds[cursorPosition];
             gTasks[newTaskId].tMode = INFOCARD_TRAINER;
             gTasks[newTaskId].tPrevTaskId = taskId;
 
             gTasks[taskId].tState = STATE_SHOW_INFOCARD_TRAINER + 1;
-            sInfoCard->pos = 0;
         }
         break;
     case STATE_SHOW_INFOCARD_TRAINER + 1:
@@ -5090,7 +5113,7 @@ static void Task_HandleTourneyTreeInput(u8 taskId)
             FREE_AND_SET_NULL(sTilemapBuffer);
             newTaskId = CreateTask(Task_ShowTourneyInfoCard, 0);
             gTasks[newTaskId].tState = 0;
-            gTasks[newTaskId].tTournamentId = spriteId - DOME_TOURNAMENT_TRAINERS_COUNT;
+            gTasks[newTaskId].tTournamentId = cursorPosition - DOME_TOURNAMENT_TRAINERS_COUNT;
             gTasks[newTaskId].tMode = INFOCARD_MATCH;
             gTasks[newTaskId].tPrevTaskId = taskId;
 
@@ -5139,17 +5162,17 @@ static u8 UpdateTourneyTreeCursor(u8 taskId)
 {
     u8 selection = TOURNEY_TREE_NO_SELECTION;
     int direction = MOVE_DIR_NONE;
-    int tourneyTreeCursorSpriteId = gTasks[taskId].data[1];
+    int cursorPosition = gTasks[taskId].data[1];
     int roundId = gSaveBlock2Ptr->frontier.curChallengeBattleNum;
 
-    if (gMain.newKeys == B_BUTTON || (JOY_NEW(A_BUTTON) && tourneyTreeCursorSpriteId == TOURNEY_TREE_CLOSE_BUTTON))
+    if (gMain.newKeys == B_BUTTON || (JOY_NEW(A_BUTTON) && cursorPosition == TOURNEY_TREE_CLOSE_BUTTON))
     {
         PlaySE(SE_SELECT);
         selection = TOURNEY_TREE_SELECTED_CLOSE;
     }
-    else if (JOY_NEW(A_BUTTON))
+    else if (JOY_NEW(A_BUTTON) && sTourneyTreeButtonSpriteIds[cursorPosition] < MAX_SPRITES)
     {
-        if (tourneyTreeCursorSpriteId < DOME_TOURNAMENT_TRAINERS_COUNT)
+        if (cursorPosition < DOME_TOURNAMENT_TRAINERS_COUNT)
         {
             PlaySE(SE_SELECT);
             selection = TOURNEY_TREE_SELECTED_TRAINER;
@@ -5162,23 +5185,23 @@ static u8 UpdateTourneyTreeCursor(u8 taskId)
     }
     else
     {
-        if (gMain.newKeys == DPAD_UP && sTourneyTreeCursorMovementMap[tourneyTreeCursorSpriteId][roundId][0] != 0xFF)
+        if (gMain.newKeys == DPAD_UP && sTourneyTreeCursorMovementMap[cursorPosition][roundId][0] != 0xFF)
             direction = MOVE_DIR_UP;
-        else if (gMain.newKeys == DPAD_DOWN && sTourneyTreeCursorMovementMap[tourneyTreeCursorSpriteId][roundId][1] != 0xFF)
+        else if (gMain.newKeys == DPAD_DOWN && sTourneyTreeCursorMovementMap[cursorPosition][roundId][1] != 0xFF)
             direction = MOVE_DIR_DOWN;
-        else if (gMain.newKeys == DPAD_LEFT && sTourneyTreeCursorMovementMap[tourneyTreeCursorSpriteId][roundId][2] != 0xFF)
+        else if (gMain.newKeys == DPAD_LEFT && sTourneyTreeCursorMovementMap[cursorPosition][roundId][2] != 0xFF)
             direction = MOVE_DIR_LEFT;
-        else if (gMain.newKeys == DPAD_RIGHT && sTourneyTreeCursorMovementMap[tourneyTreeCursorSpriteId][roundId][3] != 0xFF)
+        else if (gMain.newKeys == DPAD_RIGHT && sTourneyTreeCursorMovementMap[cursorPosition][roundId][3] != 0xFF)
             direction = MOVE_DIR_RIGHT;
     }
 
     if (direction != MOVE_DIR_NONE)
     {
         PlaySE(SE_SELECT);
-        StartSpriteAnim(&gSprites[tourneyTreeCursorSpriteId], 0); // Do unselected sprite anim
-        tourneyTreeCursorSpriteId = sTourneyTreeCursorMovementMap[tourneyTreeCursorSpriteId][roundId][direction];
-        StartSpriteAnim(&gSprites[tourneyTreeCursorSpriteId], 1); // Do selected sprite anim
-        gTasks[taskId].data[1] = tourneyTreeCursorSpriteId;
+        AnimateTourneyTreeButton(cursorPosition, 0);
+        cursorPosition = sTourneyTreeCursorMovementMap[cursorPosition][roundId][direction];
+        AnimateTourneyTreeButton(cursorPosition, 1);
+        gTasks[taskId].data[1] = cursorPosition;
     }
 
     return selection;
@@ -5398,8 +5421,8 @@ static void Task_ShowTourneyTree(u8 taskId)
         CopyBgTilemapBufferToVram(1);
         DecompressAndLoadBgGfxUsingHeap(1, gDomeTourneyTree_Gfx, 0x2000, 0, 0);
         DecompressAndLoadBgGfxUsingHeap(2, gDomeTourneyLine_Gfx, 0x2000, 0, 0);
-        DecompressAndLoadBgGfxUsingHeap(2, gDomeTourneyLineDown_Tilemap, 0x2000, 0, 1);
-        DecompressAndLoadBgGfxUsingHeap(3, gDomeTourneyLineUp_Tilemap, 0x2000, 0, 1);
+        DecompressAndLoadBgGfxUsingHeap(2, gDomeTourneyLineDown_Tilemap, 0, 0, 1);
+        DecompressAndLoadBgGfxUsingHeap(3, gDomeTourneyLineUp_Tilemap, 0, 0, 1);
         LoadCompressedPalette(gDomeTourneyTree_Pal, BG_PLTT_OFFSET, BG_PLTT_SIZE);
         LoadCompressedPalette(gDomeTourneyTreeButtons_Pal, OBJ_PLTT_OFFSET, OBJ_PLTT_SIZE);
         LoadCompressedPalette(gBattleWindowTextPalette, BG_PLTT_ID(15), PLTT_SIZE_4BPP);
@@ -5411,16 +5434,17 @@ static void Task_ShowTourneyTree(u8 taskId)
         gTasks[taskId].tState++;
         break;
     case 3:
-        LoadCompressedSpriteSheet(sTourneyTreeButtonsSpriteSheet);
-        if (notInteractive == FALSE)
+        memset(sTourneyTreeButtonSpriteIds, SPRITE_NONE, sizeof(sTourneyTreeButtonSpriteIds));
+        if (notInteractive == FALSE && LoadCompressedSpriteSheet(sTourneyTreeButtonsSpriteSheet) != SPRITE_TILE_NONE)
         {
-            for (i = 0; i < ARRAY_COUNT(sTourneyTreePokeballCoords); i++)
-                CreateSprite(&sTourneyTreePokeballSpriteTemplate, sTourneyTreePokeballCoords[i][0], sTourneyTreePokeballCoords[i][1], 0);
+            const struct SpriteTemplate *closeButton = gTasks[taskId].tIsPrevTourneyTree
+                                                    ? &sExitButtonSpriteTemplate : &sCancelButtonSpriteTemplate;
 
-            if (gTasks[taskId].tIsPrevTourneyTree)
-                CreateSprite(&sExitButtonSpriteTemplate, 218, 12, 0);
-            else
-                CreateSprite(&sCancelButtonSpriteTemplate, 218, 12, 0);
+            for (i = 0; i < ARRAY_COUNT(sTourneyTreePokeballCoords); i++)
+                sTourneyTreeButtonSpriteIds[i] = CreateSprite(&sTourneyTreePokeballSpriteTemplate,
+                                                             sTourneyTreePokeballCoords[i][0], sTourneyTreePokeballCoords[i][1], 0);
+
+            sTourneyTreeButtonSpriteIds[TOURNEY_TREE_CLOSE_BUTTON] = CreateSprite(closeButton, 218, 12, 0);
         }
 
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON | DISPCNT_WIN0_ON | DISPCNT_WIN1_ON | DISPCNT_OBJ_1D_MAP);

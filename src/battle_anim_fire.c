@@ -944,7 +944,7 @@ static void CreateEruptionLaunchRocks(u8 spriteId, u8 taskId, u8 activeSpritesId
 
         if (spriteId != MAX_SPRITES)
         {
-            gSprites[spriteId].oam.tileNum += j * 4 + 0x40;
+            OffsetSpriteTile(&gSprites[spriteId], j * 4 + 0x40);
 
             if (++j >= 5)
                 j = 0;
@@ -1047,7 +1047,7 @@ static void AnimEruptionFallingRock(struct Sprite *sprite)
     sprite->sFallDelay = gBattleAnimArgs[2];
     sprite->sTargetY = gBattleAnimArgs[3];
 
-    sprite->oam.tileNum += gBattleAnimArgs[4] * 16;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[4] * 16);
     sprite->callback = AnimEruptionFallingRock_Step;
 }
 

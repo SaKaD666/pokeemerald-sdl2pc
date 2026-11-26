@@ -491,7 +491,8 @@ static void CreateCardSprites(void)
     if (sWonderCardData->cardMetadata.iconSpecies != SPECIES_NONE)
     {
         sWonderCardData->monIconSpriteId = CreateMonIconNoPersonality(GetIconSpeciesNoPersonality(sWonderCardData->cardMetadata.iconSpecies), SpriteCallbackDummy, 220, 20, 0, FALSE);
-        gSprites[sWonderCardData->monIconSpriteId].oam.priority = 2;
+        if (sWonderCardData->monIconSpriteId < MAX_SPRITES)
+            gSprites[sWonderCardData->monIconSpriteId].oam.priority = 2;
     }
 
     // Create stamp sprites
@@ -518,7 +519,7 @@ static void DestroyCardSprites(void)
     u8 i = 0;
 
     // Destroy icon sprite
-    if (sWonderCardData->monIconSpriteId != SPRITE_NONE)
+    if (sWonderCardData->monIconSpriteId < MAX_SPRITES)
         FreeAndDestroyMonIconSprite(&gSprites[sWonderCardData->monIconSpriteId]);
 
     // Destroy stamp sprites
@@ -526,9 +527,9 @@ static void DestroyCardSprites(void)
     {
         for (; i < sWonderCardData->card.maxStamps; i++)
         {
-            if (sWonderCardData->stampSpriteIds[i][0] != SPRITE_NONE)
+            if (sWonderCardData->stampSpriteIds[i][0] < MAX_SPRITES)
                 DestroySprite(&gSprites[sWonderCardData->stampSpriteIds[i][0]]);
-            if (sWonderCardData->stampSpriteIds[i][1] != SPRITE_NONE)
+            if (sWonderCardData->stampSpriteIds[i][1] < MAX_SPRITES)
                 FreeAndDestroyMonIconSprite(&gSprites[sWonderCardData->stampSpriteIds[i][1]]);
         }
         FreeSpriteTilesByTag(TAG_STAMP_SHADOW);

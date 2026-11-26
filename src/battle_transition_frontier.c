@@ -235,6 +235,9 @@ static u8 CreateSlidingLogoCircleSprite(s16 x, s16 y, u8 delayX, u8 delayY, s8 s
 {
     u8 spriteId = CreateSprite(&sSpriteTemplate_LogoCircles, x, y, 0);
 
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
     switch (spriteAnimNum)
     {
     case 0:
@@ -300,6 +303,9 @@ static u8 CreateSpiralingLogoCircleSprite(s16 x, s16 y, s16 angle, s16 rotateSpe
 {
     u8 spriteId = CreateSprite(&sSpriteTemplate_LogoCircles, x, y, 0);
 
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
     // Target coords are set but irrelevant
     switch (spriteAnimNum)
     {
@@ -344,22 +350,27 @@ static void SpriteCB_LogoCircleSpiral(struct Sprite *sprite)
 
 static void DestroyLogoCirclesGfx(struct Task *task)
 {
+    if (task->tCircle1SpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[task->tCircle1SpriteId]);
+    if (task->tCircle2SpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[task->tCircle2SpriteId]);
+    if (task->tCircle3SpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[task->tCircle3SpriteId]);
+
     FreeSpriteTilesByTag(PALTAG_LOGO_CIRCLES);
     FreeSpritePaletteByTag(PALTAG_LOGO_CIRCLES);
+}
 
-    DestroySprite(&gSprites[task->tCircle1SpriteId]);
-    DestroySprite(&gSprites[task->tCircle2SpriteId]);
-    DestroySprite(&gSprites[task->tCircle3SpriteId]);
+static bool8 IsLogoCircleAnimFinished(u8 spriteId)
+{
+    return spriteId >= MAX_SPRITES || gSprites[spriteId].callback == SpriteCallbackDummy;
 }
 
 static bool8 IsLogoCirclesAnimFinished(struct Task *task)
 {
-    if (gSprites[task->tCircle1SpriteId].callback == SpriteCallbackDummy
-     && gSprites[task->tCircle2SpriteId].callback == SpriteCallbackDummy
-     && gSprites[task->tCircle3SpriteId].callback == SpriteCallbackDummy)
-        return TRUE;
-    else
-        return FALSE;
+    return IsLogoCircleAnimFinished(task->tCircle1SpriteId)
+        && IsLogoCircleAnimFinished(task->tCircle2SpriteId)
+        && IsLogoCircleAnimFinished(task->tCircle3SpriteId);
 }
 
 static bool8 Circles_Init(struct Task *task)

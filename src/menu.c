@@ -935,7 +935,9 @@ void HofPCTopBar_RemoveWindow(void)
     {
         FillWindowPixelBuffer(sHofPCTopBarWindowId, PIXEL_FILL(0));
         ClearWindowTilemap(sHofPCTopBarWindowId);
+#ifndef PLATFORM_SDL2
         CopyWindowToVram(sHofPCTopBarWindowId, COPYWIN_FULL);
+#endif
         RemoveWindow(sHofPCTopBarWindowId);
         sHofPCTopBarWindowId = WINDOW_NONE;
     }
@@ -1760,6 +1762,9 @@ u8 InitMenuActionGrid(u8 windowId, u8 optionWidth, u8 columns, u8 rows, u8 initi
 void ClearScheduledBgCopiesToVram(void)
 {
     memset(sScheduledBgCopiesToVram, 0, sizeof(sScheduledBgCopiesToVram));
+#ifdef PLATFORM_SDL2
+    ClearPendingBgTilemapPublications();
+#endif
 }
 
 void ScheduleBgCopyTilemapToVram(u8 bgId)
@@ -1822,19 +1827,26 @@ bool8 FreeTempTileDataBuffersIfPossible(void)
 void *DecompressAndCopyTileDataToVram(u8 bgId, const void *src, u32 size, u16 offset, u8 mode)
 {
     u32 sizeOut;
-    if (sTempTileDataBufferIdx < ARRAY_COUNT(sTempTileDataBuffer))
+    void *ptr;
+
+    if (sTempTileDataBufferIdx >= ARRAY_COUNT(sTempTileDataBuffer))
+        return NULL;
+
+    ptr = malloc_and_decompress(src, &sizeOut);
+    if (ptr == NULL)
+        return NULL;
+
+    if (size == 0)
+        size = sizeOut;
+    if (size > sizeOut || size > 0xFFFF
+     || copy_decompressed_tile_data_to_vram(bgId, ptr, size, offset, mode) == (u16)-1)
     {
-        void *ptr = malloc_and_decompress(src, &sizeOut);
-        if (!size)
-            size = sizeOut;
-        if (ptr)
-        {
-            copy_decompressed_tile_data_to_vram(bgId, ptr, size, offset, mode);
-            sTempTileDataBuffer[sTempTileDataBufferIdx++] = ptr;
-        }
-        return ptr;
+        Free(ptr);
+        return NULL;
     }
-    return NULL;
+
+    sTempTileDataBuffer[sTempTileDataBufferIdx++] = ptr;
+    return ptr;
 }
 
 void DecompressAndLoadBgGfxUsingHeap(u8 bgId, const void *src, u32 size, u16 offset, u8 mode)
@@ -1845,8 +1857,25 @@ void DecompressAndLoadBgGfxUsingHeap(u8 bgId, const void *src, u32 size, u16 off
         size = sizeOut;
     if (ptr)
     {
-        u8 taskId = CreateTask(task_free_buf_after_copying_tile_data_to_vram, 0);
-        gTasks[taskId].data[0] = copy_decompressed_tile_data_to_vram(bgId, ptr, size, offset, mode);
+        u8 taskId;
+        u16 request;
+
+        if (size > sizeOut || size > 0xFFFF || GetTaskCount() >= NUM_TASKS)
+        {
+            Free(ptr);
+            return;
+        }
+
+        taskId = CreateTask(task_free_buf_after_copying_tile_data_to_vram, 0);
+        request = copy_decompressed_tile_data_to_vram(bgId, ptr, size, offset, mode);
+        if (request == (u16)-1)
+        {
+            DestroyTask(taskId);
+            Free(ptr);
+            return;
+        }
+
+        gTasks[taskId].data[0] = request;
         SetWordTaskArg(taskId, 1, (uintptr_t)ptr);
     }
 }
@@ -1895,12 +1924,42 @@ void SetBgTilemapPalette(u8 bgId, u8 left, u8 top, u8 width, u8 height, u8 palet
     u8 i;
     u8 j;
     u16 *ptr = GetBgTilemapBuffer(bgId);
+#ifdef PLATFORM_SDL2
+    u8 paletteBank = 0;
+    u16 screenSize, screenWidth, screenHeight;
+
+    if (ptr == NULL || palette >= BG_PLTT_CAPACITY / PLTT_SIZE_4BPP
+     || GetBgAttribute(bgId, BG_ATTR_TYPE) != BG_TYPE_NORMAL
+     || GetBgAttribute(bgId, BG_ATTR_PALETTEMODE) != 0)
+        return;
+
+    screenSize = GetBgAttribute(bgId, BG_ATTR_SCREENSIZE);
+    screenWidth = GetBgMetricTextMode(bgId, 1) * 32;
+    screenHeight = GetBgMetricTextMode(bgId, 2) * 32;
+    if (left + width > screenWidth || top + height > screenHeight)
+        return;
+
+    if (palette >= BG_PLTT_SIZE / PLTT_SIZE_4BPP)
+    {
+        paletteBank = BG_TILEMAP_PALETTE_BANK;
+        palette -= BG_PLTT_SIZE / PLTT_SIZE_4BPP;
+    }
+#endif
 
     for (i = top; i < top + height; i++)
     {
         for (j = left; j < left + width; j++)
         {
-            ptr[(i * 32) + j] = (ptr[(i * 32) + j] & 0xFFF) | (palette << 12);
+#ifdef PLATFORM_SDL2
+            u32 index = GetTileMapIndexFromCoords(j, i, screenSize, screenWidth, screenHeight);
+            u8 banks = (GetBgTilemapEntryBanks(bgId, index) & BG_TILEMAP_TILE_BANK) | paletteBank;
+
+            if (!SetBgTilemapEntryBanks(bgId, index, banks))
+                return;
+#else
+            u32 index = (i * 32) + j;
+#endif
+            ptr[index] = (ptr[index] & 0xFFF) | (palette << 12);
         }
     }
 }

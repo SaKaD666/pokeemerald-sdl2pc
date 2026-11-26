@@ -919,9 +919,16 @@ static void Task_ShowWinnerMonBanner(u8 taskId)
         SetMultiuseSpriteTemplateToPokemon(species, B_POSITION_OPPONENT_LEFT);
         gMultiuseSpriteTemplate.paletteTag = pokePal->tag;
         spriteId = CreateSprite(&gMultiuseSpriteTemplate, GBA_DISPLAY_WIDTH + 32, GBA_DISPLAY_HEIGHT / 2, 10);
-        gSprites[spriteId].data[1] = species;
-        gSprites[spriteId].oam.priority = 0;
-        gSprites[spriteId].callback = SpriteCB_WinnerMonSlideIn;
+        if (spriteId < MAX_SPRITES)
+        {
+            gSprites[spriteId].data[1] = species;
+            gSprites[spriteId].oam.priority = 0;
+            gSprites[spriteId].callback = SpriteCB_WinnerMonSlideIn;
+        }
+        else
+        {
+            sContestResults->data->winnerMonSlidingState = SLIDING_MON_ENTERED;
+        }
         sContestResults->data->winnerMonSpriteId = spriteId;
         LoadCompressedSpriteSheet(&sSpriteSheet_Confetti);
         LoadCompressedSpritePalette(&sSpritePalette_Confetti);
@@ -951,7 +958,10 @@ static void Task_ShowWinnerMonBanner(u8 taskId)
         if (++gTasks[taskId].tTimer == 121)
         {
             gTasks[taskId].tTimer = 0;
-            gSprites[sContestResults->data->winnerMonSpriteId].callback = SpriteCB_WinnerMonSlideOut;
+            if (sContestResults->data->winnerMonSpriteId < MAX_SPRITES)
+                gSprites[sContestResults->data->winnerMonSpriteId].callback = SpriteCB_WinnerMonSlideOut;
+            else
+                sContestResults->data->winnerMonSlidingState = SLIDING_MON_EXITED;
             gTasks[taskId].tState++;
         }
         break;
@@ -1170,8 +1180,15 @@ static void TryCreateWirelessSprites(void)
         CreateWirelessStatusIndicatorSprite(8, 8);
         gSprites[gWirelessStatusIndicatorSpriteId].subpriority = 1;
         sheet = LoadSpriteSheet(&sSpriteSheet_WirelessIndicatorWindow);
-        RequestDma3Fill(0xFFFFFFFF, (void *)BG_CHAR_ADDR(4) + sheet * 0x20, 0x80, 1);
+        if (sheet == SPRITE_TILE_NONE)
+            return;
         spriteId = CreateSprite(&sSpriteTemplate_WirelessIndicatorWindow, 8, 8, 0);
+        if (spriteId == MAX_SPRITES)
+        {
+            FreeSpriteTilesByTag(sSpriteSheet_WirelessIndicatorWindow.tag);
+            return;
+        }
+        RequestDma3Fill(0xFFFFFFFF, (void *)(OBJ_VRAM0 + sheet * TILE_SIZE_4BPP), 0x80, 1);
         gSprites[spriteId].oam.objMode = ST_OAM_OBJ_WINDOW;
     }
 }
@@ -1179,12 +1196,26 @@ static void TryCreateWirelessSprites(void)
 static s32 DrawResultsTextWindow(const u8 *text, u8 spriteId)
 {
     u16 windowId;
+    s32 i;
     int tileWidth;
     int strWidth;
     u8 *spriteTilePtrs[4];
     u8 *dst;
 
     struct WindowTemplate windowTemplate;
+    if (spriteId >= MAX_SPRITES)
+        return 0;
+
+    for (i = 0; i < (s32)ARRAY_COUNT(spriteTilePtrs); i++)
+    {
+        u16 partId = i == 0 ? spriteId : gSprites[spriteId].data[i - 1];
+        if (partId >= MAX_SPRITES)
+            return 0;
+        spriteTilePtrs[i] = GetSpriteTileVram(&gSprites[partId], 0, 0x400 / TILE_SIZE_4BPP);
+        if (spriteTilePtrs[i] == NULL)
+            return 0;
+    }
+
     memset(&windowTemplate, 0, sizeof(windowTemplate));
     windowTemplate.width = DISPLAY_TILE_WIDTH;
     windowTemplate.height = 2;
@@ -1198,17 +1229,9 @@ static s32 DrawResultsTextWindow(const u8 *text, u8 spriteId)
 
     AddTextPrinterParameterized3(windowId, FONT_NORMAL, (tileWidth * 8 - strWidth) / 2, 1, sContestLinkTextColors, TEXT_SKIP_DRAW, text);
     {
-        s32 i;
-        struct Sprite *sprite;
         const u8 *src, *windowTilesPtr;
         windowTilesPtr = GetWindowTileData(windowId);
         src = (u8 *)sResultsTextWindow_Gfx;
-
-        sprite = &gSprites[spriteId];
-        spriteTilePtrs[0] = (u8 *)(sprite->oam.tileNum * 32 + OBJ_VRAM0);
-
-        for (i = 1; i < (int)ARRAY_COUNT(spriteTilePtrs); i++)
-            spriteTilePtrs[i] = (void *)(gSprites[sprite->data[i - 1]].oam.tileNum * 32 + OBJ_VRAM0);
 
         for (i = 0; i < (int)ARRAY_COUNT(spriteTilePtrs); i++)
             CpuFill32(0, spriteTilePtrs[i], 0x400);
@@ -1240,38 +1263,52 @@ static s32 DrawResultsTextWindow(const u8 *text, u8 spriteId)
     return (GBA_DISPLAY_WIDTH - (tileWidth + 2) * 8) / 2;
 }
 
-static void CreateResultsTextWindowSprites(void)
+static u8 CreateResultsTextBox(u8 firstSheet)
 {
-    int i;
-    struct SpriteTemplate template;
-    u8 spriteIds[ARRAY_COUNT(sSpriteSheets_ResultsTextWindow)];
+    struct SpriteTemplate template = sSpriteTemplate_ResultsTextWindow;
+    u8 spriteIds[4];
+    u8 i;
 
-    template = sSpriteTemplate_ResultsTextWindow;
-    for (i = 0; i < (int)ARRAY_COUNT(sSpriteSheets_ResultsTextWindow); i++)
-        LoadSpriteSheet(&sSpriteSheets_ResultsTextWindow[i]);
-
-    LoadSpritePalette(&sSpritePalette_ResultsTextWindow);
-
-    // Create sprites for the two window types, each made up of 4 sprites
-    for (i = 0; i < (int)ARRAY_COUNT(sSpriteSheets_ResultsTextWindow); i++)
+    for (i = 0; i < ARRAY_COUNT(spriteIds); i++)
     {
+        const struct SpriteSheet *sheet = &sSpriteSheets_ResultsTextWindow[firstSheet + i];
+
+        if (LoadSpriteSheet(sheet) == SPRITE_TILE_NONE)
+            goto rollback;
+        template.tileTag = sheet->tag;
         spriteIds[i] = CreateSprite(&template, TEXT_BOX_X, TEXT_BOX_Y, 10);
-        template.tileTag++;
+        if (spriteIds[i] >= MAX_SPRITES)
+        {
+            FreeSpriteTilesByTag(sheet->tag);
+            goto rollback;
+        }
     }
 
-    // Save sprite ids of the sliding text box onto its leftmost sprite
-    gSprites[spriteIds[0]].data[0] = spriteIds[1];
-    gSprites[spriteIds[0]].data[1] = spriteIds[2];
-    gSprites[spriteIds[0]].data[2] = spriteIds[3];
+    for (i = 1; i < ARRAY_COUNT(spriteIds); i++)
+        gSprites[spriteIds[0]].data[i - 1] = spriteIds[i];
+    return spriteIds[0];
 
-    // Save sprite ids of the link text box onto its leftmost sprite
-    gSprites[spriteIds[4]].data[0] = spriteIds[5];
-    gSprites[spriteIds[4]].data[1] = spriteIds[6];
-    gSprites[spriteIds[4]].data[2] = spriteIds[7];
+rollback:
+    while (i > 0)
+    {
+        i--;
+        DestroySprite(&gSprites[spriteIds[i]]);
+        FreeSpriteTilesByTag(sSpriteSheets_ResultsTextWindow[firstSheet + i].tag);
+    }
+    return MAX_SPRITES;
+}
 
-    sContestResults->data->slidingTextBoxSpriteId = spriteIds[0];
+static void CreateResultsTextWindowSprites(void)
+{
+    sContestResults->data->slidingTextBoxSpriteId = MAX_SPRITES;
+    sContestResults->data->linkTextBoxSpriteId = MAX_SPRITES;
     sContestResults->data->slidingTextBoxState = SLIDING_TEXT_OFFSCREEN;
-    sContestResults->data->linkTextBoxSpriteId = spriteIds[4];
+    if (LoadSpritePalette(&sSpritePalette_ResultsTextWindow) != 0xFF)
+    {
+        sContestResults->data->slidingTextBoxSpriteId = CreateResultsTextBox(0);
+        sContestResults->data->linkTextBoxSpriteId = CreateResultsTextBox(4);
+    }
+
     HideLinkResultsTextBox();
 }
 
@@ -1283,7 +1320,16 @@ static void CreateResultsTextWindowSprites(void)
 // If slideOutTimer is -1, it will not automatically slide out
 static void StartTextBoxSlideIn(s16 x, u16 y, u16 slideOutTimer, u16 slideIncrement)
 {
-    struct Sprite *sprite = &gSprites[sContestResults->data->slidingTextBoxSpriteId];
+    u8 spriteId = sContestResults->data->slidingTextBoxSpriteId;
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+    {
+        sContestResults->data->slidingTextBoxState = slideOutTimer == (u16)-1 ? SLIDING_TEXT_ARRIVED : SLIDING_TEXT_OFFSCREEN;
+        return;
+    }
+
+    sprite = &gSprites[spriteId];
     sprite->x = TEXT_BOX_X;
     sprite->y = y;
     sprite->x2 = 0;
@@ -1298,7 +1344,16 @@ static void StartTextBoxSlideIn(s16 x, u16 y, u16 slideOutTimer, u16 slideIncrem
 
 static void StartTextBoxSlideOut(u16 slideIncrement)
 {
-    struct Sprite *sprite = &gSprites[sContestResults->data->slidingTextBoxSpriteId];
+    u8 spriteId = sContestResults->data->slidingTextBoxSpriteId;
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+    {
+        sContestResults->data->slidingTextBoxState = SLIDING_TEXT_OFFSCREEN;
+        return;
+    }
+
+    sprite = &gSprites[spriteId];
     sprite->x += sprite->x2;
     sprite->y += sprite->y2;
     sprite->y2 = 0;
@@ -1377,6 +1432,9 @@ static void ShowLinkResultsTextBox(const u8 *text)
     u16 x;
     struct Sprite *sprite;
 
+    if (sContestResults->data->linkTextBoxSpriteId >= MAX_SPRITES)
+        return;
+
     x = DrawResultsTextWindow(text, sContestResults->data->linkTextBoxSpriteId);
     sprite = &gSprites[sContestResults->data->linkTextBoxSpriteId];
     sprite->x = x + 32;
@@ -1400,10 +1458,13 @@ static void HideLinkResultsTextBox(void)
     int i;
     struct Sprite *sprite;
 
-    sprite = &gSprites[sContestResults->data->linkTextBoxSpriteId];
-    sprite->invisible = TRUE;
-    for (i = 0; i < 3; i++)
-        gSprites[sprite->data[i]].invisible = TRUE;
+    if (sContestResults->data->linkTextBoxSpriteId < MAX_SPRITES)
+    {
+        sprite = &gSprites[sContestResults->data->linkTextBoxSpriteId];
+        sprite->invisible = TRUE;
+        for (i = 0; i < 3; i++)
+            gSprites[sprite->data[i]].invisible = TRUE;
+    }
 
     gBattle_WIN0H = 0;
     gBattle_WIN0V = 0;
@@ -1637,11 +1698,14 @@ static void Task_CreateConfetti(u8 taskId)
         if (sContestResults->data->confettiCount < 40)
         {
             u8 spriteId = CreateSprite(&sSpriteTemplate_Confetti, (Random() % GBA_DISPLAY_WIDTH) - 20, 44, 5);
-            gSprites[spriteId].data[0] = Random() % 512;
-            gSprites[spriteId].data[1] = (Random() % 24) + 16;
-            gSprites[spriteId].data[2] = (Random() % 256) + 48;
-            gSprites[spriteId].oam.tileNum += Random() % 17;
-            sContestResults->data->confettiCount++;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].data[0] = Random() % 512;
+                gSprites[spriteId].data[1] = (Random() % 24) + 16;
+                gSprites[spriteId].data[2] = (Random() % 256) + 48;
+                SetSpriteSheetTileOffset(&gSprites[spriteId], Random() % 17);
+                sContestResults->data->confettiCount++;
+            }
         }
     }
 
@@ -2536,8 +2600,10 @@ void LoadLinkContestPlayerPalettes(void)
         for (i = 0; i < gNumLinkContestPlayers; i++)
         {
             objectEventId = GetObjectEventIdByLocalIdAndMap(sContestantLocalIds[i], gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup);
+            if (objectEventId >= OBJECT_EVENTS_COUNT || gObjectEvents[objectEventId].spriteId >= MAX_SPRITES)
+                continue;
             sprite = &gSprites[gObjectEvents[objectEventId].spriteId];
-            sprite->oam.paletteNum = 6 + i;
+            SetSpritePaletteHandle(sprite, 6 + i);
             version = (u8)gLinkPlayers[i].version;
             if (version == VERSION_RUBY || version == VERSION_SAPPHIRE)
             {
@@ -2585,98 +2651,117 @@ bool8 IsContestDebugActive(void)
     return FALSE; // gUnknown_0203856C in pokeruby
 }
 
+#define tPortraitState   data[0]
+#define tPortraitSprite  data[2]
+#define tPortraitWindow  data[5]
+#define tPortraitPalette data[6]
+
 void ShowContestEntryMonPic(void)
 {
     const struct CompressedSpritePalette *palette;
     u32 personality, otId;
     u16 species;
+    u16 ownedPaletteTag = TAG_NONE;
     u8 spriteId;
     u8 taskId;
-    u8 left, top;
 
-    if (FindTaskIdByFunc(Task_ShowContestEntryMonPic) == TASK_NONE)
+    if (FindTaskIdByFunc(Task_ShowContestEntryMonPic) != TASK_NONE || GetTaskCount() == NUM_TASKS)
+        return;
+
+    AllocateMonSpritesGfx();
+    species = gContestMons[gSpecialVar_0x8006].species;
+    personality = gContestMons[gSpecialVar_0x8006].personality;
+    otId = gContestMons[gSpecialVar_0x8006].otId;
+    if (gSpecialVar_0x8006 == gContestPlayerMonIndex)
+        HandleLoadSpecialPokePic_2(&gMonFrontPicTable[species], gMonSpritesGfxPtr->sprites.ptr[B_POSITION_OPPONENT_LEFT], species, personality);
+    else
+        HandleLoadSpecialPokePic_DontHandleDeoxys(&gMonFrontPicTable[species], gMonSpritesGfxPtr->sprites.ptr[B_POSITION_OPPONENT_LEFT], species, personality);
+
+    palette = GetMonSpritePalStructFromOtIdPersonality(species, otId, personality);
+    if (IndexOfSpritePaletteTag(palette->tag) == 0xFF)
+        ownedPaletteTag = palette->tag;
+    LoadCompressedSpritePalette(palette);
+    if (IndexOfSpritePaletteTag(palette->tag) == 0xFF)
     {
-        AllocateMonSpritesGfx();
-        left = 10;
-        top = 3;
-        species = gContestMons[gSpecialVar_0x8006].species;
-        personality = gContestMons[gSpecialVar_0x8006].personality;
-        otId = gContestMons[gSpecialVar_0x8006].otId;
-        taskId = CreateTask(Task_ShowContestEntryMonPic, 0x50);
-        gTasks[taskId].data[0] = 0;
-        gTasks[taskId].data[1] = species;
-        if (gSpecialVar_0x8006 == gContestPlayerMonIndex)
-            HandleLoadSpecialPokePic_2(&gMonFrontPicTable[species], gMonSpritesGfxPtr->sprites.ptr[B_POSITION_OPPONENT_LEFT], species, personality);
-        else
-            HandleLoadSpecialPokePic_DontHandleDeoxys(&gMonFrontPicTable[species], gMonSpritesGfxPtr->sprites.ptr[B_POSITION_OPPONENT_LEFT], species, personality);
-
-        palette = GetMonSpritePalStructFromOtIdPersonality(species, otId, personality);
-        LoadCompressedSpritePalette(palette);
-        SetMultiuseSpriteTemplateToPokemon(species, B_POSITION_OPPONENT_LEFT);
-        gMultiuseSpriteTemplate.paletteTag = palette->tag;
-        spriteId = CreateSprite(&gMultiuseSpriteTemplate, (left + 1) * 8 + 32, (top * 8) + 40, 0);
-
-        if (gLinkContestFlags & LINK_CONTEST_FLAG_IS_LINK)
-        {
-            if (!(gLinkContestFlags & LINK_CONTEST_FLAG_HAS_RS_PLAYER))
-                DoMonFrontSpriteAnimation(&gSprites[spriteId], species, FALSE, 0);
-        }
-        else
-        {
-            DoMonFrontSpriteAnimation(&gSprites[spriteId], species, FALSE, 0);
-        }
-
-        gTasks[taskId].data[2] = spriteId;
-        gTasks[taskId].data[3] = left;
-        gTasks[taskId].data[4] = top;
-        gSprites[spriteId].callback = SpriteCallbackDummy;
-        gSprites[spriteId].oam.priority = 0;
+        FreeMonSpritesGfx();
+        return;
     }
+
+    SetMultiuseSpriteTemplateToPokemon(species, B_POSITION_OPPONENT_LEFT);
+    gMultiuseSpriteTemplate.paletteTag = palette->tag;
+    spriteId = CreateSprite(&gMultiuseSpriteTemplate, (10 + 1) * 8 + 32, 3 * 8 + 40, 0);
+    if (spriteId >= MAX_SPRITES)
+    {
+        if (ownedPaletteTag != TAG_NONE)
+            FreeSpritePaletteByTag(ownedPaletteTag);
+        FreeMonSpritesGfx();
+        return;
+    }
+
+    taskId = CreateTask(Task_ShowContestEntryMonPic, 0x50);
+    gTasks[taskId].tPortraitSprite = spriteId;
+    gTasks[taskId].tPortraitWindow = WINDOW_NONE;
+    gTasks[taskId].tPortraitPalette = ownedPaletteTag;
+
+    if (!(gLinkContestFlags & LINK_CONTEST_FLAG_IS_LINK) || !(gLinkContestFlags & LINK_CONTEST_FLAG_HAS_RS_PLAYER))
+        DoMonFrontSpriteAnimation(&gSprites[spriteId], species, FALSE, 0);
+
+    gSprites[spriteId].callback = SpriteCallbackDummy;
+    gSprites[spriteId].oam.priority = 0;
 }
 
 void HideContestEntryMonPic(void)
 {
     u8 taskId = FindTaskIdByFunc(Task_ShowContestEntryMonPic);
-    if (taskId != TASK_NONE)
-    {
-        gTasks[taskId].data[0]++;
-        FreeMonSpritesGfx();
-    }
+
+    if (taskId != TASK_NONE && gTasks[taskId].tPortraitState < 3)
+        gTasks[taskId].tPortraitState = 3;
 }
 
 static void Task_ShowContestEntryMonPic(u8 taskId)
 {
     struct Task *task = &gTasks[taskId];
-    struct Sprite *sprite;
 
-    switch(task->data[0])
+    switch (task->tPortraitState)
     {
     case 0:
-        task->data[0]++;
+        task->tPortraitState++;
         break;
     case 1:
-        task->data[5] = CreateWindowFromRect(10, 3, 8, 8);
-        SetStandardWindowBorderStyle(task->data[5], TRUE);
-        task->data[0]++;
+        {
+            struct WindowTemplate window = CreateWindowTemplate(0, 11, 4, 8, 8, 15, 100);
+
+            task->tPortraitWindow = AddWindow(&window);
+            if (task->tPortraitWindow != WINDOW_NONE)
+            {
+                PutWindowTilemap(task->tPortraitWindow);
+                SetStandardWindowBorderStyle(task->tPortraitWindow, TRUE);
+            }
+            task->tPortraitState++;
+        }
         break;
     case 2:
         break;
     case 3:
-        sprite = &gSprites[task->data[2]];
-        FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(sprite->oam.paletteNum));
-
-        if(sprite->oam.affineMode)
-            FreeOamMatrix(sprite->oam.matrixNum);
-
-        DestroySprite(sprite);
-        task->data[0]++;
+        FreeSpriteOamMatrix(&gSprites[task->tPortraitSprite]);
+        DestroySprite(&gSprites[task->tPortraitSprite]);
+        if ((u16)task->tPortraitPalette != TAG_NONE)
+            FreeSpritePaletteByTag(task->tPortraitPalette);
+        FreeMonSpritesGfx();
+        task->tPortraitState++;
         break;
     case 4:
-        ClearToTransparentAndRemoveWindow(gTasks[taskId].data[5]);
+        if (task->tPortraitWindow != WINDOW_NONE)
+            ClearToTransparentAndRemoveWindow(task->tPortraitWindow);
         DestroyTask(taskId);
         break;
     }
 }
+
+#undef tPortraitState
+#undef tPortraitSprite
+#undef tPortraitWindow
+#undef tPortraitPalette
 
 void GetContestMultiplayerId(void)
 {

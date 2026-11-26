@@ -1254,6 +1254,15 @@ void LoadConditionSelectionIcons(struct SpriteSheet *sheets, struct SpriteTempla
         *(pals++) = dataPals[i];
 }
 
+u8 CreateConditionSelectionIcon(const struct SpriteTemplate *template, s16 x, s16 y)
+{
+    if (GetSpriteTileStartByTag(template->tileTag) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(template->paletteTag) == 0xFF)
+        return SPRITE_NONE;
+
+    return CreateSprite(template, x, y, 0);
+}
+
 #define sSparkleId           data[0]
 #define sDelayTimer          data[1]
 #define sNumExtraSparkles    data[2]
@@ -1350,10 +1359,11 @@ static const s16 sConditionSparkleCoords[MAX_CONDITION_SPARKLES][2] =
 
 static void SetConditionSparklePosition(struct Sprite *sprite)
 {
-    struct Sprite *mon = &gSprites[sprite->sMonSpriteId];
+    u8 monSpriteId = sprite->sMonSpriteId;
 
-    if (mon != NULL)
+    if (monSpriteId < MAX_SPRITES)
     {
+        const struct Sprite *mon = &gSprites[monSpriteId];
         sprite->x = mon->x + mon->x2 + sConditionSparkleCoords[sprite->sSparkleId][0];
         sprite->y = mon->y + mon->y2 + sConditionSparkleCoords[sprite->sSparkleId][1];
     }
@@ -1411,28 +1421,32 @@ void ResetConditionSparkleSprites(struct Sprite **sprites)
         sprites[i] = NULL;
 }
 
-void CreateConditionSparkleSprites(struct Sprite **sprites, u8 monSpriteId, u8 _count)
+void CreateConditionSparkleSprites(struct Sprite **sprites, u8 monSpriteId, u8 count)
 {
-    u16 i, spriteId, firstSpriteId = 0;
-    u8 count = _count;
+    u16 i;
+    u8 firstSpriteId = SPRITE_NONE;
+
+    if (count >= MAX_CONDITION_SPARKLES
+     || GetSpriteTileStartByTag(TAG_CONDITION_SPARKLE) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(TAG_CONDITION_SPARKLE) == 0xFF)
+        return;
 
     for (i = 0; i < count + 1; i++)
     {
-        spriteId = CreateSprite(&sSpriteTemplate_ConditionSparkle, 0, 0, 0);
-        if (spriteId != MAX_SPRITES)
+        u8 spriteId = CreateSprite(&sSpriteTemplate_ConditionSparkle, 0, 0, 0);
+        if (spriteId >= MAX_SPRITES)
         {
-            sprites[i] = &gSprites[spriteId];
-            sprites[i]->invisible = TRUE;
-            sprites[i]->sMonSpriteId = monSpriteId;
-            if (i != 0)
-                sprites[i - 1]->sNextSparkleSpriteId = spriteId;
-            else
-                firstSpriteId = spriteId;
+            DestroyConditionSparkleSprites(sprites);
+            return;
         }
+
+        sprites[i] = &gSprites[spriteId];
+        sprites[i]->invisible = TRUE;
+        sprites[i]->sMonSpriteId = monSpriteId;
+        if (i != 0)
+            sprites[i - 1]->sNextSparkleSpriteId = spriteId;
         else
-        {
-            break;
-        }
+            firstSpriteId = spriteId;
     }
 
     sprites[count]->sNextSparkleSpriteId = firstSpriteId;

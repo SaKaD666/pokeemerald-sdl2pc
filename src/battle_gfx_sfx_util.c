@@ -1,4 +1,5 @@
 #include "global.h"
+#include "battle_gfx_sfx_util.h"
 #include "battle.h"
 #include "battle_controllers.h"
 #include "battle_ai_script_commands.h"
@@ -83,12 +84,22 @@ static const struct SpritePalette sSpritePalettes_HealthBoxHealthBar[2] =
     {gBattleInterface_BallDisplayPal, TAG_HEALTHBAR_PAL}
 };
 
+static void ResetEnemyShadowSpriteIds(void)
+{
+    u8 battler;
+
+    for (battler = 0; battler < MAX_BATTLERS_COUNT; battler++)
+        gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId = SPRITE_NONE;
+}
+
 // code
 void AllocateBattleSpritesData(void)
 {
     gBattleSpritesDataPtr = AllocZeroed(sizeof(struct BattleSpriteData));
     gBattleSpritesDataPtr->battlerData = AllocZeroed(sizeof(struct BattleSpriteInfo) * MAX_BATTLERS_COUNT);
     gBattleSpritesDataPtr->healthBoxesData = AllocZeroed(sizeof(struct BattleHealthboxInfo) * MAX_BATTLERS_COUNT);
+    if (gBattleSpritesDataPtr->healthBoxesData != NULL)
+        ResetEnemyShadowSpriteIds();
     gBattleSpritesDataPtr->animationData = AllocZeroed(sizeof(struct BattleAnimationInfo));
     gBattleSpritesDataPtr->battleBars = AllocZeroed(sizeof(struct BattleBarInfo) * MAX_BATTLERS_COUNT);
 }
@@ -357,10 +368,32 @@ static u16 GetBattlePalaceTarget(void)
     return BATTLE_OPPOSITE(gActiveBattler) << 8;
 }
 
+bool8 IsBattleSpriteIdle(u8 spriteId)
+{
+    return spriteId >= MAX_SPRITES || !gSprites[spriteId].inUse || gSprites[spriteId].callback == SpriteCallbackDummy;
+}
+
+void DestroyBattlerBallReleaseSprite(u8 battler)
+{
+    u8 spriteId = gBattleControllerData[battler];
+
+    if (spriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[spriteId]);
+    gBattleControllerData[battler] = MAX_SPRITES;
+}
+
 // Wait for the Pokémon to finish appearing out from the Poké Ball on send out
 void SpriteCB_WaitForBattlerBallReleaseAnim(struct Sprite *sprite)
 {
-    u8 spriteId = sprite->data[1];
+    u16 spriteId = sprite->data[1];
+    u16 battler = sprite->data[2];
+
+    if (battler >= gBattlersCount || spriteId >= MAX_SPRITES
+     || gBattlerSpriteIds[battler] != spriteId || !gSprites[spriteId].inUse)
+    {
+        sprite->callback = SpriteCallbackDummy;
+        return;
+    }
 
     if (!gSprites[spriteId].affineAnimEnded)
         return;
@@ -458,6 +491,7 @@ void InitAndLaunchChosenStatusAnimation(bool8 isStatus2, u32 status)
 bool8 TryHandleLaunchBattleTableAnimation(u8 activeBattler, u8 atkBattler, u8 defBattler, u8 tableId, u16 argument)
 {
     u8 taskId;
+    u8 spriteId = gBattlerSpriteIds[activeBattler];
 
     if (tableId == B_ANIM_CASTFORM_CHANGE && (argument & CASTFORM_SUBSTITUTE))
     {
@@ -472,10 +506,30 @@ bool8 TryHandleLaunchBattleTableAnimation(u8 activeBattler, u8 atkBattler, u8 de
     }
     if (gBattleSpritesDataPtr->battlerData[activeBattler].behindSubstitute
         && tableId == B_ANIM_SUBSTITUTE_FADE
-        && gSprites[gBattlerSpriteIds[activeBattler]].invisible)
+        && (spriteId >= MAX_SPRITES || !gSprites[spriteId].inUse || gSprites[spriteId].invisible))
     {
-        LoadBattleMonGfxAndAnimate(activeBattler, TRUE, gBattlerSpriteIds[activeBattler]);
+        LoadBattleMonGfxAndAnimate(activeBattler, TRUE, spriteId);
         ClearBehindSubstituteBit(activeBattler);
+        return TRUE;
+    }
+
+    taskId = TryCreateAnimTask(Task_ClearBitWhenBattleTableAnimDone, 10);
+    if (taskId == TASK_NONE)
+    {
+        if (tableId == B_ANIM_CASTFORM_CHANGE)
+        {
+            gBattleSpritesDataPtr->animationData->animArg = argument;
+            HandleSpeciesGfxDataChange(atkBattler, defBattler, TRUE);
+        }
+        else if (tableId == B_ANIM_SUBSTITUTE_FADE)
+        {
+            LoadBattleMonGfxAndAnimate(activeBattler, TRUE, spriteId);
+            ClearBehindSubstituteBit(activeBattler);
+        }
+        else if (tableId == B_ANIM_SUBSTITUTE_APPEAR)
+        {
+            LoadBattleMonGfxAndAnimate(activeBattler, FALSE, spriteId);
+        }
         return TRUE;
     }
 
@@ -483,7 +537,6 @@ bool8 TryHandleLaunchBattleTableAnimation(u8 activeBattler, u8 atkBattler, u8 de
     gBattleAnimTarget = defBattler;
     gBattleSpritesDataPtr->animationData->animArg = argument;
     LaunchBattleAnimation(gBattleAnims_General, tableId, FALSE);
-    taskId = CreateTask(Task_ClearBitWhenBattleTableAnimDone, 10);
     gTasks[taskId].tBattlerId = activeBattler;
     gBattleSpritesDataPtr->healthBoxesData[gTasks[taskId].tBattlerId].animFromTableActive = 1;
 
@@ -522,12 +575,20 @@ static bool8 ShouldAnimBeDoneRegardlessOfSubstitute(u8 animId)
 
 void InitAndLaunchSpecialAnimation(u8 activeBattler, u8 atkBattler, u8 defBattler, u8 tableId)
 {
-    u8 taskId;
+    u8 taskId = TryCreateAnimTask(Task_ClearBitWhenSpecialAnimDone, 10);
+
+    if (taskId == TASK_NONE)
+    {
+        if (tableId == B_ANIM_BALL_THROW || tableId == B_ANIM_BALL_THROW_WITH_TRAINER)
+            CompleteBallThrowWithoutSprite(defBattler);
+        else if (tableId == B_ANIM_SUBSTITUTE_TO_MON || tableId == B_ANIM_MON_TO_SUBSTITUTE)
+            LoadBattleMonGfxAndAnimate(atkBattler, tableId == B_ANIM_SUBSTITUTE_TO_MON, gBattlerSpriteIds[atkBattler]);
+        return;
+    }
 
     gBattleAnimAttacker = atkBattler;
     gBattleAnimTarget = defBattler;
     LaunchBattleAnimation(gBattleAnims_Special, tableId, FALSE);
-    taskId = CreateTask(Task_ClearBitWhenSpecialAnimDone, 10);
     gTasks[taskId].tBattlerId = activeBattler;
     gBattleSpritesDataPtr->healthBoxesData[gTasks[taskId].tBattlerId].specialAnimActive = 1;
 }
@@ -910,6 +971,7 @@ bool8 BattleInitAllSprites(u8 *state1, u8 *battler)
 void ClearSpritesHealthboxAnimData(void)
 {
     memset(gBattleSpritesDataPtr->healthBoxesData, 0, sizeof(struct BattleHealthboxInfo) * MAX_BATTLERS_COUNT);
+    ResetEnemyShadowSpriteIds();
     memset(gBattleSpritesDataPtr->animationData, 0, sizeof(struct BattleAnimationInfo));
 }
 
@@ -924,25 +986,34 @@ void CopyAllBattleSpritesInvisibilities(void)
     s32 i;
 
     for (i = 0; i < gBattlersCount; i++)
-        gBattleSpritesDataPtr->battlerData[i].invisible = gSprites[gBattlerSpriteIds[i]].invisible;
+        CopyBattleSpriteInvisibility(i);
 }
 
 void CopyBattleSpriteInvisibility(u8 battler)
 {
-    gBattleSpritesDataPtr->battlerData[battler].invisible = gSprites[gBattlerSpriteIds[battler]].invisible;
+    u8 spriteId = gBattlerSpriteIds[battler];
+
+    if (spriteId < MAX_SPRITES && gSprites[spriteId].inUse)
+        gBattleSpritesDataPtr->battlerData[battler].invisible = gSprites[spriteId].invisible;
 }
 
 void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
 {
+    u8 spriteId = gBattlerSpriteIds[battlerAtk];
+    struct Sprite *sprite = NULL;
     u16 paletteOffset;
     u32 personalityValue;
     u32 otId;
     u8 position;
     const u32 *lzPaletteData;
 
+    if (spriteId < MAX_SPRITES && gSprites[spriteId].inUse)
+        sprite = &gSprites[spriteId];
+
     if (castform)
     {
-        StartSpriteAnim(&gSprites[gBattlerSpriteIds[battlerAtk]], gBattleSpritesDataPtr->animationData->animArg);
+        if (sprite != NULL)
+            StartSpriteAnim(sprite, gBattleSpritesDataPtr->animationData->animArg);
         paletteOffset = OBJ_PLTT_ID(battlerAtk);
         LoadPalette(gBattleStruct->castformPalette[gBattleSpritesDataPtr->animationData->animArg], paletteOffset, PLTT_SIZE_4BPP);
         gBattleMonForms[battlerAtk] = gBattleSpritesDataPtr->animationData->animArg;
@@ -951,7 +1022,8 @@ void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
             BlendPalette(paletteOffset, 16, 6, RGB_WHITE);
             CpuCopy32(&gPlttBufferFaded[paletteOffset], &gPlttBufferUnfaded[paletteOffset], PLTT_SIZEOF(16));
         }
-        gSprites[gBattlerSpriteIds[battlerAtk]].y = GetBattlerSpriteDefault_Y(battlerAtk);
+        if (sprite != NULL)
+            sprite->y = GetBattlerSpriteDefault_Y(battlerAtk);
     }
     else
     {
@@ -1000,7 +1072,12 @@ void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
             }
         }
 
-        DmaCopy32Defvars(3, gMonSpritesGfxPtr->sprites.ptr[position], (void *)(OBJ_VRAM0 + gSprites[gBattlerSpriteIds[battlerAtk]].oam.tileNum * 32), MON_PIC_SIZE);
+        if (sprite != NULL)
+        {
+            u8 *dest = GetSpriteTileVram(sprite, 0, MON_PIC_SIZE / TILE_SIZE_4BPP);
+            if (dest != NULL)
+                DmaCopy32Defvars(3, gMonSpritesGfxPtr->sprites.ptr[position], dest, MON_PIC_SIZE);
+        }
         paletteOffset = OBJ_PLTT_ID(battlerAtk);
         lzPaletteData = GetMonSpritePalFromSpeciesAndPersonality(targetSpecies, otId, personalityValue);
         LZDecompressWram(lzPaletteData, gDecompressionBuffer);
@@ -1008,7 +1085,8 @@ void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
 
         if (targetSpecies == SPECIES_CASTFORM)
         {
-            gSprites[gBattlerSpriteIds[battlerAtk]].anims = gMonFrontAnimsPtrTable[targetSpecies];
+            if (sprite != NULL)
+                sprite->anims = gMonFrontAnimsPtrTable[targetSpecies];
             LZDecompressWram(lzPaletteData, gBattleStruct->castformPalette);
             LoadPalette(gBattleStruct->castformPalette[gBattleMonForms[battlerDef]], paletteOffset, PLTT_SIZE_4BPP);
         }
@@ -1022,8 +1100,11 @@ void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
             gBattleMonForms[battlerAtk] = gBattleMonForms[battlerDef];
         }
 
-        gSprites[gBattlerSpriteIds[battlerAtk]].y = GetBattlerSpriteDefault_Y(battlerAtk);
-        StartSpriteAnim(&gSprites[gBattlerSpriteIds[battlerAtk]], gBattleMonForms[battlerAtk]);
+        if (sprite != NULL)
+        {
+            sprite->y = GetBattlerSpriteDefault_Y(battlerAtk);
+            StartSpriteAnim(sprite, gBattleMonForms[battlerAtk]);
+        }
     }
 }
 
@@ -1068,6 +1149,9 @@ void BattleLoadSubstituteOrMonSpriteGfx(u8 battler, bool8 loadMonSprite)
 void LoadBattleMonGfxAndAnimate(u8 battler, bool8 loadMonSprite, u8 spriteId)
 {
     BattleLoadSubstituteOrMonSpriteGfx(battler, loadMonSprite);
+    if (spriteId >= MAX_SPRITES || !gSprites[spriteId].inUse)
+        return;
+
     StartSpriteAnim(&gSprites[spriteId], gBattleMonForms[battler]);
 
     if (!loadMonSprite)
@@ -1158,59 +1242,73 @@ void SetBattlerSpriteAffineMode(u8 affineMode)
 
     for (i = 0; i < gBattlersCount; i++)
     {
-        if (IsBattlerSpritePresent(i))
+        u8 spriteId = gBattlerSpriteIds[i];
+
+        if (spriteId < MAX_SPRITES && gSprites[spriteId].inUse && IsBattlerSpritePresent(i))
         {
-            gSprites[gBattlerSpriteIds[i]].oam.affineMode = affineMode;
+            struct Sprite *sprite = &gSprites[spriteId];
+
             if (affineMode == ST_OAM_AFFINE_OFF)
             {
-                gBattleSpritesDataPtr->healthBoxesData[i].matrixNum = gSprites[gBattlerSpriteIds[i]].oam.matrixNum;
-                gSprites[gBattlerSpriteIds[i]].oam.matrixNum = 0;
+                if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+                    gBattleSpritesDataPtr->healthBoxesData[i].matrixNum = GetSpriteMatrixHandle(sprite);
+                sprite->oam.matrixNum = 0;
             }
             else
             {
-                gSprites[gBattlerSpriteIds[i]].oam.matrixNum = gBattleSpritesDataPtr->healthBoxesData[i].matrixNum;
+                SetSpriteMatrixHandle(sprite, gBattleSpritesDataPtr->healthBoxesData[i].matrixNum);
             }
+            sprite->oam.affineMode = affineMode;
         }
     }
 }
 
 #define tBattlerId data[0]
 
+static void CreateEnemyShadowSprite(u8 battler)
+{
+    u8 spriteId;
+
+    if (battler >= gBattlersCount)
+        return;
+
+    spriteId = CreateSprite(&gSpriteTemplate_EnemyShadow,
+                               GetBattlerSpriteCoord(battler, BATTLER_COORD_X),
+                               GetBattlerSpriteCoord(battler, BATTLER_COORD_Y) + 29,
+                               0xC8);
+
+    if (spriteId < MAX_SPRITES)
+    {
+        gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId = spriteId;
+        gSprites[spriteId].tBattlerId = battler;
+    }
+}
+
 void LoadAndCreateEnemyShadowSprites(void)
 {
-    u8 battler;
+    ResetEnemyShadowSpriteIds();
+    if (LoadCompressedSpriteSheet(&gSpriteSheet_EnemyShadow) == SPRITE_TILE_NONE)
+        return;
 
-    LoadCompressedSpriteSheet(&gSpriteSheet_EnemyShadow);
-
-    battler = GetBattlerAtPosition(B_POSITION_OPPONENT_LEFT);
-    gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId = CreateSprite(&gSpriteTemplate_EnemyShadow,
-                                                                                    GetBattlerSpriteCoord(battler, BATTLER_COORD_X),
-                                                                                    GetBattlerSpriteCoord(battler, BATTLER_COORD_Y) + 29,
-                                                                                    0xC8);
-    gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId].data[0] = battler;
-
+    CreateEnemyShadowSprite(GetBattlerAtPosition(B_POSITION_OPPONENT_LEFT));
     if (IsDoubleBattle())
-    {
-        battler = GetBattlerAtPosition(B_POSITION_OPPONENT_RIGHT);
-        gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId = CreateSprite(&gSpriteTemplate_EnemyShadow,
-                                                                                        GetBattlerSpriteCoord(battler, BATTLER_COORD_X),
-                                                                                        GetBattlerSpriteCoord(battler, BATTLER_COORD_Y) + 29,
-                                                                                        0xC8);
-        gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId].data[0] = battler;
-    }
+        CreateEnemyShadowSprite(GetBattlerAtPosition(B_POSITION_OPPONENT_RIGHT));
 }
 
 void SpriteCB_EnemyShadow(struct Sprite *shadowSprite)
 {
     bool8 invisible = FALSE;
     u8 battler = shadowSprite->tBattlerId;
-    struct Sprite *battlerSprite = &gSprites[gBattlerSpriteIds[battler]];
+    u8 spriteId = gBattlerSpriteIds[battler];
+    struct Sprite *battlerSprite;
 
-    if (!battlerSprite->inUse || !IsBattlerSpritePresent(battler))
+    if (spriteId >= MAX_SPRITES || !gSprites[spriteId].inUse || !IsBattlerSpritePresent(battler))
     {
+        shadowSprite->invisible = TRUE;
         shadowSprite->callback = SpriteCB_SetInvisible;
         return;
     }
+    battlerSprite = &gSprites[spriteId];
     if (gAnimScriptActive || battlerSprite->invisible)
         invisible = TRUE;
     else if (gBattleSpritesDataPtr->battlerData[battler].transformSpecies != SPECIES_NONE
@@ -1232,24 +1330,39 @@ void SpriteCB_SetInvisible(struct Sprite *sprite)
     sprite->invisible = TRUE;
 }
 
+static bool8 IsEnemyShadowSpriteActive(u8 spriteId, u8 battler)
+{
+    return spriteId < MAX_SPRITES && gSprites[spriteId].inUse
+        && gSprites[spriteId].template == &gSpriteTemplate_EnemyShadow
+        && gSprites[spriteId].data[0] == battler;
+}
+
 void SetBattlerShadowSpriteCallback(u8 battler, u16 species)
 {
+    u8 spriteId = gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId;
+
     // The player's shadow is never seen.
-    if (GetBattlerSide(battler) == B_SIDE_PLAYER)
+    if (GetBattlerSide(battler) == B_SIDE_PLAYER || !IsEnemyShadowSpriteActive(spriteId, battler))
         return;
 
     if (gBattleSpritesDataPtr->battlerData[battler].transformSpecies != SPECIES_NONE)
         species = gBattleSpritesDataPtr->battlerData[battler].transformSpecies;
 
     if (gEnemyMonElevation[species] != 0)
-        gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId].callback = SpriteCB_EnemyShadow;
+        gSprites[spriteId].callback = SpriteCB_EnemyShadow;
     else
-        gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId].callback = SpriteCB_SetInvisible;
+        gSprites[spriteId].callback = SpriteCB_SetInvisible;
 }
 
 void HideBattlerShadowSprite(u8 battler)
 {
-    gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId].callback = SpriteCB_SetInvisible;
+    u8 spriteId = gBattleSpritesDataPtr->healthBoxesData[battler].shadowSpriteId;
+
+    if (IsEnemyShadowSpriteActive(spriteId, battler))
+    {
+        gSprites[spriteId].invisible = TRUE;
+        gSprites[spriteId].callback = SpriteCB_SetInvisible;
+    }
 }
 
 // Color the background tiles surrounding the action selection and move windows

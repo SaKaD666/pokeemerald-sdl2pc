@@ -49,9 +49,13 @@
 static void SetTransitionTile(u16 *tilemap, s16 y, s16 x, u16 tile)
 {
 #ifdef PLATFORM_SDL2
+    u16 *entry;
+
     if ((u16)y >= 32 || (u16)x >= (IsWideFieldUi() ? 64 : 32))
         return;
-    tilemap[(x / 32) * 1024 + y * 32 + x % 32] = tile | 0xF000;
+    entry = &tilemap[(x / 32) * 1024 + y * 32 + x % 32];
+    *entry = tile | 0xF000;
+    InvalidateBgTilemapVramRange(entry, sizeof(*entry));
 #else
     tilemap[y * 32 + x] = tile | 0xF000;
 #endif
@@ -2799,10 +2803,30 @@ static void HBlankCB_Mugshots(void)
         REG_BG0HOFS = sTransitionData->BG0HOFS_Upper;
 }
 
+static void ConfigureMugshotTrainerPic(s16 spriteId, s16 xScale, s16 yScale)
+{
+    struct Sprite *sprite;
+    u8 matrix;
+
+    if ((u16)spriteId >= MAX_SPRITES)
+        return;
+
+    sprite = &gSprites[spriteId];
+    sprite->callback = SpriteCB_MugshotTrainerPic;
+    matrix = AllocOamMatrix();
+    if (matrix == 0xFF)
+        return;
+
+    sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
+    sprite->oam.shape = SPRITE_SHAPE(64x32);
+    sprite->oam.size = SPRITE_SIZE(64x32);
+    AdoptSpriteMatrixHandle(sprite, matrix);
+    CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
+    SetOamMatrixRotationScaling(matrix, xScale, yScale, 0);
+}
+
 static void Mugshots_CreateTrainerPics(struct Task *task)
 {
-    struct Sprite *opponentSprite, *playerSprite;
-
     s16 mugshotId = task->tMugshotId;
     task->tOpponentSpriteId = CreateTrainerSprite(sMugshotsTrainerPicIDsTable[mugshotId],
                                                   sMugshotsOpponentCoords[mugshotId][0] - 32,
@@ -2813,29 +2837,8 @@ static void Mugshots_CreateTrainerPics(struct Task *task)
                                                 106,
                                                 0, gDecompressionBuffer);
 
-    opponentSprite = &gSprites[task->tOpponentSpriteId];
-    playerSprite = &gSprites[task->tPlayerSpriteId];
-
-    opponentSprite->callback = SpriteCB_MugshotTrainerPic;
-    playerSprite->callback = SpriteCB_MugshotTrainerPic;
-
-    opponentSprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    playerSprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-
-    opponentSprite->oam.matrixNum = AllocOamMatrix();
-    playerSprite->oam.matrixNum = AllocOamMatrix();
-
-    opponentSprite->oam.shape = SPRITE_SHAPE(64x32);
-    playerSprite->oam.shape = SPRITE_SHAPE(64x32);
-
-    opponentSprite->oam.size = SPRITE_SIZE(64x32);
-    playerSprite->oam.size = SPRITE_SIZE(64x32);
-
-    CalcCenterToCornerVec(opponentSprite, SPRITE_SHAPE(64x32), SPRITE_SIZE(64x32), ST_OAM_AFFINE_DOUBLE);
-    CalcCenterToCornerVec(playerSprite, SPRITE_SHAPE(64x32), SPRITE_SIZE(64x32), ST_OAM_AFFINE_DOUBLE);
-
-    SetOamMatrixRotationScaling(opponentSprite->oam.matrixNum, sMugshotsOpponentRotationScales[mugshotId][0], sMugshotsOpponentRotationScales[mugshotId][1], 0);
-    SetOamMatrixRotationScaling(playerSprite->oam.matrixNum, -512, 512, 0);
+    ConfigureMugshotTrainerPic(task->tOpponentSpriteId, sMugshotsOpponentRotationScales[mugshotId][0], sMugshotsOpponentRotationScales[mugshotId][1]);
+    ConfigureMugshotTrainerPic(task->tPlayerSpriteId, -512, 512);
 }
 
 static void SpriteCB_MugshotTrainerPic(struct Sprite *sprite)
@@ -2906,17 +2909,19 @@ static bool8 MugshotTrainerPic_SlideOffscreen(struct Sprite *sprite)
 
 static void SetTrainerPicSlideDirection(s16 spriteId, s16 dirId)
 {
-    gSprites[spriteId].sSlideDir = dirId;
+    if ((u16)spriteId < MAX_SPRITES)
+        gSprites[spriteId].sSlideDir = dirId;
 }
 
 static void IncrementTrainerPicState(s16 spriteId)
 {
-    gSprites[spriteId].sState++;
+    if ((u16)spriteId < MAX_SPRITES)
+        gSprites[spriteId].sState++;
 }
 
 static s16 IsTrainerPicSlideDone(s16 spriteId)
 {
-    return gSprites[spriteId].sDone;
+    return (u16)spriteId >= MAX_SPRITES || gSprites[spriteId].sDone;
 }
 
 #undef sState
@@ -3940,21 +3945,38 @@ static bool8 WhiteBarsFade_StartBars(struct Task *task)
 {
     s16 i;
     s16 delays[ARRAY_COUNT(sWhiteBarsFade_StartDelays)];
-    struct Sprite *sprite;
+    struct Sprite *mainSprite = NULL;
     memcpy(delays, sWhiteBarsFade_StartDelays, sizeof(sWhiteBarsFade_StartDelays));
 
     for (i = 0; i < NUM_WHITE_BARS; i++)
     {
-        sprite = &gSprites[CreateInvisibleSprite(SpriteCB_WhiteBarFade)];
-        sprite->x = DISPLAY_WIDTH;
-        sprite->y = i * DISPLAY_HEIGHT / NUM_WHITE_BARS;
-        sprite->sRowCount = (i + 1) * DISPLAY_HEIGHT / NUM_WHITE_BARS - sprite->y;
-        sprite->sDelay = delays[i];
+        u8 spriteId = CreateInvisibleSprite(SpriteCB_WhiteBarFade);
+        s16 firstRow = i * DISPLAY_HEIGHT / NUM_WHITE_BARS;
+        s16 endRow = (i + 1) * DISPLAY_HEIGHT / NUM_WHITE_BARS;
+
+        if (spriteId >= MAX_SPRITES)
+        {
+            s16 row;
+
+            for (row = firstRow; row < endRow; row++)
+            {
+                gScanlineEffectRegBuffers[0][row] = FADE_TARGET >> 8;
+                GetMixedTransitionWindowBuffer(0)[row] = PackTransitionWindow(0, 0);
+            }
+            sTransitionData->counter++;
+            continue;
+        }
+
+        mainSprite = &gSprites[spriteId];
+        mainSprite->x = DISPLAY_WIDTH;
+        mainSprite->y = firstRow;
+        mainSprite->sRowCount = endRow - firstRow;
+        mainSprite->sDelay = delays[i];
     }
 
-    // Set on one sprite only. This one will enable the DMA
-    // copy in VBlank and wait for the others to destroy.
-    sprite->sIsMainSprite++;
+    // The last available bar enables the VBlank copy while waiting for the others.
+    if (mainSprite != NULL)
+        mainSprite->sIsMainSprite = TRUE;
 
     task->tState++;
     return FALSE;
@@ -4879,7 +4901,7 @@ static bool8 FrontierSquares_Shrink(struct Task *task)
             }
             break;
         case 1:
-            BlendPalettes(PALETTES_ALL & ~(1 << 15), 16, RGB_BLACK);
+            BlendPalettes(PALETTES_ALL_FULL & ~(PaletteMask)(1 << 15), 16, RGB_BLACK);
             LZ77UnCompVram(sFrontierSquares_EmptyBg_Tileset, tileset);
             break;
         case 2:
@@ -4956,7 +4978,7 @@ static bool8 FrontierSquaresSpiral_Outward(struct Task *task)
 static bool8 FrontierSquaresSpiral_SetBlack(struct Task *task)
 {
     BlendPalette(BG_PLTT_ID(14), 16, 3, RGB_BLACK);
-    BlendPalettes(PALETTES_ALL & ~(1 << 15 | 1 << 14), 16, RGB_BLACK);
+    BlendPalettes(PALETTES_ALL_FULL & ~(PaletteMask)(1 << 15 | 1 << 14), 16, RGB_BLACK);
 
     task->tSquareNum = 0;
     task->tFadeFlag = 0;
@@ -5108,7 +5130,7 @@ static bool8 FrontierSquaresScroll_Draw(struct Task *task)
 // set it to black so it's not revealed when the squares are removed.
 static bool8 FrontierSquaresScroll_SetBlack(struct Task *task)
 {
-    BlendPalettes(PALETTES_ALL & ~(1 << 15), 16, RGB_BLACK);
+    BlendPalettes(PALETTES_ALL_FULL & ~(PaletteMask)(1 << 15), 16, RGB_BLACK);
 
     task->tSquareNum = 0;
 

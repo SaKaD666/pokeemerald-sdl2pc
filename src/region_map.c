@@ -630,6 +630,7 @@ void FreeRegionMapIconResources(void)
     if (sRegionMap->cursorSprite != NULL)
     {
         DestroySprite(sRegionMap->cursorSprite);
+        sRegionMap->cursorSprite = NULL;
         FreeSpriteTilesByTag(sRegionMap->cursorTileTag);
         FreeSpritePaletteByTag(sRegionMap->cursorPaletteTag);
     }
@@ -1373,9 +1374,31 @@ static void SpriteCB_CursorMapZoomed(struct Sprite *sprite)
 
 }
 
-void CreateRegionMapCursor(u16 tileTag, u16 paletteTag)
+static struct Sprite *CreateRegionMapIcon(const struct SpriteSheet *sheet, const struct SpritePalette *palette,
+                                          const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
 {
     u8 spriteId;
+
+    if (LoadSpriteSheet(sheet) == SPRITE_TILE_NONE)
+        return NULL;
+
+    if (LoadSpritePalette(palette) == 0xFF)
+    {
+        FreeSpriteTilesByTag(sheet->tag);
+        return NULL;
+    }
+
+    spriteId = CreateSprite(template, x, y, subpriority);
+    if (spriteId < MAX_SPRITES)
+        return &gSprites[spriteId];
+
+    FreeSpriteTilesByTag(sheet->tag);
+    FreeSpritePaletteByTag(palette->tag);
+    return NULL;
+}
+
+void CreateRegionMapCursor(u16 tileTag, u16 paletteTag)
+{
     struct SpriteTemplate template;
     struct SpritePalette palette;
     struct SpriteSheet sheet;
@@ -1400,12 +1423,9 @@ void CreateRegionMapCursor(u16 tileTag, u16 paletteTag)
         sheet.size = sizeof(sRegionMap->cursorLargeImage);
         template.callback = SpriteCB_CursorMapZoomed;
     }
-    LoadSpriteSheet(&sheet);
-    LoadSpritePalette(&palette);
-    spriteId = CreateSprite(&template, 56, 72, 0);
-    if (spriteId != MAX_SPRITES)
+    sRegionMap->cursorSprite = CreateRegionMapIcon(&sheet, &palette, &template, 56, 72, 0);
+    if (sRegionMap->cursorSprite != NULL)
     {
-        sRegionMap->cursorSprite = &gSprites[spriteId];
         if (sRegionMap->zoomed == TRUE)
         {
             sRegionMap->cursorSprite->oam.size = SPRITE_SIZE(32x32);
@@ -1437,17 +1457,18 @@ static void FreeRegionMapCursorSprite(void)
 
 static void UNUSED SetUnkCursorSpriteData(void)
 {
-    sRegionMap->cursorSprite->data[3] = TRUE;
+    if (sRegionMap->cursorSprite != NULL)
+        sRegionMap->cursorSprite->data[3] = TRUE;
 }
 
 static void UNUSED ClearUnkCursorSpriteData(void)
 {
-    sRegionMap->cursorSprite->data[3] = FALSE;
+    if (sRegionMap->cursorSprite != NULL)
+        sRegionMap->cursorSprite->data[3] = FALSE;
 }
 
 void CreateRegionMapPlayerIcon(u16 tileTag, u16 paletteTag)
 {
-    u8 spriteId;
     struct SpriteSheet sheet = {sRegionMapPlayerIcon_BrendanGfx, 0x80, tileTag};
     struct SpritePalette palette = {sRegionMapPlayerIcon_BrendanPal, paletteTag};
     struct SpriteTemplate template = {tileTag, paletteTag, &sRegionMapPlayerIconOam, sRegionMapPlayerIconAnimTable, NULL, gDummySpriteAffineAnimTable, SpriteCallbackDummy};
@@ -1462,10 +1483,10 @@ void CreateRegionMapPlayerIcon(u16 tileTag, u16 paletteTag)
         sheet.data = sRegionMapPlayerIcon_MayGfx;
         palette.data = sRegionMapPlayerIcon_MayPal;
     }
-    LoadSpriteSheet(&sheet);
-    LoadSpritePalette(&palette);
-    spriteId = CreateSprite(&template, 0, 0, 1);
-    sRegionMap->playerIconSprite = &gSprites[spriteId];
+    sRegionMap->playerIconSprite = CreateRegionMapIcon(&sheet, &palette, &template, 0, 0, 1);
+    if (sRegionMap->playerIconSprite == NULL)
+        return;
+
     if (!sRegionMap->zoomed)
     {
         sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 8 + 4;
@@ -1830,8 +1851,13 @@ static void LoadFlyDestIcons(void)
     sheet.data = sFlyMap->tileBuffer;
     sheet.size = sizeof(sFlyMap->tileBuffer);
     sheet.tag = TAG_FLY_ICON;
-    LoadSpriteSheet(&sheet);
-    LoadSpritePalette(&sFlyTargetIconsSpritePalette);
+    if (LoadSpriteSheet(&sheet) == SPRITE_TILE_NONE)
+        return;
+    if (LoadSpritePalette(&sFlyTargetIconsSpritePalette) == 0xFF)
+    {
+        FreeSpriteTilesByTag(sheet.tag);
+        return;
+    }
     CreateFlyDestIcons();
     TryCreateRedOutlineFlyDestIcons();
 }

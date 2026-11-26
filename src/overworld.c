@@ -104,7 +104,9 @@ static void CB2_LoadMap2(void);
 static void VBlankCB_Field(void);
 static void SpriteCB_LinkPlayer(struct Sprite *);
 static void ChooseAmbientCrySpecies(void);
+#ifndef PLATFORM_SDL2
 static void DoMapLoadLoop(u8 *);
+#endif
 static bool32 LoadMapInStepsLocal(u8 *, bool32);
 static bool32 LoadMapInStepsLink(u8 *);
 static bool32 ReturnToFieldLocal(u8 *);
@@ -1686,15 +1688,22 @@ void CB2_NewGame(void)
     UnlockPlayerFieldControls();
     gFieldCallback = ExecuteTruckSequence;
     gFieldCallback2 = NULL;
+#ifdef PLATFORM_SDL2
+    SetMainCallback1(NULL);
+    SetMainCallback2(CB2_LoadMap2);
+#else
     DoMapLoadLoop(&gMain.state);
     SetFieldVBlankCallback();
     SetMainCallback1(CB1_Overworld);
     SetMainCallback2(CB2_Overworld);
+#endif
 }
 
 void CB2_WhiteOut(void)
 {
+#ifndef PLATFORM_SDL2
     u8 state;
+#endif
 
     if (++gMain.state >= 120)
     {
@@ -1706,11 +1715,16 @@ void CB2_WhiteOut(void)
         ScriptContext_Init();
         UnlockPlayerFieldControls();
         gFieldCallback = FieldCB_WarpExitFadeFromBlack;
+#ifdef PLATFORM_SDL2
+        SetMainCallback1(NULL);
+        SetMainCallback2(CB2_LoadMap2);
+#else
         state = 0;
         DoMapLoadLoop(&state);
         SetFieldVBlankCallback();
         SetMainCallback1(CB1_Overworld);
         SetMainCallback2(CB2_Overworld);
+#endif
     }
 }
 
@@ -1726,7 +1740,12 @@ void CB2_LoadMap(void)
 
 static void CB2_LoadMap2(void)
 {
+#ifdef PLATFORM_SDL2
+    if (!LoadMapInStepsLocal(&gMain.state, FALSE))
+        return;
+#else
     DoMapLoadLoop(&gMain.state);
+#endif
     SetFieldVBlankCallback();
     SetMainCallback1(CB1_Overworld);
     SetMainCallback2(CB2_Overworld);
@@ -2221,10 +2240,12 @@ static bool32 ReturnToFieldLink(u8 *state)
     return FALSE;
 }
 
+#ifndef PLATFORM_SDL2
 static void DoMapLoadLoop(u8 *state)
 {
     while (!LoadMapInStepsLocal(state, FALSE));
 }
+#endif
 
 static void ResetMirageTowerAndSaveBlockPtrs(void)
 {
@@ -2239,7 +2260,7 @@ static void ResetScreenForMapLoad(void)
 
     DmaClear16(3, PLTT + 2, PLTT_SIZE - 2);
     DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
-    ResetOamRange(0, 128);
+    ResetOamRange(0, OAM_ENTRY_COUNT);
     LoadOam();
 }
 

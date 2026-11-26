@@ -1,4 +1,5 @@
 #include "global.h"
+#include "battle_gfx_sfx_util.h"
 #include "battle.h"
 #include "battle_anim.h"
 #include "battle_bg.h"
@@ -99,6 +100,7 @@ static void Intro_WaitForShinyAnimAndHealthbox(void);
 static u32 CopyWallyMonData(u8 monId, u8 *dst);
 static void SetWallyMonData(u8 monId);
 static void WallyDoMoveAnimation(void);
+static void StartSendOutAnim(u8 battler);
 static void Task_StartSendOutAnim(u8 taskId);
 
 static void (*const sWallyBufferCommands[CONTROLLER_CMDS_COUNT])(void) =
@@ -296,17 +298,17 @@ static void Intro_TryShinyAnimShowHealthbox(void)
 
     if (!gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].ballAnimActive
         && !gBattleSpritesDataPtr->healthBoxesData[BATTLE_PARTNER(gActiveBattler)].ballAnimActive
-        && gSprites[gBattleControllerData[gActiveBattler]].callback == SpriteCallbackDummy
-        && gSprites[gBattlerSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy)
+        && IsBattleSpriteIdle(gBattleControllerData[gActiveBattler])
+        && IsBattleSpriteIdle(gBattlerSpriteIds[gActiveBattler]))
     {
         if (IsDoubleBattle() && !(gBattleTypeFlags & BATTLE_TYPE_MULTI))
         {
-            DestroySprite(&gSprites[gBattleControllerData[BATTLE_PARTNER(gActiveBattler)]]);
+            DestroyBattlerBallReleaseSprite(BATTLE_PARTNER(gActiveBattler));
             UpdateHealthboxAttribute(gHealthboxSpriteIds[BATTLE_PARTNER(gActiveBattler)], &gPlayerParty[gBattlerPartyIndexes[BATTLE_PARTNER(gActiveBattler)]], HEALTHBOX_ALL);
             StartHealthboxSlideIn(BATTLE_PARTNER(gActiveBattler));
             SetHealthboxSpriteVisible(gHealthboxSpriteIds[BATTLE_PARTNER(gActiveBattler)]);
         }
-        DestroySprite(&gSprites[gBattleControllerData[gActiveBattler]]);
+        DestroyBattlerBallReleaseSprite(gActiveBattler);
         UpdateHealthboxAttribute(gHealthboxSpriteIds[gActiveBattler], &gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], HEALTHBOX_ALL);
         StartHealthboxSlideIn(gActiveBattler);
         SetHealthboxSpriteVisible(gHealthboxSpriteIds[gActiveBattler]);
@@ -321,7 +323,7 @@ static void Intro_WaitForShinyAnimAndHealthbox(void)
 {
     bool32 healthboxAnimDone = FALSE;
 
-    if (gSprites[gHealthboxSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy)
+    if (IsBattleSpriteIdle(gHealthboxSpriteIds[gActiveBattler]))
         healthboxAnimDone = TRUE;
 
     if (healthboxAnimDone && gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].finishedShinyMonAnim
@@ -1017,7 +1019,12 @@ static void WallyHandleSwitchInAnim(void)
 
 static void WallyHandleReturnMonToBall(void)
 {
-    if (gBattleBufferA[gActiveBattler][1] == 0)
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        SetHealthboxSpriteInvisible(gHealthboxSpriteIds[gActiveBattler]);
+        WallyBufferExecCompleted();
+    }
+    else if (gBattleBufferA[gActiveBattler][1] == 0)
     {
         InitAndLaunchSpecialAnimation(gActiveBattler, gActiveBattler, gActiveBattler, B_ANIM_SWITCH_OUT_PLAYER_MON);
         gBattlerControllerFuncs[gActiveBattler] = DoSwitchOutAnimation;
@@ -1041,7 +1048,13 @@ static void WallyHandleDrawTrainerPic(void)
                                                80,
                                                80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size),
                                                30);
-    gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        WallyBufferExecCompleted();
+        return;
+    }
+
+    SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
     gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = -2;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = SpriteCB_TrainerSlideIn;
@@ -1056,7 +1069,13 @@ static void WallyHandleTrainerSlide(void)
                                                80,
                                                80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size),
                                                30);
-    gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        WallyBufferExecCompleted();
+        return;
+    }
+
+    SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -96;
     gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = 2;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = SpriteCB_TrainerSlideIn;
@@ -1384,7 +1403,8 @@ static void WallyHandleToggleUnkFlag(void)
 
 static void WallyHandleHitAnimation(void)
 {
-    if (gSprites[gBattlerSpriteIds[gActiveBattler]].invisible == TRUE)
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES
+     || gSprites[gBattlerSpriteIds[gActiveBattler]].invisible)
     {
         WallyBufferExecCompleted();
     }
@@ -1442,31 +1462,49 @@ static void WallyHandleIntroSlide(void)
 
 static void WallyHandleIntroTrainerBallThrow(void)
 {
-    u8 paletteNum;
+    u8 spriteId = gBattlerSpriteIds[gActiveBattler];
+    u8 paletteNum = 0xFF;
     u8 taskId;
+    struct Sprite *sprite;
 
-    SetSpritePrimaryCoordsFromSecondaryCoords(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
+    HidePartyStatusSummary(gActiveBattler);
 
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[0] = 50;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = -40;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[4] = gSprites[gBattlerSpriteIds[gActiveBattler]].y;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].callback = StartAnimLinearTranslation;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[5] = gActiveBattler;
+    gBattleSpritesDataPtr->animationData->introAnimActive = TRUE;
 
-    StoreSpriteCallbackInData6(&gSprites[gBattlerSpriteIds[gActiveBattler]], SpriteCB_FreePlayerSpriteLoadMonSprite);
-    StartSpriteAnim(&gSprites[gBattlerSpriteIds[gActiveBattler]], 1);
+    if (spriteId < MAX_SPRITES && GetTaskCount() < NUM_TASKS)
+        paletteNum = AllocSpritePalette(0xD6F8);
 
-    paletteNum = AllocSpritePalette(0xD6F8);
+    if (paletteNum == 0xFF)
+    {
+        if (spriteId < MAX_SPRITES)
+        {
+            FreeSpriteOamMatrix(&gSprites[spriteId]);
+            DestroySprite(&gSprites[spriteId]);
+        }
+
+        gBattleBufferA[gActiveBattler][1] = gBattlerPartyIndexes[gActiveBattler];
+        gBattleSpritesDataPtr->battlerData[gActiveBattler].transformSpecies = SPECIES_NONE;
+        BattleLoadPlayerMonSpriteGfx(&gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], gActiveBattler);
+        StartSendOutAnim(gActiveBattler);
+        return;
+    }
+
+    sprite = &gSprites[spriteId];
+    SetSpritePrimaryCoordsFromSecondaryCoords(sprite);
+    sprite->data[0] = 50;
+    sprite->data[2] = -40;
+    sprite->data[4] = sprite->y;
+    sprite->callback = StartAnimLinearTranslation;
+    sprite->data[5] = gActiveBattler;
+
+    StoreSpriteCallbackInData6(sprite, SpriteCB_FreePlayerSpriteLoadMonSprite);
+    StartSpriteAnim(sprite, 1);
+
     LoadCompressedPalette(gTrainerBackPicPaletteTable[TRAINER_BACK_PIC_WALLY].data, OBJ_PLTT_ID(paletteNum), PLTT_SIZE_4BPP);
-    gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = paletteNum;
+    SetSpritePaletteHandle(sprite, paletteNum);
 
     taskId = CreateTask(Task_StartSendOutAnim, 5);
     gTasks[taskId].data[0] = gActiveBattler;
-
-    if (gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].partyStatusSummaryShown)
-        gTasks[gBattlerStatusSummaryTaskId[gActiveBattler]].func = Task_HidePartyStatusSummary;
-
-    gBattleSpritesDataPtr->animationData->introAnimActive = TRUE;
     gBattlerControllerFuncs[gActiveBattler] = BattleControllerDummy;
 }
 
@@ -1477,24 +1515,14 @@ static void StartSendOutAnim(u8 battler)
     gBattleSpritesDataPtr->battlerData[battler].transformSpecies = 0;
     gBattlerPartyIndexes[battler] = gBattleBufferA[battler][1];
     species = GetMonData(&gPlayerParty[gBattlerPartyIndexes[battler]], MON_DATA_SPECIES);
-    gBattleControllerData[battler] = CreateInvisibleSpriteWithCallback(SpriteCB_WaitForBattlerBallReleaseAnim);
     SetMultiuseSpriteTemplateToPokemon(species, GetBattlerPosition(battler));
     gBattlerSpriteIds[battler] = CreateSprite(&gMultiuseSpriteTemplate,
                                         GetBattlerSpriteCoord(battler, BATTLER_COORD_X_2),
                                         GetBattlerSpriteDefault_Y(battler),
                                         GetBattlerSpriteSubpriority(battler));
 
-    gSprites[gBattleControllerData[battler]].data[1] = gBattlerSpriteIds[battler];
-    gSprites[gBattleControllerData[battler]].data[2] = battler;
-
-    gSprites[gBattlerSpriteIds[battler]].data[0] = battler;
-    gSprites[gBattlerSpriteIds[battler]].data[2] = species;
-    gSprites[gBattlerSpriteIds[battler]].oam.paletteNum = battler;
-
-    StartSpriteAnim(&gSprites[gBattlerSpriteIds[battler]], gBattleMonForms[battler]);
-    gSprites[gBattlerSpriteIds[battler]].invisible = TRUE;
-    gSprites[gBattlerSpriteIds[battler]].callback = SpriteCallbackDummy;
-    gSprites[gBattleControllerData[battler]].data[0] = DoPokeballSendOutAnimation(0, POKEBALL_PLAYER_SENDOUT);
+    StartBattlerSendOut(battler, species, POKEBALL_PLAYER_SENDOUT);
+    gBattlerControllerFuncs[battler] = Intro_TryShinyAnimShowHealthbox;
 }
 
 static void Task_StartSendOutAnim(u8 taskId)
@@ -1510,7 +1538,6 @@ static void Task_StartSendOutAnim(u8 taskId)
         gActiveBattler = gTasks[taskId].data[0];
         gBattleBufferA[gActiveBattler][1] = gBattlerPartyIndexes[gActiveBattler];
         StartSendOutAnim(gActiveBattler);
-        gBattlerControllerFuncs[gActiveBattler] = Intro_TryShinyAnimShowHealthbox;
         gActiveBattler = savedActiveBank;
         DestroyTask(taskId);
     }
@@ -1524,7 +1551,6 @@ static void WallyHandleDrawPartyStatusSummary(void)
     }
     else
     {
-        gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].partyStatusSummaryShown = 1;
         gBattlerStatusSummaryTaskId[gActiveBattler] = CreatePartyStatusSummarySprites(gActiveBattler, (struct HpAndStatus *)&gBattleBufferA[gActiveBattler][4], gBattleBufferA[gActiveBattler][1], gBattleBufferA[gActiveBattler][2]);
         WallyBufferExecCompleted();
     }

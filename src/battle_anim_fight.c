@@ -515,7 +515,7 @@ static void AnimFistOrFootRandomPos_Step(struct Sprite *sprite)
     {
         if (sprite->data[7] != MAX_SPRITES)
         {
-            FreeOamMatrix(gSprites[sprite->data[7]].oam.matrixNum);
+            FreeSpriteOamMatrix(&gSprites[sprite->data[7]]);
             DestroySprite(&gSprites[sprite->data[7]]);
         }
 
@@ -754,7 +754,7 @@ static void AnimBrickBreakWallShard(struct Sprite *sprite)
         sprite->y = GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_Y) + gBattleAnimArgs[3];
     }
 
-    sprite->oam.tileNum += gBattleAnimArgs[1] * 16;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[1] * 16);
     sprite->data[0] = 0;
 
     switch (gBattleAnimArgs[1])
@@ -841,7 +841,7 @@ static void AnimSuperpowerRock(struct Sprite *sprite)
     sprite->ptr.intPtr = (intptr_t)sprite->y << 8;
 
     sprite->data[6] = gBattleAnimArgs[1];
-    sprite->oam.tileNum += gBattleAnimArgs[2] * 4;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[2] * 4);
 
     sprite->callback = AnimSuperpowerRock_Step1;
 }

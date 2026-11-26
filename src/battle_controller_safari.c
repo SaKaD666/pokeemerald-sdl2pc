@@ -1,4 +1,5 @@
 #include "global.h"
+#include "battle_gfx_sfx_util.h"
 #include "battle.h"
 #include "battle_anim.h"
 #include "battle_bg.h"
@@ -247,7 +248,7 @@ static void CompleteOnInactiveTextPrinter(void)
 
 static void CompleteOnHealthboxSpriteCallbackDummy(void)
 {
-    if (gSprites[gHealthboxSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy)
+    if (IsBattleSpriteIdle(gHealthboxSpriteIds[gActiveBattler]))
         SafariBufferExecCompleted();
 }
 
@@ -360,7 +361,13 @@ static void SafariHandleDrawTrainerPic(void)
       80,
       (8 - gTrainerBackPicCoords[gSaveBlock2Ptr->playerGender].size) * 4 + 80,
       30);
-    gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        SafariBufferExecCompleted();
+        return;
+    }
+
+    SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
     gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = -2;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = SpriteCB_TrainerSlideIn;
@@ -668,6 +675,14 @@ static void SafariHandleBattleAnimation(void)
 {
     u8 animationId = gBattleBufferA[gActiveBattler][1];
     u16 argument = gBattleBufferA[gActiveBattler][2] | (gBattleBufferA[gActiveBattler][3] << 8);
+
+    if (animationId == B_ANIM_POKEBLOCK_THROW
+     && (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES
+      || gBattlerSpriteIds[GetBattlerAtPosition(B_POSITION_OPPONENT_LEFT)] >= MAX_SPRITES))
+    {
+        SafariBufferExecCompleted();
+        return;
+    }
 
     if (TryHandleLaunchBattleTableAnimation(gActiveBattler, gActiveBattler, gActiveBattler, animationId, argument))
         SafariBufferExecCompleted();

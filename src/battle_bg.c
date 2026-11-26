@@ -1361,12 +1361,31 @@ void InitLinkBattleVsScreen(u8 taskId)
         gTasks[taskId].data[0]++;
         break;
     case 1:
-        palId = AllocSpritePalette(TAG_VS_LETTERS);
-        gPlttBufferUnfaded[OBJ_PLTT_ID(palId) + 15] = gPlttBufferFaded[OBJ_PLTT_ID(palId) + 15] = RGB_WHITE;
-        gBattleStruct->linkBattleVsSpriteId_V = CreateSprite(&sVsLetter_V_SpriteTemplate, 111, 80, 0);
-        gBattleStruct->linkBattleVsSpriteId_S = CreateSprite(&sVsLetter_S_SpriteTemplate, 129, 80, 0);
-        gSprites[gBattleStruct->linkBattleVsSpriteId_V].invisible = TRUE;
-        gSprites[gBattleStruct->linkBattleVsSpriteId_S].invisible = TRUE;
+        gBattleStruct->linkBattleVsSpriteId_V = SPRITE_NONE;
+        gBattleStruct->linkBattleVsSpriteId_S = SPRITE_NONE;
+        if (GetSpriteTileStartByTag(TAG_VS_LETTERS) != SPRITE_TILE_NONE)
+        {
+            palId = AllocSpritePalette(TAG_VS_LETTERS);
+            if (palId != 0xFF)
+            {
+                u8 v = CreateSprite(&sVsLetter_V_SpriteTemplate, 111, 80, 0);
+                u8 letterS = v < MAX_SPRITES ? CreateSprite(&sVsLetter_S_SpriteTemplate, 129, 80, 0) : SPRITE_NONE;
+                if (letterS < MAX_SPRITES)
+                {
+                    gPlttBufferUnfaded[OBJ_PLTT_ID(palId) + 15] = gPlttBufferFaded[OBJ_PLTT_ID(palId) + 15] = RGB_WHITE;
+                    gBattleStruct->linkBattleVsSpriteId_V = v;
+                    gBattleStruct->linkBattleVsSpriteId_S = letterS;
+                    gSprites[v].invisible = TRUE;
+                    gSprites[letterS].invisible = TRUE;
+                }
+                else
+                {
+                    if (v < MAX_SPRITES)
+                        DestroySprite(&gSprites[v]);
+                    FreeSpritePaletteByTag(TAG_VS_LETTERS);
+                }
+            }
+        }
         gTasks[taskId].data[0]++;
         break;
     case 2:
@@ -1397,15 +1416,19 @@ void InitLinkBattleVsScreen(u8 taskId)
 
             PlaySE(SE_M_HARDEN);
             DestroyTask(taskId);
-            gSprites[gBattleStruct->linkBattleVsSpriteId_V].invisible = FALSE;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_S].invisible = FALSE;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_S].oam.tileNum += 0x40;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_V].data[0] = 0;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_S].data[0] = 1;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_V].data[1] = gSprites[gBattleStruct->linkBattleVsSpriteId_V].x;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_S].data[1] = gSprites[gBattleStruct->linkBattleVsSpriteId_S].x;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_V].data[2] = 0;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_S].data[2] = 0;
+            if (gBattleStruct->linkBattleVsSpriteId_V < MAX_SPRITES
+             && gBattleStruct->linkBattleVsSpriteId_S < MAX_SPRITES)
+            {
+                gSprites[gBattleStruct->linkBattleVsSpriteId_V].invisible = FALSE;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_S].invisible = FALSE;
+                SetSpriteSheetTileOffset(&gSprites[gBattleStruct->linkBattleVsSpriteId_S], 0x40);
+                gSprites[gBattleStruct->linkBattleVsSpriteId_V].data[0] = 0;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_S].data[0] = 1;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_V].data[1] = gSprites[gBattleStruct->linkBattleVsSpriteId_V].x;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_S].data[1] = gSprites[gBattleStruct->linkBattleVsSpriteId_S].x;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_V].data[2] = 0;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_S].data[2] = 0;
+            }
         }
         break;
     }

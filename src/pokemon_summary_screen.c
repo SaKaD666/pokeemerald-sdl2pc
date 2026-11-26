@@ -184,6 +184,7 @@ static EWRAM_DATA struct PokemonSummaryScreenData
     u8 filler40CA;
     u8 windowIds[8];
     u8 spriteIds[SPRITE_ARR_ID_COUNT];
+    bool8 portraitPaletteAllocated;
     bool8 handleDeoxys;
     s16 switchCounter; // Used for various switch statement cases that decompress/load graphics or Pokémon data
     u8 unk_filler4[6];
@@ -290,6 +291,7 @@ static void SwapMovesNamesPP(u8, u8);
 static void PrintHMMovesCantBeForgotten(void);
 static void ResetSpriteIds(void);
 static void SetSpriteInvisibility(u8, bool8);
+static bool8 IsStatusSpriteVisible(void);
 static void HidePageSpecificSprites(void);
 static void SetTypeIcons(void);
 static void CreateMoveTypeIcons(void);
@@ -298,8 +300,8 @@ static void SetMoveTypeIcons(void);
 static void SetContestMoveTypeIcons(void);
 static void SetNewMoveTypeIcon(void);
 static void SwapMovesTypeSprites(u8, u8);
-static u8 LoadMonGfxAndSprite(struct Pokemon *, s16 *);
-static u8 CreateMonSprite(struct Pokemon *);
+static bool8 LoadMonGfxAndSprite(s16 *);
+static u8 CreateMonSprite(void);
 static void SpriteCB_Pokemon(struct Sprite *);
 static void StopPokemonAnimations(void);
 static void CreateMonMarkingsSprite(struct Pokemon *);
@@ -307,6 +309,7 @@ static void RemoveAndCreateMonMarkingsSprite(struct Pokemon *);
 static void CreateCaughtBallSprite(struct Pokemon *);
 static void CreateSetStatusSprite(void);
 static void CreateMoveSelectorSprites(u8);
+static bool8 HasMoveSelectorSprites(u8);
 static void SpriteCB_MoveSelector(struct Sprite *);
 static void DestroyMoveSelectorSprites(u8);
 static void SetMainMoveSelectorColor(u8);
@@ -1273,8 +1276,7 @@ static bool8 LoadGraphics(void)
         gMain.state++;
         break;
     case 17:
-        sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] = LoadMonGfxAndSprite(&sMonSummaryScreen->currentMon, &sMonSummaryScreen->switchCounter);
-        if (sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] != SPRITE_NONE)
+        if (LoadMonGfxAndSprite(&sMonSummaryScreen->switchCounter))
         {
             sMonSummaryScreen->switchCounter = 0;
             gMain.state++;
@@ -1689,10 +1691,14 @@ static void Task_ChangeSummaryMon(u8 taskId)
         break;
     case 1:
         SummaryScreen_DestroyAnimDelayTask();
-        DestroySpriteAndFreeResources(&gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]]);
+        if (sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] < MAX_SPRITES)
+            DestroySpriteAndFreeResources(&gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]]);
+        sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] = SPRITE_NONE;
         break;
     case 2:
-        DestroySpriteAndFreeResources(&gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]]);
+        if (sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] < MAX_SPRITES)
+            DestroySpriteAndFreeResources(&gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]]);
+        sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = SPRITE_NONE;
         break;
     case 3:
         CopyMonToSummaryStruct(&sMonSummaryScreen->currentMon);
@@ -1715,10 +1721,10 @@ static void Task_ChangeSummaryMon(u8 taskId)
         data[1] = 0;
         break;
     case 8:
-        sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] = LoadMonGfxAndSprite(&sMonSummaryScreen->currentMon, &data[1]);
-        if (sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] == SPRITE_NONE)
+        if (!LoadMonGfxAndSprite(&data[1]))
             return;
-        gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].data[2] = 1;
+        if (sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] < MAX_SPRITES)
+            gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].data[2] = 1;
         TryDrawExperienceProgressBar();
         data[1] = 0;
         break;
@@ -1733,7 +1739,8 @@ static void Task_ChangeSummaryMon(u8 taskId)
         LimitEggSummaryPageDisplay();
         break;
     case 12:
-        gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].data[2] = 0;
+        if (sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON] < MAX_SPRITES)
+            gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].data[2] = 0;
         break;
     default:
         if (!MenuHelpers_ShouldWaitForLinkRecv() && !FuncIsActiveTask(Task_SlideStatusWindow))
@@ -1940,7 +1947,7 @@ static void SwitchToMoveSelection(u8 taskId)
     sMonSummaryScreen->firstMoveIndex = 0;
     move = sMonSummaryScreen->summary.moves[sMonSummaryScreen->firstMoveIndex];
     ClearWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
-    if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
+    if (IsStatusSpriteVisible())
         ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
     PositionPowerAccSlidingWindow(9, -3);
     PositionAppealJamSlidingWindow(9, -3, move);
@@ -1985,7 +1992,7 @@ static void Task_HandleInput_MoveSelect(u8 taskId)
                 PlaySE(SE_SELECT);
                 CloseMoveSelectMode(taskId);
             }
-            else if (HasMoreThanOneMove() == TRUE)
+            else if (HasMoreThanOneMove() == TRUE && HasMoveSelectorSprites(SPRITE_ARR_ID_MOVE_SELECTOR1))
             {
                 PlaySE(SE_SELECT);
                 SwitchToMovePositionSwitchMode(taskId);
@@ -2046,7 +2053,7 @@ static void ChangeSelectedMove(s16 *taskData, s8 direction, u8 *moveIndexPtr)
         || taskData[1] == 1)
     {
         ClearWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
-        if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
+        if (IsStatusSpriteVisible())
             ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
         ScheduleBgCopyTilemapToVram(0);
         PositionPowerAccSlidingWindow(9, -3);
@@ -2119,7 +2126,8 @@ static void Task_HandleInput_MovePositionSwitch(u8 taskId)
         }
         else if (JOY_NEW(A_BUTTON))
         {
-            if (sMonSummaryScreen->firstMoveIndex == sMonSummaryScreen->secondMoveIndex)
+            if (!HasMoveSelectorSprites(SPRITE_ARR_ID_MOVE_SELECTOR2)
+             || sMonSummaryScreen->firstMoveIndex == sMonSummaryScreen->secondMoveIndex)
                 ExitMovePositionSwitchMode(taskId, FALSE);
             else
                 ExitMovePositionSwitchMode(taskId, TRUE);
@@ -2270,6 +2278,12 @@ static void Task_HandleReplaceMoveInput(u8 taskId)
             }
             else if (JOY_NEW(A_BUTTON))
             {
+                if (!HasMoveSelectorSprites(SPRITE_ARR_ID_MOVE_SELECTOR1))
+                {
+                    PlaySE(SE_FAILURE);
+                    return;
+                }
+
                 if (CanReplaceMove() == TRUE)
                 {
                     StopPokemonAnimations();
@@ -2345,7 +2359,7 @@ static void Task_HandleInputCantForgetHMsMoves(u8 taskId)
             if (sMonSummaryScreen->currPageIndex != PSS_PAGE_BATTLE_MOVES)
             {
                 ClearWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
-                if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
+                if (IsStatusSpriteVisible())
                     ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
                 move = sMonSummaryScreen->summary.moves[sMonSummaryScreen->firstMoveIndex];
                 gTasks[taskId].func = Task_HandleReplaceMoveInput;
@@ -2359,7 +2373,7 @@ static void Task_HandleInputCantForgetHMsMoves(u8 taskId)
             if (sMonSummaryScreen->currPageIndex != PSS_PAGE_CONTEST_MOVES)
             {
                 ClearWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
-                if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
+                if (IsStatusSpriteVisible())
                     ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
                 move = sMonSummaryScreen->summary.moves[sMonSummaryScreen->firstMoveIndex];
                 gTasks[taskId].func = Task_HandleReplaceMoveInput;
@@ -2371,7 +2385,7 @@ static void Task_HandleInputCantForgetHMsMoves(u8 taskId)
         else if (JOY_NEW(A_BUTTON | B_BUTTON))
         {
             ClearWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
-            if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
+            if (IsStatusSpriteVisible())
                 ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
             move = sMonSummaryScreen->summary.moves[sMonSummaryScreen->firstMoveIndex];
             PrintMoveDetails(move);
@@ -2524,7 +2538,7 @@ static void Task_SlidePowerAccWindow(u8 taskId)
         }
         else
         {
-            if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
+            if (IsStatusSpriteVisible())
                 PutWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
             PutWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
         }
@@ -2578,7 +2592,7 @@ static void Task_SlideAppealJamWindow(u8 taskId)
         }
         else
         {
-            if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
+            if (IsStatusSpriteVisible())
             {
                 PutWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
             }
@@ -3802,7 +3816,7 @@ static void ResetSpriteIds(void)
 
 static void DestroySpriteInArray(u8 spriteArrayId)
 {
-    if (sMonSummaryScreen->spriteIds[spriteArrayId] != SPRITE_NONE)
+    if (sMonSummaryScreen->spriteIds[spriteArrayId] < MAX_SPRITES)
     {
         DestroySprite(&gSprites[sMonSummaryScreen->spriteIds[spriteArrayId]]);
         sMonSummaryScreen->spriteIds[spriteArrayId] = SPRITE_NONE;
@@ -3811,7 +3825,15 @@ static void DestroySpriteInArray(u8 spriteArrayId)
 
 static void SetSpriteInvisibility(u8 spriteArrayId, bool8 invisible)
 {
-    gSprites[sMonSummaryScreen->spriteIds[spriteArrayId]].invisible = invisible;
+    u8 spriteId = sMonSummaryScreen->spriteIds[spriteArrayId];
+    if (spriteId < MAX_SPRITES)
+        gSprites[spriteId].invisible = invisible;
+}
+
+static bool8 IsStatusSpriteVisible(void)
+{
+    u8 spriteId = sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS];
+    return spriteId < MAX_SPRITES && !gSprites[spriteId].invisible;
 }
 
 static void HidePageSpecificSprites(void)
@@ -3855,9 +3877,12 @@ static void CreateMoveTypeIcons(void)
 {
     u8 i;
 
+    if (GetSpriteTileStartByTag(TAG_MOVE_TYPES) == SPRITE_TILE_NONE)
+        return;
+
     for (i = SPRITE_ARR_ID_TYPE; i < SPRITE_ARR_ID_TYPE + TYPE_ICON_SPRITE_COUNT; i++)
     {
-        if (sMonSummaryScreen->spriteIds[i] == SPRITE_NONE)
+        if (sMonSummaryScreen->spriteIds[i] >= MAX_SPRITES)
             sMonSummaryScreen->spriteIds[i] = UseSummarySpriteOffset(CreateSprite(&sSpriteTemplate_MoveTypes, 0, 0, 2));
 
         SetSpriteInvisibility(i, TRUE);
@@ -3866,9 +3891,15 @@ static void CreateMoveTypeIcons(void)
 
 static void SetTypeSpritePosAndPal(u8 typeId, u8 x, u8 y, u8 spriteArrayId)
 {
-    struct Sprite *sprite = &gSprites[sMonSummaryScreen->spriteIds[spriteArrayId]];
+    u8 spriteId = sMonSummaryScreen->spriteIds[spriteArrayId];
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+
+    sprite = &gSprites[spriteId];
     StartSpriteAnim(sprite, typeId);
-    sprite->oam.paletteNum = sMoveTypeToOamPaletteNum[typeId];
+    SetSpritePaletteHandle(sprite, sMoveTypeToOamPaletteNum[typeId]);
     sprite->x = x + 16;
     sprite->y = y + 8;
     SetSpriteInvisibility(spriteArrayId, FALSE);
@@ -3940,16 +3971,26 @@ static void SetNewMoveTypeIcon(void)
 
 static void SwapMovesTypeSprites(u8 moveIndex1, u8 moveIndex2)
 {
-    struct Sprite *sprite1 = &gSprites[sMonSummaryScreen->spriteIds[moveIndex1 + SPRITE_ARR_ID_TYPE]];
-    struct Sprite *sprite2 = &gSprites[sMonSummaryScreen->spriteIds[moveIndex2 + SPRITE_ARR_ID_TYPE]];
+    u8 id1 = sMonSummaryScreen->spriteIds[moveIndex1 + SPRITE_ARR_ID_TYPE];
+    u8 id2 = sMonSummaryScreen->spriteIds[moveIndex2 + SPRITE_ARR_ID_TYPE];
+    struct Sprite *sprite1, *sprite2;
+    u8 temp;
 
-    u8 temp = sprite1->animNum;
+    if (id1 >= MAX_SPRITES || id2 >= MAX_SPRITES)
+    {
+        SetTypeIcons();
+        return;
+    }
+
+    sprite1 = &gSprites[id1];
+    sprite2 = &gSprites[id2];
+    temp = sprite1->animNum;
     sprite1->animNum = sprite2->animNum;
     sprite2->animNum = temp;
 
-    temp = sprite1->oam.paletteNum;
-    sprite1->oam.paletteNum = sprite2->oam.paletteNum;
-    sprite2->oam.paletteNum = temp;
+    temp = GetSpritePaletteHandle(sprite1);
+    SetSpritePaletteHandle(sprite1, GetSpritePaletteHandle(sprite2));
+    SetSpritePaletteHandle(sprite2, temp);
 
     sprite1->animBeginning = TRUE;
     sprite1->animEnded = FALSE;
@@ -3957,15 +3998,19 @@ static void SwapMovesTypeSprites(u8 moveIndex1, u8 moveIndex2)
     sprite2->animEnded = FALSE;
 }
 
-static u8 LoadMonGfxAndSprite(struct Pokemon *mon, s16 *state)
+static bool8 LoadMonGfxAndSprite(s16 *state)
 {
     const struct CompressedSpritePalette *pal;
+    u8 *spriteId = &sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON];
     struct PokeSummary *summary = &sMonSummaryScreen->summary;
 
     switch (*state)
     {
     default:
-        return CreateMonSprite(mon);
+        *spriteId = CreateMonSprite();
+        if (*spriteId >= MAX_SPRITES && sMonSummaryScreen->portraitPaletteAllocated)
+            FreeSpritePaletteByTag(gMultiuseSpriteTemplate.paletteTag);
+        return TRUE;
     case 0:
         if (gMain.inBattle)
         {
@@ -4010,13 +4055,14 @@ static u8 LoadMonGfxAndSprite(struct Pokemon *mon, s16 *state)
             }
         }
         (*state)++;
-        return 0xFF;
+        return FALSE;
     case 1:
         pal = GetMonSpritePalStructFromOtIdPersonality(summary->species2, summary->OTID, summary->pid);
+        sMonSummaryScreen->portraitPaletteAllocated = IndexOfSpritePaletteTag(pal->tag) == 0xFF;
         LoadCompressedSpritePalette(pal);
         SetMultiuseSpriteTemplateToPokemon(pal->tag, B_POSITION_OPPONENT_LEFT);
         (*state)++;
-        return 0xFF;
+        return FALSE;
     }
 }
 
@@ -4032,10 +4078,16 @@ static void PlayMonCry(void)
     }
 }
 
-static u8 CreateMonSprite(struct Pokemon *unused)
+static u8 CreateMonSprite(void)
 {
     struct PokeSummary *summary = &sMonSummaryScreen->summary;
-    u8 spriteId = UseSummarySpriteOffset(CreateSprite(&gMultiuseSpriteTemplate, 40, 64, 5));
+    u8 spriteId;
+
+    if (IndexOfSpritePaletteTag(gMultiuseSpriteTemplate.paletteTag) == 0xFF)
+        return SPRITE_NONE;
+    spriteId = UseSummarySpriteOffset(CreateSprite(&gMultiuseSpriteTemplate, 40, 64, 5));
+    if (spriteId >= MAX_SPRITES)
+        return SPRITE_NONE;
 
     FreeSpriteOamMatrix(&gSprites[spriteId]);
     gSprites[spriteId].data[0] = summary->species2;
@@ -4081,7 +4133,9 @@ static void SummaryScreen_DestroyAnimDelayTask(void)
 
 static bool32 UNUSED IsMonAnimationFinished(void)
 {
-    if (gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].callback == SpriteCallbackDummy)
+    u8 spriteId = sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON];
+
+    if (spriteId >= MAX_SPRITES || gSprites[spriteId].callback == SpriteCallbackDummy)
         return FALSE;
     else
         return TRUE;
@@ -4091,12 +4145,19 @@ static void StopPokemonAnimations(void)  // A subtle effect, this function stops
 {
     u16 i;
     u16 paletteIndex;
+    u8 palette;
+    u8 spriteId = sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON];
 
-    gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].animPaused = TRUE;
-    gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].callback = SpriteCallbackDummy;
     StopPokemonAnimationDelayTask();
+    if (spriteId >= MAX_SPRITES)
+        return;
 
-    paletteIndex = OBJ_PLTT_ID(gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_MON]].oam.paletteNum);
+    gSprites[spriteId].animPaused = TRUE;
+    gSprites[spriteId].callback = SpriteCallbackDummy;
+    palette = GetSpritePaletteHandle(&gSprites[spriteId]);
+    if (ObjPaletteMask(palette) == 0)
+        return;
+    paletteIndex = OBJ_PLTT_ID(palette);
 
     for (i = 0; i < 16; i++)
     {
@@ -4122,7 +4183,8 @@ static void CreateMonMarkingsSprite(struct Pokemon *mon)
 
 static void RemoveAndCreateMonMarkingsSprite(struct Pokemon *mon)
 {
-    DestroySprite(sMonSummaryScreen->markingsSprite);
+    if (sMonSummaryScreen->markingsSprite != NULL)
+        DestroySprite(sMonSummaryScreen->markingsSprite);
     FreeSpriteTilesByTag(TAG_MON_MARKINGS);
     CreateMonMarkingsSprite(mon);
 }
@@ -4130,11 +4192,22 @@ static void RemoveAndCreateMonMarkingsSprite(struct Pokemon *mon)
 static void CreateCaughtBallSprite(struct Pokemon *mon)
 {
     u8 ball = ItemIdToBallId(GetMonData(mon, MON_DATA_POKEBALL));
+    const struct SpriteTemplate *template = &gBallSpriteTemplates[ball];
+    u8 *spriteId = &sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL];
 
+    *spriteId = SPRITE_NONE;
     LoadBallGfx(ball);
-    sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = UseSummarySpriteOffset(CreateSprite(&gBallSpriteTemplates[ball], 16, 136, 0));
-    gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].callback = SpriteCallbackDummy;
-    gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].oam.priority = 3;
+    if (GetSpriteTileStartByTag(template->tileTag) != SPRITE_TILE_NONE
+     && IndexOfSpritePaletteTag(template->paletteTag) != 0xFF)
+        *spriteId = UseSummarySpriteOffset(CreateSprite(template, 16, 136, 0));
+    if (*spriteId >= MAX_SPRITES)
+    {
+        FreeBallGfx(ball);
+        return;
+    }
+
+    gSprites[*spriteId].callback = SpriteCallbackDummy;
+    gSprites[*spriteId].oam.priority = 3;
 }
 
 static void CreateSetStatusSprite(void)
@@ -4142,8 +4215,16 @@ static void CreateSetStatusSprite(void)
     u8 *spriteId = &sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS];
     u8 statusAnim;
 
-    if (*spriteId == SPRITE_NONE)
+    if (*spriteId >= MAX_SPRITES)
+    {
+        if (GetSpriteTileStartByTag(TAG_MON_STATUS) == SPRITE_TILE_NONE
+         || IndexOfSpritePaletteTag(TAG_MON_STATUS) == 0xFF)
+            return;
+
         *spriteId = UseSummarySpriteOffset(CreateSprite(&sSpriteTemplate_StatusCondition, 64, 152, 0));
+        if (*spriteId >= MAX_SPRITES)
+            return;
+    }
 
     statusAnim = GetMonAilment(&sMonSummaryScreen->currentMon);
     if (statusAnim != 0)
@@ -4162,6 +4243,10 @@ static void CreateMoveSelectorSprites(u8 idArrayStart)
     u8 i;
     u8 *spriteIds = &sMonSummaryScreen->spriteIds[idArrayStart];
 
+    if (GetSpriteTileStartByTag(TAG_MOVE_SELECTOR) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(TAG_MOVE_SELECTOR) == 0xFF)
+        return;
+
     if (sMonSummaryScreen->currPageIndex >= PSS_PAGE_BATTLE_MOVES)
     {
         u8 subpriority = 0;
@@ -4171,6 +4256,9 @@ static void CreateMoveSelectorSprites(u8 idArrayStart)
         for (i = 0; i < MOVE_SELECTOR_SPRITES_COUNT; i++)
         {
             spriteIds[i] = UseSummarySpriteOffset(CreateSprite(&sMoveSelectorSpriteTemplate, i * 16 + 89, 40, subpriority));
+            if (spriteIds[i] >= MAX_SPRITES)
+                continue;
+
             if (i == 0)
                 StartSpriteAnim(&gSprites[spriteIds[i]], 4); // left
             else if (i == 9)
@@ -4183,6 +4271,17 @@ static void CreateMoveSelectorSprites(u8 idArrayStart)
             gSprites[spriteIds[i]].data[1] = 0;
         }
     }
+}
+
+static bool8 HasMoveSelectorSprites(u8 firstArrayId)
+{
+    u8 i;
+
+    for (i = 0; i < MOVE_SELECTOR_SPRITES_COUNT; i++)
+        if (sMonSummaryScreen->spriteIds[firstArrayId + i] < MAX_SPRITES)
+            return TRUE;
+
+    return FALSE;
 }
 
 static void SpriteCB_MoveSelector(struct Sprite *sprite)
@@ -4222,6 +4321,9 @@ static void SetMainMoveSelectorColor(u8 which)
     which *= 3;
     for (i = 0; i < MOVE_SELECTOR_SPRITES_COUNT; i++)
     {
+        if (spriteIds[i] >= MAX_SPRITES)
+            continue;
+
         if (i == 0)
             StartSpriteAnim(&gSprites[spriteIds[i]], which + 4);
         else if (i == 9)
@@ -4238,6 +4340,9 @@ static void KeepMoveSelectorVisible(u8 firstSpriteId)
 
     for (i = 0; i < MOVE_SELECTOR_SPRITES_COUNT; i++)
     {
+        if (spriteIds[i] >= MAX_SPRITES)
+            continue;
+
         gSprites[spriteIds[i]].data[1] = 0;
         gSprites[spriteIds[i]].invisible = FALSE;
     }

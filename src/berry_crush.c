@@ -1378,11 +1378,23 @@ static void CreateBerrySprites(struct BerryCrushGame *game, struct BerryCrushGam
 
     for (i = 0; i < game->playerCount; i++)
     {
+        gfx->berrySprites[i] = NULL;
         spriteId = AddCustomItemIconSprite(
             &sSpriteTemplate_PlayerBerry,
             sPlayerBerrySpriteTags[i],
             sPlayerBerrySpriteTags[i],
             game->players[i].berryId + FIRST_BERRY_INDEX);
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
+        if (GetSpriteTileStartByTag(sPlayerBerrySpriteTags[i]) == SPRITE_TILE_NONE
+         || IndexOfSpritePaletteTag(sPlayerBerrySpriteTags[i]) == 0xFF)
+        {
+            FreeSpriteOamMatrix(&gSprites[spriteId]);
+            DestroySprite(&gSprites[spriteId]);
+            continue;
+        }
+
         gfx->berrySprites[i] = &gSprites[spriteId];
         gfx->berrySprites[i]->oam.priority = 3;
         gfx->berrySprites[i]->affineAnimPaused = TRUE;
@@ -1478,6 +1490,9 @@ static void UpdateInputEffects(struct BerryCrushGame *game, struct BerryCrushGam
         if (flags)
         {
             numPlayersPressed++;
+            if (gfx->impactSprites[i] == NULL)
+                continue;
+
             if (flags & F_INPUT_HIT_SYNC)
                 StartSpriteAnim(gfx->impactSprites[i], 1); // Big impact sprite
             else
@@ -1503,14 +1518,16 @@ static void UpdateInputEffects(struct BerryCrushGame *game, struct BerryCrushGam
 
         yModifier = (u8)(game->timer % 3);
         xModifier = yModifier;
-        for (i = 0; i < linkState->sparkleAmount * 2 + 3; i++)
+        for (i = 0; i < linkState->sparkleAmount * 2 + 3 && i < ARRAY_COUNT(gfx->sparkleSprites); i++)
         {
-            if (gfx->sparkleSprites[i]->invisible)
+            if (gfx->sparkleSprites[i] != NULL && gfx->sparkleSprites[i]->invisible)
             {
                 gfx->sparkleSprites[i]->callback = SpriteCB_Sparkle_Init;
                 gfx->sparkleSprites[i]->x = sSparkleCoords[i][0] + 120;
                 gfx->sparkleSprites[i]->y = sSparkleCoords[i][1] + 136 - (yModifier * 4);
-                gfx->sparkleSprites[i]->x2 = sSparkleCoords[i][0] + (sSparkleCoords[i][0] / (xModifier * 4));
+                gfx->sparkleSprites[i]->x2 = sSparkleCoords[i][0];
+                if (xModifier != 0)
+                    gfx->sparkleSprites[i]->x2 += sSparkleCoords[i][0] / (xModifier * 4);
                 gfx->sparkleSprites[i]->y2 = sSparkleCoords[i][1];
                 if (linkState->bigSparkle)
                     StartSpriteAnim(gfx->sparkleSprites[i], 1);
@@ -1548,14 +1565,14 @@ static bool32 AreEffectsFinished(struct BerryCrushGame *game, struct BerryCrushG
     // Are any impact sprites active
     for (i = 0; i < game->playerCount; i++)
     {
-        if (!gfx->impactSprites[i]->invisible)
+        if (gfx->impactSprites[i] != NULL && !gfx->impactSprites[i]->invisible)
             return FALSE;
     }
 
     // Are any sparkle sprites active
     for (i = 0; i < ARRAY_COUNT(gfx->sparkleSprites); i++)
     {
-        if (!gfx->sparkleSprites[i]->invisible)
+        if (gfx->sparkleSprites[i] != NULL && !gfx->sparkleSprites[i]->invisible)
             return FALSE;
     }
 
@@ -1878,8 +1895,11 @@ static void PrintTimer(struct BerryCrushGame_Gfx *gfx, u16 timer)
 
 static void HideTimer(struct BerryCrushGame_Gfx *gfx)
 {
-    gfx->timerSprites[0]->invisible = TRUE;
-    gfx->timerSprites[1]->invisible = TRUE;
+    u8 i;
+
+    for (i = 0; i < ARRAY_COUNT(gfx->timerSprites); i++)
+        if (gfx->timerSprites[i] != NULL)
+            gfx->timerSprites[i]->invisible = TRUE;
     DigitObjUtil_HideOrShow(2, TRUE);
     DigitObjUtil_HideOrShow(1, TRUE);
     DigitObjUtil_HideOrShow(0, TRUE);
@@ -1960,10 +1980,21 @@ static void CopyPlayerNameWindowGfxToBg(struct BerryCrushGame *game)
     CopyBgTilemapBufferToVram(3);
 }
 
+static struct Sprite *CreateCrusherSprite(const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
+{
+    u8 spriteId;
+
+    if (GetSpriteTileStartByTag(template->tileTag) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(template->paletteTag) == 0xFF)
+        return NULL;
+
+    spriteId = CreateSprite(template, x, y, subpriority);
+    return spriteId < MAX_SPRITES ? &gSprites[spriteId] : NULL;
+}
+
 static void CreateGameSprites(struct BerryCrushGame *game)
 {
     u8 i = 0;
-    u8 spriteId;
 
     game->depth = CRUSHER_START_Y;
     game->vibration = 0;
@@ -1974,22 +2005,26 @@ static void CreateGameSprites(struct BerryCrushGame *game)
     LoadSpritePalettes(sSpritePals);
 
     // Create sprite for crusher base
-    spriteId = CreateSprite(&sSpriteTemplate_CrusherBase, 120, 88, 5);
-    game->gfx.coreSprite = &gSprites[spriteId];
-    game->gfx.coreSprite->oam.priority = 3;
-    game->gfx.coreSprite->coordOffsetEnabled = TRUE;
-    game->gfx.coreSprite->animPaused = TRUE;
+    game->gfx.coreSprite = CreateCrusherSprite(&sSpriteTemplate_CrusherBase, 120, 88, 5);
+    if (game->gfx.coreSprite != NULL)
+    {
+        game->gfx.coreSprite->oam.priority = 3;
+        game->gfx.coreSprite->coordOffsetEnabled = TRUE;
+        game->gfx.coreSprite->animPaused = TRUE;
+    }
 
     // Create sprites for the impact effect
     for (i = 0; i < game->playerCount; i++)
     {
-        spriteId = CreateSprite(
+        game->gfx.impactSprites[i] = CreateCrusherSprite(
             &sSpriteTemplate_Impact,
             game->gfx.playerCoords[i]->impactXOffset + 120,
             game->gfx.playerCoords[i]->impactYOffset + 32,
             0
         );
-        game->gfx.impactSprites[i] = &gSprites[spriteId];
+        if (game->gfx.impactSprites[i] == NULL)
+            continue;
+
         game->gfx.impactSprites[i]->oam.priority = 1;
         game->gfx.impactSprites[i]->invisible = TRUE;
         game->gfx.impactSprites[i]->coordOffsetEnabled = TRUE;
@@ -1999,13 +2034,15 @@ static void CreateGameSprites(struct BerryCrushGame *game)
     // Create sprites for sparkle effect
     for (i = 0; i < ARRAY_COUNT(game->gfx.sparkleSprites); i++)
     {
-        spriteId = CreateSprite(
+        game->gfx.sparkleSprites[i] = CreateCrusherSprite(
             &sSpriteTemplate_Sparkle,
             sSparkleCoords[i][0] + 120,
             sSparkleCoords[i][1] + 136,
             6
         );
-        game->gfx.sparkleSprites[i] = &gSprites[spriteId];
+        if (game->gfx.sparkleSprites[i] == NULL)
+            continue;
+
         game->gfx.sparkleSprites[i]->oam.priority = 3;
         game->gfx.sparkleSprites[i]->invisible = TRUE;
         game->gfx.sparkleSprites[i]->animPaused = TRUE;
@@ -2015,8 +2052,10 @@ static void CreateGameSprites(struct BerryCrushGame *game)
     // Create sprites for timer
     for (i = 0; i < ARRAY_COUNT(game->gfx.timerSprites); i++)
     {
-        spriteId = CreateSprite(&sSpriteTemplate_Timer, 24 * i + 176, 8, 0);
-        game->gfx.timerSprites[i] = &gSprites[spriteId];
+        game->gfx.timerSprites[i] = CreateCrusherSprite(&sSpriteTemplate_Timer, 24 * i + 176, 8, 0);
+        if (game->gfx.timerSprites[i] == NULL)
+            continue;
+
         game->gfx.timerSprites[i]->oam.priority = 0;
         game->gfx.timerSprites[i]->invisible = FALSE;
         game->gfx.timerSprites[i]->animPaused = FALSE;
@@ -2040,15 +2079,18 @@ static void DestroyGameSprites(struct BerryCrushGame *game)
     FreeSpritePaletteByTag(PALTAG_EFFECT);
     FreeSpritePaletteByTag(TAG_CRUSHER_BASE);
     for (i = 0; i < ARRAY_COUNT(game->gfx.timerSprites); i++)
-        DestroySprite(game->gfx.timerSprites[i]);
+        if (game->gfx.timerSprites[i] != NULL)
+            DestroySprite(game->gfx.timerSprites[i]);
     DigitObjUtil_DeletePrinter(2);
     DigitObjUtil_DeletePrinter(1);
     DigitObjUtil_DeletePrinter(0);
     for (i = 0; i < ARRAY_COUNT(game->gfx.sparkleSprites); i++)
-        DestroySprite(game->gfx.sparkleSprites[i]);
+        if (game->gfx.sparkleSprites[i] != NULL)
+            DestroySprite(game->gfx.sparkleSprites[i]);
     for (i = 0; i < game->playerCount; i++)
-        DestroySprite(game->gfx.impactSprites[i]);
-    if (game->gfx.coreSprite->inUse)
+        if (game->gfx.impactSprites[i] != NULL)
+            DestroySprite(game->gfx.impactSprites[i]);
+    if (game->gfx.coreSprite != NULL)
         DestroySprite(game->gfx.coreSprite);
 }
 
@@ -2424,12 +2466,16 @@ static u32 Cmd_DropBerriesIntoCrusher(struct BerryCrushGame *game, u8 *args)
         game->gfx.vibrating = FALSE;
         break;
     case 2:
-        game->gfx.berrySprites[game->gfx.counter]->callback = SpriteCB_DropBerryIntoCrusher;
-        game->gfx.berrySprites[game->gfx.counter]->affineAnimPaused = FALSE;
+        if (game->gfx.berrySprites[game->gfx.counter] != NULL)
+        {
+            game->gfx.berrySprites[game->gfx.counter]->callback = SpriteCB_DropBerryIntoCrusher;
+            game->gfx.berrySprites[game->gfx.counter]->affineAnimPaused = FALSE;
+        }
         PlaySE(SE_BALL_THROW);
         break;
     case 3:
-        if (game->gfx.berrySprites[game->gfx.counter]->callback == SpriteCB_DropBerryIntoCrusher)
+        if (game->gfx.berrySprites[game->gfx.counter] != NULL
+         && game->gfx.berrySprites[game->gfx.counter]->callback == SpriteCB_DropBerryIntoCrusher)
             return 0;
         game->gfx.berrySprites[game->gfx.counter] = NULL;
         game->gfx.counter++;

@@ -231,7 +231,7 @@ static void AnimDirtScatter(struct Sprite *sprite)
 // arg 2: initial y pixel offset
 static void AnimMudSportDirt(struct Sprite *sprite)
 {
-    sprite->oam.tileNum++;
+    OffsetSpriteTile(sprite, 1);
     if (gBattleAnimArgs[0] == 0)
     {
         sprite->x = GetBattlerSpriteCoord(gBattleAnimAttacker, BATTLER_COORD_X_2) + gBattleAnimArgs[1];
@@ -551,7 +551,7 @@ static void AnimDigDirtMound(struct Sprite *sprite)
 
     sprite->x = GetBattlerSpriteCoord(battler, BATTLER_COORD_X) - 16 + (gBattleAnimArgs[1] * 32);
     sprite->y = GetBattlerYCoordWithElevation(battler) + 32;
-    sprite->oam.tileNum += gBattleAnimArgs[1] * 8;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[1] * 8);
     StoreSpriteCallbackInData6(sprite, DestroyAnimSprite);
     sprite->data[0] = gBattleAnimArgs[2];
     sprite->callback = WaitAnimForDuration;
@@ -744,12 +744,19 @@ void AnimTask_IsPowerOver99(u8 taskId)
 void AnimTask_PositionFissureBgOnBattler(u8 taskId)
 {
     struct Task *newTask;
+    u8 newTaskId = TryCreateAnimTask(WaitForFissureCompletion, gBattleAnimArgs[1]);
     u8 battler = (gBattleAnimArgs[0] & ANIM_TARGET) ? gBattleAnimTarget : gBattleAnimAttacker;
+
+    if (newTaskId == TASK_NONE)
+    {
+        DestroyAnimVisualTask(taskId);
+        return;
+    }
 
     if (gBattleAnimArgs[0] > ANIM_TARGET)
         battler = BATTLE_PARTNER(battler);
 
-    newTask = &gTasks[CreateTask(WaitForFissureCompletion, gBattleAnimArgs[1])];
+    newTask = &gTasks[newTaskId];
     newTask->data[1] = (32 - GetBattlerSpriteCoord(battler, BATTLER_COORD_X_2)) & 0x1FF;
     newTask->data[2] = (64 - GetBattlerSpriteCoord(battler, BATTLER_COORD_Y_PIC_OFFSET)) & 0xFF;
     gBattle_BG3_X = newTask->data[1];

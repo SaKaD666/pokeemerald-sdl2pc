@@ -3,6 +3,7 @@
 
 #include "battle.h"
 #include "constants/battle_anim.h"
+#include "palette.h"
 #include "task.h"
 
 enum
@@ -37,7 +38,7 @@ struct BattleAnimBackground
 
 extern void (*gAnimScriptCallback)(void);
 extern bool8 gAnimScriptActive;
-extern u8 gAnimVisualTaskCount;
+extern u16 gAnimVisualTaskCount;
 extern u8 gAnimSoundTaskCount;
 extern struct DisableStruct *gAnimDisableStructPtr;
 extern s32 gAnimMoveDmg;
@@ -54,8 +55,16 @@ extern u8 gAnimCustomPanning;
 void ClearBattleAnimationVars(void);
 void DoMoveAnim(u16 move);
 void LaunchBattleAnimation(const u8 *const animsTable[], u16 tableId, bool8 isMoveAnim);
+// The sprite callback releases its visual count with DestroyAnimSprite.
+u8 CreateCountedAnimSprite(const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority, bool8 animateImmediately);
 void DestroyAnimSprite(struct Sprite *sprite);
+u8 TryCreateAnimTask(TaskFunc taskFunc, u8 priority);
+void StartAnimVisualTask(TaskFunc taskFunc, u8 priority);
+void AnimTask_TransformMon(u8 taskId);
+void AnimTask_CastformGfxDataChange(u8 taskId);
+void AnimTask_IsMonInvisible(u8 taskId);
 void DestroyAnimVisualTask(u8 taskId);
+void CompleteBallThrowWithoutSprite(u8 battler);
 void DestroyAnimSoundTask(u8 taskId);
 bool8 IsBattlerSpriteVisible(u8 battler);
 void MoveBattlerSpriteToBG(u8 battler, bool8 toBG_2, bool8 setSpriteInvisible);
@@ -118,8 +127,8 @@ void SetSpriteRotScale(u8 spriteId, s16 xScale, s16 yScale, u16 rotation);
 void InitSpriteDataForLinearTranslation(struct Sprite *sprite);
 void PrepareBattlerSpriteForRotScale(u8 spriteId, u8 objMode);
 void SetBattlerSpriteYOffsetFromRotation(u8 spriteId);
-u32 GetBattlePalettesMask(bool8 battleBackground, bool8 attacker, bool8 target, bool8 attackerPartner, bool8 targetPartner, bool8 anim1, bool8 anim2);
-u32 GetBattleMonSpritePalettesMask(u8 playerLeft, u8 playerRight, u8 opponentLeft, u8 opponentRight);
+PaletteMask GetBattlePalettesMask(bool8 battleBackground, bool8 attacker, bool8 target, bool8 attackerPartner, bool8 targetPartner, bool8 anim1, bool8 anim2);
+PaletteMask GetBattleMonSpritePalettesMask(u8 playerLeft, u8 playerRight, u8 opponentLeft, u8 opponentRight);
 u8 GetSpritePalIdxByBattler(u8 battler);
 s16 CloneBattlerSpriteWithBlend(u8 animBattler);
 void DestroySpriteWithActiveSheet(struct Sprite *sprite);
@@ -141,7 +150,7 @@ void TranslateSpriteLinear(struct Sprite *sprite);
 void AnimSpriteOnMonPos(struct Sprite *sprite);
 void InitAnimLinearTranslationWithSpeedAndPos(struct Sprite *sprite);
 void TranslateSpriteInCircle(struct Sprite *sprite);
-void SetGrayscaleOrOriginalPalette(u16 paletteNum, bool8 restoreOriginalColor);
+void SetSpriteGrayscaleOrOriginalPalette(const struct Sprite *sprite, bool8 restoreOriginalColor);
 void PrepareAffineAnimInTaskData(struct Task *task, u8 spriteId, const union AffineAnimCmd *affineAnimCmds);
 bool8 RunAffineAnimFromTaskData(struct Task *task);
 void AnimThrowProjectile(struct Sprite *sprite);
@@ -221,7 +230,7 @@ void AnimTask_HorizontalShake(u8 taskId);
 void TryShinyAnimation(u8 battler, struct Pokemon *mon);
 u8 ItemIdToBallId(u16 ballItem);
 u8 AnimateBallOpenParticles(u8 x, u8 y, u8 priority, u8 subpriority, u8 ballId);
-u8 LaunchBallFadeMonTask(bool8 unfadeLater, u8 spritePalNum, u32 selectedPalettes, u8 ballId);
+u8 LaunchBallFadeMonTask(bool8 unfadeLater, u8 spritePalNum, PaletteMask selectedPalettes, u8 ballId);
 
 // battle_anim_utility_funcs.c
 void InitStatsChangeAnimation(u8 taskId);
@@ -241,7 +250,7 @@ void DestroyAnimSpriteAfterTimer(struct Sprite *sprite);
 // battle_anim_smokescreen.c
 u8 SmokescreenImpact(s16 x, s16 y, bool8 persist);
 
-u32 UnpackSelectedBattlePalettes(s16 selector);
+PaletteMask UnpackSelectedBattlePalettes(s16 selector);
 
 u8 GetBattlerSpriteFinal_Y(u8 battler, u16 species, bool8 a3);
 

@@ -279,10 +279,11 @@ struct DodrioGame
 }; // size = 0x3330
 
 EWRAM_DATA static struct DodrioGame *sGame = NULL;
-EWRAM_DATA static u16 *sDodrioSpriteIds[MAX_RFU_PLAYERS] = {NULL};
-EWRAM_DATA static u16 *sCloudSpriteIds[NUM_CLOUDS] = {NULL};
-EWRAM_DATA static u16 *sBerrySpriteIds[NUM_BERRY_COLUMNS] = {NULL};
-EWRAM_DATA static u16 *sBerryIconSpriteIds[NUM_BERRY_TYPES] = {NULL};
+EWRAM_DATA static u8 sDodrioSpriteIds[MAX_RFU_PLAYERS];
+EWRAM_DATA static u8 sCloudSpriteIds[NUM_CLOUDS];
+EWRAM_DATA static u16 sCloudMoveTimers[NUM_CLOUDS];
+EWRAM_DATA static u8 sBerrySpriteIds[NUM_BERRY_COLUMNS];
+EWRAM_DATA static u8 sBerryIconSpriteIds[NUM_BERRY_TYPES];
 EWRAM_DATA static struct StatusBar *sStatusBar = NULL;
 EWRAM_DATA static struct DodrioGame_Gfx *sGfx = NULL;
 
@@ -1317,7 +1318,12 @@ static void CB2_ExitDodrioGame(void)
 
     SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+#else
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeAllWindowBuffers();
@@ -3850,10 +3856,11 @@ static void LoadDodrioGfx(void)
     struct SpritePalette normal = {sDodrioNormal_Pal, PALTAG_DODRIO_NORMAL};
     struct SpritePalette shiny = {sDodrioShiny_Pal, PALTAG_DODRIO_SHINY};
 
-    LZ77UnCompWram(sDodrio_Gfx, ptr);
+    memset(sDodrioSpriteIds, SPRITE_NONE, sizeof(sDodrioSpriteIds));
     if (ptr)
     {
         struct SpriteSheet sheet = {ptr, 0x3000, GFXTAG_DODRIO};
+        LZ77UnCompWram(sDodrio_Gfx, ptr);
         LoadSpriteSheet(&sheet);
         Free(ptr);
     }
@@ -3874,8 +3881,11 @@ static void CreateDodrioSprite(struct DodrioGame_MonInfo *monInfo, u8 playerId, 
         .callback = SpriteCB_Dodrio,
     };
 
-    sDodrioSpriteIds[id] = AllocZeroed(4);
-    *sDodrioSpriteIds[id] = CreateSprite(&template, GetDodrioXPos(playerId, numPlayers), 136, 3);
+    if (GetSpriteTileStartByTag(template.tileTag) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(template.paletteTag) == 0xFF)
+        return;
+
+    sDodrioSpriteIds[id] = CreateSprite(&template, GetDodrioXPos(playerId, numPlayers), 136, 3);
     SetDodrioInvisibility(TRUE, id);
 }
 
@@ -3902,7 +3912,13 @@ static void SpriteCB_Dodrio(struct Sprite *sprite)
 
 static void StartDodrioMissedAnim(u8 unused)
 {
-    struct Sprite *sprite = &gSprites[*sDodrioSpriteIds[GetMultiplayerId()]];
+    u8 spriteId = sDodrioSpriteIds[GetMultiplayerId()];
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+
+    sprite = &gSprites[spriteId];
     sprite->sState = 1;
     sprite->sTimer = 0;
     sprite->sUnused1 = 0;
@@ -3912,7 +3928,13 @@ static void StartDodrioMissedAnim(u8 unused)
 
 static void StartDodrioIntroAnim(u8 unused)
 {
-    struct Sprite *sprite = &gSprites[*sDodrioSpriteIds[GetMultiplayerId()]];
+    u8 spriteId = sDodrioSpriteIds[GetMultiplayerId()];
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+
+    sprite = &gSprites[spriteId];
     sprite->sState = 2;
     sprite->sTimer = 0;
     sprite->sUnused1 = 0;
@@ -3982,20 +4004,23 @@ static u32 DoDodrioIntroAnim(struct Sprite *sprite)
 static void FreeDodrioSprites(u8 numPlayers)
 {
     u8 i;
+
     for (i = 0; i < numPlayers; i++)
     {
-        struct Sprite *sprite = &gSprites[*sDodrioSpriteIds[i]];
-        if (sprite)
-            DestroySpriteAndFreeResources(sprite);
-#ifdef BUGFIX
-        FREE_AND_SET_NULL(sDodrioSpriteIds[i]); // Memory should be freed here but is not.
-#endif
+        if (sDodrioSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sDodrioSpriteIds[i]]);
+        sDodrioSpriteIds[i] = SPRITE_NONE;
     }
+
+    FreeSpriteTilesByTag(GFXTAG_DODRIO);
+    FreeSpritePaletteByTag(PALTAG_DODRIO_NORMAL);
+    FreeSpritePaletteByTag(PALTAG_DODRIO_SHINY);
 }
 
 static void SetDodrioInvisibility(bool8 invisible, u8 id)
 {
-    gSprites[*sDodrioSpriteIds[id]].invisible = invisible;
+    if (sDodrioSpriteIds[id] < MAX_SPRITES)
+        gSprites[sDodrioSpriteIds[id]].invisible = invisible;
 }
 
 static void SetAllDodrioInvisibility(bool8 invisible, u8 count)
@@ -4007,7 +4032,8 @@ static void SetAllDodrioInvisibility(bool8 invisible, u8 count)
 
 static void SetDodrioAnim(u8 id, u8 pickState)
 {
-    StartSpriteAnim(&gSprites[*sDodrioSpriteIds[id]], pickState);
+    if (sDodrioSpriteIds[id] < MAX_SPRITES)
+        StartSpriteAnim(&gSprites[sDodrioSpriteIds[id]], pickState);
 }
 
 static void SpriteCB_Status(struct Sprite *sprite)
@@ -4018,9 +4044,15 @@ static void SpriteCB_Status(struct Sprite *sprite)
 static void InitStatusBarPos(void)
 {
     u8 i;
+    if (sStatusBar == NULL)
+        return;
+
     for (i = 0; i < NUM_STATUS_SQUARES; i++)
     {
-        struct Sprite *sprite = &gSprites[sStatusBar->spriteIds[i]];
+        struct Sprite *sprite;
+        if (sStatusBar->spriteIds[i] >= MAX_SPRITES)
+            continue;
+        sprite = &gSprites[sStatusBar->spriteIds[i]];
         sprite->x = (i * 16) + 48;
         sprite->y = -8 - (i * 8);
         sStatusBar->entered[i] = FALSE;
@@ -4033,8 +4065,6 @@ static void CreateStatusBarSprites(void)
     void *ptr = AllocZeroed(0x180);
     struct SpritePalette pal = {sStatus_Pal, PALTAG_STATUS};
 
-    LZ77UnCompWram(sStatus_Gfx, ptr);
-    // This check should be one line up.
     if (ptr)
     {
         struct SpriteSheet sheet = {ptr, 0x180, GFXTAG_STATUS};
@@ -4050,10 +4080,14 @@ static void CreateStatusBarSprites(void)
         };
 
         sStatusBar = AllocZeroed(sizeof(*sStatusBar));
-        LoadSpriteSheet(&sheet);
-        LoadSpritePalette(&pal);
-        for (i = 0; i < NUM_STATUS_SQUARES; i++)
-            sStatusBar->spriteIds[i] = CreateSprite(&template, (i * 16) + 48, -8 - (i * 8), 0);
+        if (sStatusBar != NULL)
+        {
+            memset(sStatusBar->spriteIds, SPRITE_NONE, sizeof(sStatusBar->spriteIds));
+            LZ77UnCompWram(sStatus_Gfx, ptr);
+            if (LoadSpriteSheet(&sheet) != SPRITE_TILE_NONE && LoadSpritePalette(&pal) != 0xFF)
+                for (i = 0; i < NUM_STATUS_SQUARES; i++)
+                    sStatusBar->spriteIds[i] = CreateSprite(&template, (i * 16) + 48, -8 - (i * 8), 0);
+        }
     }
 
     Free(ptr);
@@ -4062,12 +4096,15 @@ static void CreateStatusBarSprites(void)
 static void FreeStatusBar(void)
 {
     u8 i;
+    if (sStatusBar == NULL)
+        return;
+
     for (i = 0; i < NUM_STATUS_SQUARES; i++)
-    {
-        struct Sprite *sprite = &gSprites[sStatusBar->spriteIds[i]];
-        if (sprite)
-            DestroySpriteAndFreeResources(sprite);
-    }
+        if (sStatusBar->spriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sStatusBar->spriteIds[i]]);
+
+    FreeSpriteTilesByTag(GFXTAG_STATUS);
+    FreeSpritePaletteByTag(PALTAG_STATUS);
     FREE_AND_SET_NULL(sStatusBar);
 }
 
@@ -4079,9 +4116,15 @@ static bool32 DoStatusBarIntro(void)
 {
     u8 i;
     bool32 animActive = FALSE;
+    if (sStatusBar == NULL)
+        return TRUE;
+
     for (i = 0; i < NUM_STATUS_SQUARES; i++)
     {
-        struct Sprite *sprite = &gSprites[sStatusBar->spriteIds[i]];
+        struct Sprite *sprite;
+        if (sStatusBar->spriteIds[i] >= MAX_SPRITES)
+            continue;
+        sprite = &gSprites[sStatusBar->spriteIds[i]];
         sStatusBar->yChange[i] = 2;
         if (sStatusBar->entered[i] && sprite->y == 8)
             continue;
@@ -4107,6 +4150,12 @@ static bool32 DoStatusBarIntro(void)
         return TRUE;
 }
 
+static void SetStatusSquareAnim(u8 i, u8 anim)
+{
+    if (sStatusBar->spriteIds[i] < MAX_SPRITES)
+        StartSpriteAnim(&gSprites[sStatusBar->spriteIds[i]], anim);
+}
+
 // The status bar at the top changes color depending on the game performance.
 // The squares start out yellow. For every berry missed, a square is colored gray.
 // If there are 4 or fewer yellow squares left they also flash red
@@ -4114,11 +4163,14 @@ static void UpdateStatusBarAnim(u8 numEmpty)
 {
     u8 i;
 
+    if (sStatusBar == NULL)
+        return;
+
     if (numEmpty > NUM_STATUS_SQUARES)
     {
         // All squares gray
         for (i = 0; i < NUM_STATUS_SQUARES; i++)
-            StartSpriteAnim(&gSprites[sStatusBar->spriteIds[i]], STATUS_GRAY);
+            SetStatusSquareAnim(i, STATUS_GRAY);
     }
     else
     {
@@ -4133,28 +4185,32 @@ static void UpdateStatusBarAnim(u8 numEmpty)
                 if (sStatusBar->flashTimer > 30)
                     sStatusBar->flashTimer = 0;
                 else if (sStatusBar->flashTimer > 10)
-                    StartSpriteAnim(&gSprites[sStatusBar->spriteIds[i]], STATUS_RED);
+                    SetStatusSquareAnim(i, STATUS_RED);
                 else
-                    StartSpriteAnim(&gSprites[sStatusBar->spriteIds[i]], STATUS_YELLOW);
+                    SetStatusSquareAnim(i, STATUS_YELLOW);
             }
             else
             {
                 // Set yellow squares, no flash
-                StartSpriteAnim(&gSprites[sStatusBar->spriteIds[i]], STATUS_YELLOW);
+                SetStatusSquareAnim(i, STATUS_YELLOW);
             }
         }
 
         // Set remaining squares gray
         for (; i < NUM_STATUS_SQUARES; i++)
-            StartSpriteAnim(&gSprites[sStatusBar->spriteIds[i]], STATUS_GRAY);
+            SetStatusSquareAnim(i, STATUS_GRAY);
     }
 }
 
 static void SetStatusBarInvisibility(bool8 invisible)
 {
     u8 i;
+    if (sStatusBar == NULL)
+        return;
+
     for (i = 0; i < NUM_STATUS_SQUARES; i++)
-        gSprites[sStatusBar->spriteIds[i]].invisible = invisible;
+        if (sStatusBar->spriteIds[i] < MAX_SPRITES)
+            gSprites[sStatusBar->spriteIds[i]].invisible = invisible;
 }
 
 static const u8 sUnusedSounds[] = {
@@ -4175,10 +4231,10 @@ static void LoadBerryGfx(void)
     void *ptr = AllocZeroed(0x480);
     struct SpritePalette pal = {sBerries_Pal, PALTAG_BERRIES};
 
-    LZ77UnCompWram(sBerries_Gfx, ptr);
     if (ptr)
     {
         struct SpriteSheet sheet = {ptr, 0x480, GFXTAG_BERRIES};
+        LZ77UnCompWram(sBerries_Gfx, ptr);
         LoadSpriteSheet(&sheet);
     }
 
@@ -4191,7 +4247,6 @@ static const s16 sBerryIconXCoords[] = {88, 128, 168, 208};
 static void CreateBerrySprites(void)
 {
     u8 i;
-    s16 x;
 
     struct SpriteTemplate berry =
     {
@@ -4214,69 +4269,74 @@ static void CreateBerrySprites(void)
         .callback = SpriteCallbackDummy,
     };
 
+    memset(sBerrySpriteIds, SPRITE_NONE, sizeof(sBerrySpriteIds));
+    memset(sBerryIconSpriteIds, SPRITE_NONE, sizeof(sBerryIconSpriteIds));
+    if (GetSpriteTileStartByTag(GFXTAG_BERRIES) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(PALTAG_BERRIES) == 0xFF)
+        return;
+
     // Create berry sprites that fall during gameplay
     for (i = 0; i < NUM_BERRY_COLUMNS; i++)
     {
-        sBerrySpriteIds[i] = AllocZeroed(4);
-        x = i * 16;
-        *sBerrySpriteIds[i] = CreateSprite(&berry, x + (i * 8), 8, 1);
+        sBerrySpriteIds[i] = CreateSprite(&berry, i * 24, 8, 1);
         SetBerryInvisibility(i, TRUE);
     }
 
     // Create berry icon sprites for results screen
     for (i = 0; i < NUM_BERRY_TYPES; i++)
     {
-        sBerryIconSpriteIds[i] = AllocZeroed(4);
-        if (i == BERRY_MISSED)
-            *sBerryIconSpriteIds[i] = CreateSprite(&berryIcon, sBerryIconXCoords[i], 49, 0);
-        else
-            *sBerryIconSpriteIds[i] = CreateSprite(&berryIcon, sBerryIconXCoords[i], 52, 0);
-        StartSpriteAnim(&gSprites[*sBerryIconSpriteIds[i]], i);
+        s16 y = i == BERRY_MISSED ? 49 : 52;
+        sBerryIconSpriteIds[i] = CreateSprite(&berryIcon, sBerryIconXCoords[i], y, 0);
+        if (sBerryIconSpriteIds[i] < MAX_SPRITES)
+            StartSpriteAnim(&gSprites[sBerryIconSpriteIds[i]], i);
     }
     SetBerryIconsInvisibility(TRUE);
 }
 
 static void FreeBerrySprites(void)
 {
-    struct Sprite *sprite;
     u8 i;
 
     for (i = 0; i < NUM_BERRY_COLUMNS; i++)
     {
-        sprite = &gSprites[*sBerrySpriteIds[i]];
-        if (sprite)
-            DestroySprite(sprite);
-        FREE_AND_SET_NULL(sBerrySpriteIds[i]);
+        if (sBerrySpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sBerrySpriteIds[i]]);
+        sBerrySpriteIds[i] = SPRITE_NONE;
     }
     for (i = 0; i < NUM_BERRY_TYPES; i++)
     {
-        sprite = &gSprites[*sBerryIconSpriteIds[i]];
-        if (sprite)
-            DestroySprite(sprite);
-        FREE_AND_SET_NULL(sBerryIconSpriteIds[i]);
+        if (sBerryIconSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sBerryIconSpriteIds[i]]);
+        sBerryIconSpriteIds[i] = SPRITE_NONE;
     }
+    FreeSpriteTilesByTag(GFXTAG_BERRIES);
+    FreeSpritePaletteByTag(PALTAG_BERRIES);
 }
 
 static void SetBerryInvisibility(u8 id, bool8 invisible)
 {
-    gSprites[*sBerrySpriteIds[id]].invisible = invisible;
+    if (sBerrySpriteIds[id] < MAX_SPRITES)
+        gSprites[sBerrySpriteIds[id]].invisible = invisible;
 }
 
 static void SetBerryIconsInvisibility(bool8 invisible)
 {
     u8 i;
     for (i = 0; i < NUM_BERRY_TYPES; i++)
-        gSprites[*sBerryIconSpriteIds[i]].invisible = invisible;
+        if (sBerryIconSpriteIds[i] < MAX_SPRITES)
+            gSprites[sBerryIconSpriteIds[i]].invisible = invisible;
 }
 
 static void SetBerryYPos(u8 id, u8 y)
 {
-    gSprites[*sBerrySpriteIds[id]].y = y * 8;
+    if (sBerrySpriteIds[id] < MAX_SPRITES)
+        gSprites[sBerrySpriteIds[id]].y = y * 8;
 }
 
 static void SetBerryAnim(u16 id, u8 animNum)
 {
-    StartSpriteAnim(&gSprites[*sBerrySpriteIds[id]], animNum);
+    if (sBerrySpriteIds[id] < MAX_SPRITES)
+        StartSpriteAnim(&gSprites[sBerrySpriteIds[id]], animNum);
 }
 
 static void UNUSED UnusedSetSpritePos(u8 spriteId)
@@ -4302,10 +4362,10 @@ static void SpriteCB_Cloud(struct Sprite *sprite)
     {
         for (i = 0; i < NUM_CLOUDS; i++)
         {
-            if (++sCloudSpriteIds[i][1] > moveDelays[i])
+            if (++sCloudMoveTimers[i] > moveDelays[i])
             {
                 sprite->x--;
-                sCloudSpriteIds[i][1] = 0;
+                sCloudMoveTimers[i] = 0;
             }
         }
     }
@@ -4323,7 +4383,8 @@ static void CreateCloudSprites(void)
     void *ptr = AllocZeroed(0x400);
     struct SpritePalette pal = {sCloud_Pal, PALTAG_CLOUD};
 
-    LZ77UnCompWram(sCloud_Gfx, ptr);
+    memset(sCloudSpriteIds, SPRITE_NONE, sizeof(sCloudSpriteIds));
+    memset(sCloudMoveTimers, 0, sizeof(sCloudMoveTimers));
     if (ptr)
     {
         struct SpriteSheet sheet = {ptr, 0x400, GFXTAG_CLOUD};
@@ -4338,13 +4399,10 @@ static void CreateCloudSprites(void)
             .callback = SpriteCB_Cloud,
         };
 
-        LoadSpriteSheet(&sheet);
-        LoadSpritePalette(&pal);
-        for (i = 0; i < NUM_CLOUDS; i++)
-        {
-            sCloudSpriteIds[i] = AllocZeroed(4);
-            *sCloudSpriteIds[i] = CreateSprite(&template, sCloudStartCoords[i][0], sCloudStartCoords[i][1], 4);
-        }
+        LZ77UnCompWram(sCloud_Gfx, ptr);
+        if (LoadSpriteSheet(&sheet) != SPRITE_TILE_NONE && LoadSpritePalette(&pal) != 0xFF)
+            for (i = 0; i < NUM_CLOUDS; i++)
+                sCloudSpriteIds[i] = CreateSprite(&template, sCloudStartCoords[i][0], sCloudStartCoords[i][1], 4);
     }
 
     Free(ptr);
@@ -4355,7 +4413,10 @@ static void ResetCloudPos(void)
     u8 i;
     for (i = 0; i < NUM_CLOUDS; i++)
     {
-        struct Sprite *sprite = &gSprites[*sCloudSpriteIds[i]];
+        struct Sprite *sprite;
+        if (sCloudSpriteIds[i] >= MAX_SPRITES)
+            continue;
+        sprite = &gSprites[sCloudSpriteIds[i]];
         sprite->sFrozen = TRUE;
         sprite->x = sCloudStartCoords[i][0];
         sprite->y = sCloudStartCoords[i][1];
@@ -4367,7 +4428,10 @@ static void StartCloudMovement(void)
     u8 i;
     for (i = 0; i < NUM_CLOUDS; i++)
     {
-        struct Sprite *sprite = &gSprites[*sCloudSpriteIds[i]];
+        struct Sprite *sprite;
+        if (sCloudSpriteIds[i] >= MAX_SPRITES)
+            continue;
+        sprite = &gSprites[sCloudSpriteIds[i]];
         sprite->sFrozen = FALSE;
     }
 }
@@ -4377,18 +4441,20 @@ static void FreeCloudSprites(void)
     u8 i;
     for (i = 0; i < NUM_CLOUDS; i++)
     {
-        struct Sprite *sprite = &gSprites[*sCloudSpriteIds[i]];
-        if (sprite)
-            DestroySprite(sprite);
-        FREE_AND_SET_NULL(sCloudSpriteIds[i]);
+        if (sCloudSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sCloudSpriteIds[i]]);
+        sCloudSpriteIds[i] = SPRITE_NONE;
     }
+    FreeSpriteTilesByTag(GFXTAG_CLOUD);
+    FreeSpritePaletteByTag(PALTAG_CLOUD);
 }
 
 static void SetCloudInvisibility(bool8 invisible)
 {
     u8 i;
     for (i = 0; i < NUM_CLOUDS; i++)
-        gSprites[*sCloudSpriteIds[i]].invisible = invisible;
+        if (sCloudSpriteIds[i] < MAX_SPRITES)
+            gSprites[sCloudSpriteIds[i]].invisible = invisible;
 }
 
 #undef sFrozen

@@ -1,4 +1,5 @@
 #include "global.h"
+#include "battle_gfx_sfx_util.h"
 #include "battle.h"
 #include "battle_anim.h"
 #include "battle_arena.h"
@@ -365,7 +366,8 @@ static void HandleInputChooseTarget(void)
     if (JOY_NEW(A_BUTTON))
     {
         PlaySE(SE_SELECT);
-        gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
+        if (gBattlerSpriteIds[gMultiUsePlayerCursor] < MAX_SPRITES)
+            gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
         BtlController_EmitTwoReturnValues(B_COMM_TO_ENGINE, B_ACTION_EXEC_SCRIPT, gMoveSelectionCursor[gActiveBattler] | (gMultiUsePlayerCursor << 8));
         EndBounceEffect(gMultiUsePlayerCursor, BOUNCE_HEALTHBOX);
         PlayerBufferExecCompleted();
@@ -373,7 +375,8 @@ static void HandleInputChooseTarget(void)
     else if (JOY_NEW(B_BUTTON) || gPlayerDpadHoldFrames > 59)
     {
         PlaySE(SE_SELECT);
-        gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
+        if (gBattlerSpriteIds[gMultiUsePlayerCursor] < MAX_SPRITES)
+            gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
         gBattlerControllerFuncs[gActiveBattler] = HandleInputChooseMove;
         DoBounceEffect(gActiveBattler, BOUNCE_HEALTHBOX, 7, 1);
         DoBounceEffect(gActiveBattler, BOUNCE_MON, 7, 1);
@@ -382,7 +385,8 @@ static void HandleInputChooseTarget(void)
     else if (JOY_NEW(DPAD_LEFT | DPAD_UP))
     {
         PlaySE(SE_SELECT);
-        gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
+        if (gBattlerSpriteIds[gMultiUsePlayerCursor] < MAX_SPRITES)
+            gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
 
         do
         {
@@ -423,12 +427,14 @@ static void HandleInputChooseTarget(void)
             if (gAbsentBattlerFlags & gBitTable[gMultiUsePlayerCursor])
                 i = 0;
         } while (i == 0);
-        gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_ShowAsMoveTarget;
+        if (gBattlerSpriteIds[gMultiUsePlayerCursor] < MAX_SPRITES)
+            gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_ShowAsMoveTarget;
     }
     else if (JOY_NEW(DPAD_RIGHT | DPAD_DOWN))
     {
         PlaySE(SE_SELECT);
-        gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
+        if (gBattlerSpriteIds[gMultiUsePlayerCursor] < MAX_SPRITES)
+            gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_HideAsMoveTarget;
 
         do
         {
@@ -465,7 +471,8 @@ static void HandleInputChooseTarget(void)
             if (gAbsentBattlerFlags & gBitTable[gMultiUsePlayerCursor])
                 i = 0;
         } while (i == 0);
-        gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_ShowAsMoveTarget;
+        if (gBattlerSpriteIds[gMultiUsePlayerCursor] < MAX_SPRITES)
+            gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_ShowAsMoveTarget;
     }
 }
 
@@ -538,7 +545,8 @@ static void HandleInputChooseMove(void)
             else
                 gMultiUsePlayerCursor = GetBattlerAtPosition(B_POSITION_OPPONENT_LEFT);
 
-            gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_ShowAsMoveTarget;
+            if (gBattlerSpriteIds[gMultiUsePlayerCursor] < MAX_SPRITES)
+                gSprites[gBattlerSpriteIds[gMultiUsePlayerCursor]].callback = SpriteCB_ShowAsMoveTarget;
         }
     }
     else if (JOY_NEW(B_BUTTON) || gPlayerDpadHoldFrames > 59)
@@ -945,13 +953,13 @@ static void Intro_WaitForShinyAnimAndHealthbox(void)
     // Check if healthbox has finished sliding in
     if (!IsDoubleBattle() || (IsDoubleBattle() && (gBattleTypeFlags & BATTLE_TYPE_MULTI)))
     {
-        if (gSprites[gHealthboxSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy)
+        if (IsBattleSpriteIdle(gHealthboxSpriteIds[gActiveBattler]))
             healthboxAnimDone = TRUE;
     }
     else
     {
-        if (gSprites[gHealthboxSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy
-         && gSprites[gHealthboxSpriteIds[BATTLE_PARTNER(gActiveBattler)]].callback == SpriteCallbackDummy)
+        if (IsBattleSpriteIdle(gHealthboxSpriteIds[gActiveBattler])
+         && IsBattleSpriteIdle(gHealthboxSpriteIds[BATTLE_PARTNER(gActiveBattler)]))
             healthboxAnimDone = TRUE;
     }
 
@@ -1031,18 +1039,18 @@ static void Intro_TryShinyAnimShowHealthbox(void)
     // Wait for battler anims
     if (!IsDoubleBattle() || (IsDoubleBattle() && (gBattleTypeFlags & BATTLE_TYPE_MULTI)))
     {
-        if (gSprites[gBattleControllerData[gActiveBattler]].callback == SpriteCallbackDummy
-            && gSprites[gBattlerSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy)
+        if (IsBattleSpriteIdle(gBattleControllerData[gActiveBattler])
+            && IsBattleSpriteIdle(gBattlerSpriteIds[gActiveBattler]))
         {
             battlerAnimsDone = TRUE;
         }
     }
     else
     {
-        if (gSprites[gBattleControllerData[gActiveBattler]].callback == SpriteCallbackDummy
-            && gSprites[gBattlerSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy
-            && gSprites[gBattleControllerData[BATTLE_PARTNER(gActiveBattler)]].callback == SpriteCallbackDummy
-            && gSprites[gBattlerSpriteIds[BATTLE_PARTNER(gActiveBattler)]].callback == SpriteCallbackDummy)
+        if (IsBattleSpriteIdle(gBattleControllerData[gActiveBattler])
+            && IsBattleSpriteIdle(gBattlerSpriteIds[gActiveBattler])
+            && IsBattleSpriteIdle(gBattleControllerData[BATTLE_PARTNER(gActiveBattler)])
+            && IsBattleSpriteIdle(gBattlerSpriteIds[BATTLE_PARTNER(gActiveBattler)]))
         {
             battlerAnimsDone = TRUE;
         }
@@ -1052,8 +1060,8 @@ static void Intro_TryShinyAnimShowHealthbox(void)
     if (bgmRestored && battlerAnimsDone)
     {
         if (IsDoubleBattle() && !(gBattleTypeFlags & BATTLE_TYPE_MULTI))
-            DestroySprite(&gSprites[gBattleControllerData[BATTLE_PARTNER(gActiveBattler)]]);
-        DestroySprite(&gSprites[gBattleControllerData[gActiveBattler]]);
+            DestroyBattlerBallReleaseSprite(BATTLE_PARTNER(gActiveBattler));
+        DestroyBattlerBallReleaseSprite(gActiveBattler);
 
         gBattleSpritesDataPtr->animationData->introAnimActive = FALSE;
         gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].bgmRestored = FALSE;
@@ -1065,11 +1073,12 @@ static void Intro_TryShinyAnimShowHealthbox(void)
 
 static void SwitchIn_CleanShinyAnimShowSubstitute(void)
 {
-    if (gSprites[gHealthboxSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy
+    if (IsBattleSpriteIdle(gHealthboxSpriteIds[gActiveBattler])
      && gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].finishedShinyMonAnim
-     && gSprites[gBattlerSpriteIds[gActiveBattler]].callback == SpriteCallbackDummy)
+     && IsBattleSpriteIdle(gBattlerSpriteIds[gActiveBattler]))
     {
-        CopyBattleSpriteInvisibility(gActiveBattler);
+        if (gBattlerSpriteIds[gActiveBattler] < MAX_SPRITES)
+            CopyBattleSpriteInvisibility(gActiveBattler);
 
         // Reset shiny anim (even if it didn't occur)
         gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].triedShinyMonAnim = FALSE;
@@ -1104,10 +1113,10 @@ static void SwitchIn_TryShinyAnimShowHealthbox(void)
         TryShinyAnimation(gActiveBattler, &gPlayerParty[gBattlerPartyIndexes[gActiveBattler]]);
 
     // Wait for ball anim, then show healthbox
-    if (gSprites[gBattleControllerData[gActiveBattler]].callback == SpriteCallbackDummy
+    if (IsBattleSpriteIdle(gBattleControllerData[gActiveBattler])
      && !gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].ballAnimActive)
     {
-        DestroySprite(&gSprites[gBattleControllerData[gActiveBattler]]);
+        DestroyBattlerBallReleaseSprite(gActiveBattler);
         UpdateHealthboxAttribute(gHealthboxSpriteIds[gActiveBattler], &gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], HEALTHBOX_ALL);
         StartHealthboxSlideIn(gActiveBattler);
         SetHealthboxSpriteVisible(gHealthboxSpriteIds[gActiveBattler]);
@@ -1319,7 +1328,7 @@ static void FreeMonSpriteAfterFaintAnim(void)
         u16 species = GetMonData(&gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], MON_DATA_SPECIES);
 
         BattleGfxSfxDummy2(species);
-        FreeOamMatrix(gSprites[gBattlerSpriteIds[gActiveBattler]].oam.matrixNum);
+        FreeSpriteOamMatrix(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
         DestroySprite(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
         SetHealthboxSpriteInvisible(gHealthboxSpriteIds[gActiveBattler]);
         PlayerBufferExecCompleted();
@@ -2192,7 +2201,13 @@ static void PlayerHandleSetRawMonData(void)
 static void PlayerHandleLoadMonSprite(void)
 {
     BattleLoadPlayerMonSpriteGfx(&gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], gActiveBattler);
-    gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        PlayerBufferExecCompleted();
+        return;
+    }
+
+    SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gBattlerControllerFuncs[gActiveBattler] = CompleteOnBankSpritePosX_0;
 }
 
@@ -2214,7 +2229,6 @@ static void StartSendOutAnim(u8 battler, bool8 dontClearSubstituteBit)
     ClearTemporarySpeciesSpriteData(battler, dontClearSubstituteBit);
     gBattlerPartyIndexes[battler] = gBattleBufferA[battler][1];
     species = GetMonData(&gPlayerParty[gBattlerPartyIndexes[battler]], MON_DATA_SPECIES);
-    gBattleControllerData[battler] = CreateInvisibleSpriteWithCallback(SpriteCB_WaitForBattlerBallReleaseAnim);
     SetMultiuseSpriteTemplateToPokemon(species, GetBattlerPosition(battler));
 
     gBattlerSpriteIds[battler] = CreateSprite(
@@ -2223,24 +2237,17 @@ static void StartSendOutAnim(u8 battler, bool8 dontClearSubstituteBit)
       GetBattlerSpriteDefault_Y(battler),
       GetBattlerSpriteSubpriority(battler));
 
-    gSprites[gBattleControllerData[battler]].data[1] = gBattlerSpriteIds[battler];
-    gSprites[gBattleControllerData[battler]].data[2] = battler;
-
-    gSprites[gBattlerSpriteIds[battler]].data[0] = battler;
-    gSprites[gBattlerSpriteIds[battler]].data[2] = species;
-    gSprites[gBattlerSpriteIds[battler]].oam.paletteNum = battler;
-
-    StartSpriteAnim(&gSprites[gBattlerSpriteIds[battler]], gBattleMonForms[battler]);
-
-    gSprites[gBattlerSpriteIds[battler]].invisible = TRUE;
-    gSprites[gBattlerSpriteIds[battler]].callback = SpriteCallbackDummy;
-
-    gSprites[gBattleControllerData[battler]].data[0] = DoPokeballSendOutAnimation(0, POKEBALL_PLAYER_SENDOUT);
+    StartBattlerSendOut(battler, species, POKEBALL_PLAYER_SENDOUT);
 }
 
 static void PlayerHandleReturnMonToBall(void)
 {
-    if (!gBattleBufferA[gActiveBattler][1])
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        SetHealthboxSpriteInvisible(gHealthboxSpriteIds[gActiveBattler]);
+        PlayerBufferExecCompleted();
+    }
+    else if (!gBattleBufferA[gActiveBattler][1])
     {
         gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].animationState = 0;
         gBattlerControllerFuncs[gActiveBattler] = DoSwitchOutAnimation;
@@ -2343,12 +2350,23 @@ static void PlayerHandleDrawTrainerPic(void)
     // Use front pic table for any tag battles unless your partner is Steven.
     if (gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER && gPartnerTrainerId != TRAINER_STEVEN_PARTNER)
     {
+        bool8 loadPalette;
+
         trainerPicId = PlayerGenderToFrontTrainerPicId(gSaveBlock2Ptr->playerGender);
+        loadPalette = IndexOfSpritePaletteTag(gTrainerFrontPicPaletteTable[trainerPicId].tag) == 0xFF;
         DecompressTrainerFrontPic(trainerPicId, gActiveBattler);
         SetMultiuseSpriteTemplateToTrainerFront(trainerPicId, GetBattlerPosition(gActiveBattler));
         gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, xPos, yPos, GetBattlerSpriteSubpriority(gActiveBattler));
 
-        gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = IndexOfSpritePaletteTag(gTrainerFrontPicPaletteTable[trainerPicId].tag);
+        if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+        {
+            if (loadPalette)
+                FreeTrainerFrontPicPalette(trainerPicId);
+            PlayerBufferExecCompleted();
+            return;
+        }
+
+        SetSpritePaletteFromTag(&gSprites[gBattlerSpriteIds[gActiveBattler]], gTrainerFrontPicPaletteTable[trainerPicId].tag);
         gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
         gSprites[gBattlerSpriteIds[gActiveBattler]].y2 = 48;
         gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = -2;
@@ -2363,7 +2381,13 @@ static void PlayerHandleDrawTrainerPic(void)
         SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
         gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, xPos, yPos, GetBattlerSpriteSubpriority(gActiveBattler));
 
-        gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
+        if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+        {
+            PlayerBufferExecCompleted();
+            return;
+        }
+
+        SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
         gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
         gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = -2;
         gSprites[gBattlerSpriteIds[gActiveBattler]].callback = SpriteCB_TrainerSlideIn;
@@ -2408,7 +2432,13 @@ static void PlayerHandleTrainerSlide(void)
 #endif
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, 80, yPos, 30);
 
-    gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = gActiveBattler;
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        PlayerBufferExecCompleted();
+        return;
+    }
+
+    SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -96;
     gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = 2;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = SpriteCB_TrainerSlideIn;
@@ -2420,6 +2450,12 @@ static void PlayerHandleTrainerSlide(void)
 
 static void PlayerHandleTrainerSlideBack(void)
 {
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+    {
+        PlayerBufferExecCompleted();
+        return;
+    }
+
     SetSpritePrimaryCoordsFromSecondaryCoords(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[0] = 50;
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = -40;
@@ -2437,7 +2473,8 @@ static void PlayerHandleFaintAnimation(void)
 {
     if (gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].animationState == 0)
     {
-        if (gBattleSpritesDataPtr->battlerData[gActiveBattler].behindSubstitute)
+        if (gBattlerSpriteIds[gActiveBattler] < MAX_SPRITES
+         && gBattleSpritesDataPtr->battlerData[gActiveBattler].behindSubstitute)
             InitAndLaunchSpecialAnimation(gActiveBattler, gActiveBattler, gActiveBattler, B_ANIM_SUBSTITUTE_TO_MON);
         gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].animationState++;
     }
@@ -2448,6 +2485,13 @@ static void PlayerHandleFaintAnimation(void)
             gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].animationState = 0;
             HandleLowHpMusicChange(&gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], gActiveBattler);
             PlaySE12WithPanning(SE_FAINT, SOUND_PAN_ATTACKER);
+            if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES)
+            {
+                SetHealthboxSpriteInvisible(gHealthboxSpriteIds[gActiveBattler]);
+                PlayerBufferExecCompleted();
+                return;
+            }
+
             gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = 0;
             gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedY = 5;
             gSprites[gBattlerSpriteIds[gActiveBattler]].callback = SpriteCB_FaintSlideAnim;
@@ -2904,7 +2948,8 @@ static void PlayerHandleToggleUnkFlag(void)
 
 static void PlayerHandleHitAnimation(void)
 {
-    if (gSprites[gBattlerSpriteIds[gActiveBattler]].invisible == TRUE)
+    if (gBattlerSpriteIds[gActiveBattler] >= MAX_SPRITES
+     || gSprites[gBattlerSpriteIds[gActiveBattler]].invisible)
     {
         PlayerBufferExecCompleted();
     }
@@ -2971,33 +3016,65 @@ static void PlayerHandleIntroSlide(void)
 
 #define sBattlerId data[5]
 
+static void StartIntroSendOut(void)
+{
+    gBattleBufferA[gActiveBattler][1] = gBattlerPartyIndexes[gActiveBattler];
+    StartSendOutAnim(gActiveBattler, FALSE);
+    if (IsDoubleBattle() && !(gBattleTypeFlags & BATTLE_TYPE_MULTI))
+    {
+        gActiveBattler ^= BIT_FLANK;
+        gBattleBufferA[gActiveBattler][1] = gBattlerPartyIndexes[gActiveBattler];
+        BattleLoadPlayerMonSpriteGfx(&gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], gActiveBattler);
+        StartSendOutAnim(gActiveBattler, FALSE);
+        gActiveBattler ^= BIT_FLANK;
+    }
+    gBattlerControllerFuncs[gActiveBattler] = Intro_TryShinyAnimShowHealthbox;
+}
+
 static void PlayerHandleIntroTrainerBallThrow(void)
 {
-    u8 paletteNum;
+    u8 spriteId = gBattlerSpriteIds[gActiveBattler];
+    u8 paletteNum = 0xFF;
     u8 taskId;
 
-    SetSpritePrimaryCoordsFromSecondaryCoords(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
+    HidePartyStatusSummary(gActiveBattler);
 
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[0] = 50;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = -40;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[4] = gSprites[gBattlerSpriteIds[gActiveBattler]].y;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].callback = StartAnimLinearTranslation;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].sBattlerId = gActiveBattler;
+    gBattleSpritesDataPtr->animationData->introAnimActive = TRUE;
 
-    StoreSpriteCallbackInData6(&gSprites[gBattlerSpriteIds[gActiveBattler]], SpriteCB_FreePlayerSpriteLoadMonSprite);
-    StartSpriteAnim(&gSprites[gBattlerSpriteIds[gActiveBattler]], 1);
+    if (spriteId < MAX_SPRITES && GetTaskCount() < NUM_TASKS)
+        paletteNum = AllocSpritePalette(0xD6F8);
 
-    paletteNum = AllocSpritePalette(0xD6F8);
+    if (paletteNum == 0xFF)
+    {
+        if (spriteId < MAX_SPRITES)
+        {
+            FreeSpriteOamMatrix(&gSprites[spriteId]);
+            DestroySprite(&gSprites[spriteId]);
+        }
+        ClearTemporarySpeciesSpriteData(gActiveBattler, FALSE);
+        BattleLoadPlayerMonSpriteGfx(&gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], gActiveBattler);
+        StartIntroSendOut();
+        return;
+    }
+
+    SetSpritePrimaryCoordsFromSecondaryCoords(&gSprites[spriteId]);
+
+    gSprites[spriteId].data[0] = 50;
+    gSprites[spriteId].data[2] = -40;
+    gSprites[spriteId].data[4] = gSprites[spriteId].y;
+    gSprites[spriteId].callback = StartAnimLinearTranslation;
+    gSprites[spriteId].sBattlerId = gActiveBattler;
+
+    StoreSpriteCallbackInData6(&gSprites[spriteId], SpriteCB_FreePlayerSpriteLoadMonSprite);
+    StartSpriteAnim(&gSprites[spriteId], 1);
+
     LoadCompressedPalette(gTrainerBackPicPaletteTable[gSaveBlock2Ptr->playerGender].data, OBJ_PLTT_ID(paletteNum), PLTT_SIZE_4BPP);
-    gSprites[gBattlerSpriteIds[gActiveBattler]].oam.paletteNum = paletteNum;
+
+    SetSpritePaletteHandle(&gSprites[spriteId], paletteNum);
 
     taskId = CreateTask(Task_StartSendOutAnim, 5);
     gTasks[taskId].tBattlerId = gActiveBattler;
 
-    if (gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].partyStatusSummaryShown)
-        gTasks[gBattlerStatusSummaryTaskId[gActiveBattler]].func = Task_HidePartyStatusSummary;
-
-    gBattleSpritesDataPtr->animationData->introAnimActive = TRUE;
     gBattlerControllerFuncs[gActiveBattler] = BattleControllerDummy;
 }
 
@@ -3007,7 +3084,7 @@ void SpriteCB_FreePlayerSpriteLoadMonSprite(struct Sprite *sprite)
 
     // Free player trainer sprite
     FreeSpriteOamMatrix(sprite);
-    FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(sprite->oam.paletteNum));
+    FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(GetSpritePaletteHandle(sprite)));
     DestroySprite(sprite);
 
     // Load mon sprite
@@ -3029,22 +3106,7 @@ static void Task_StartSendOutAnim(u8 taskId)
         u8 savedActiveBattler = gActiveBattler;
 
         gActiveBattler = gTasks[taskId].tBattlerId;
-        if (!IsDoubleBattle() || (gBattleTypeFlags & BATTLE_TYPE_MULTI))
-        {
-            gBattleBufferA[gActiveBattler][1] = gBattlerPartyIndexes[gActiveBattler];
-            StartSendOutAnim(gActiveBattler, FALSE);
-        }
-        else
-        {
-            gBattleBufferA[gActiveBattler][1] = gBattlerPartyIndexes[gActiveBattler];
-            StartSendOutAnim(gActiveBattler, FALSE);
-            gActiveBattler ^= BIT_FLANK;
-            gBattleBufferA[gActiveBattler][1] = gBattlerPartyIndexes[gActiveBattler];
-            BattleLoadPlayerMonSpriteGfx(&gPlayerParty[gBattlerPartyIndexes[gActiveBattler]], gActiveBattler);
-            StartSendOutAnim(gActiveBattler, FALSE);
-            gActiveBattler ^= BIT_FLANK;
-        }
-        gBattlerControllerFuncs[gActiveBattler] = Intro_TryShinyAnimShowHealthbox;
+        StartIntroSendOut();
         gActiveBattler = savedActiveBattler;
         DestroyTask(taskId);
     }
@@ -3061,7 +3123,6 @@ static void PlayerHandleDrawPartyStatusSummary(void)
     }
     else
     {
-        gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].partyStatusSummaryShown = 1;
         gBattlerStatusSummaryTaskId[gActiveBattler] = CreatePartyStatusSummarySprites(gActiveBattler, (struct HpAndStatus *)&gBattleBufferA[gActiveBattler][4], gBattleBufferA[gActiveBattler][1], gBattleBufferA[gActiveBattler][2]);
         gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].partyStatusDelayTimer = 0;
 
@@ -3084,8 +3145,7 @@ static void EndDrawPartyStatusSummary(void)
 
 static void PlayerHandleHidePartyStatusSummary(void)
 {
-    if (gBattleSpritesDataPtr->healthBoxesData[gActiveBattler].partyStatusSummaryShown)
-        gTasks[gBattlerStatusSummaryTaskId[gActiveBattler]].func = Task_HidePartyStatusSummary;
+    HidePartyStatusSummary(gActiveBattler);
     PlayerBufferExecCompleted();
 }
 

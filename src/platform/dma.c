@@ -1,6 +1,10 @@
 #ifdef PORTABLE
 #include "global.h"
 #include "platform/dma.h"
+#ifdef PLATFORM_SDL2
+#include "bg.h"
+#include "sprite.h"
+#endif
 
 struct DMATransfer {
     union {
@@ -19,6 +23,32 @@ struct DMATransfer {
 
 struct DMATransfer DMASet[DMA_COUNT];
 
+#ifdef PLATFORM_SDL2
+static void InvalidateDmaDestination(const struct DMATransfer *dma)
+{
+    uintptr_t start = (uintptr_t)dma->dst;
+    u32 unit = (dma->control & DMA_32BIT) ? 4 : 2;
+    u32 units = dma->size;
+
+    if (units == 0)
+        return;
+
+    switch (dma->control & DMA_DEST_MASK)
+    {
+    case DMA_DEST_DEC:
+        start -= (units - 1) * unit;
+        break;
+    case DMA_DEST_FIXED:
+        units = 1;
+        break;
+    }
+
+    InvalidateBgTilemapRamRange((void *)start, units * unit);
+    InvalidateBgTilemapVramRange((void *)start, units * unit);
+    InvalidateOamResourceHandles((void *)start, units * unit);
+}
+#endif
+
 void RunDMAs(u32 type)
 {
     for (int dmaNum = 0; dmaNum < DMA_COUNT; dmaNum++)
@@ -33,6 +63,9 @@ void RunDMAs(u32 type)
         if ( (dma->control & DMA_ENABLE) &&
            (((dma->control & DMA_START_MASK) >> 12) == type))
         {
+#ifdef PLATFORM_SDL2
+            InvalidateDmaDestination(dma);
+#endif
             //printf("DMA%d src=%p, dest=%p, control=%d\n", dmaNum, dma->src, dma->dst, dma->control);
             for (int i = 0; i < (dma->size); i++)
             {

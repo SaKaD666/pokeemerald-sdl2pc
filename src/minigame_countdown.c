@@ -367,7 +367,7 @@ static void Task_StaticCountdown_Run(u8 taskId)
 static void Task_MinigameCountdown(u8 taskId);
 static bool32 RunMinigameCountdownDigitsAnim(u8 spriteId);
 static bool32 IsStartGraphicAnimRunning(u8 spriteId);
-static void Load321StartGfx(u16 tileTag, u16 palTag);
+static bool8 Load321StartGfx(u16 tileTag, u16 palTag);
 static u8 CreateNumberSprite(u16 tileTag, u16 palTag, s16 x, s16 y, u8 subpriority);
 static void CreateStartSprite(u16 tileTag, u16 palTag, s16 x, s16 y, u8 subpriority, s16 *spriteId1, s16 *spriteId2);
 static void InitStartGraphic(u8 spriteId1, u8 spriteId2, u8 spriteId3);
@@ -385,10 +385,18 @@ static const u32 s321Start_Gfx[] = INCGFX_U32("graphics/link/321start.png", ".4b
 #define tSpriteId1   data[7]
 #define tSpriteId2   data[8]
 #define tSpriteId3   data[9]
+#define tFallbackTimer data[10]
+
+// Two full digit jumps, the final jump, and the Start graphic.
+#define COUNTDOWN_FALLBACK_FRAMES (2 * 68 + 42 + 70)
 
 void StartMinigameCountdown(u16 tilesTag, u16 palTag, s16 x, s16 y, u8 subpriority)
 {
-    u8 taskId = CreateTask(Task_MinigameCountdown, 80);
+    u8 taskId;
+
+    if (GetTaskCount() >= NUM_TASKS)
+        return;
+    taskId = CreateTask(Task_MinigameCountdown, 80);
     gTasks[taskId].tTilesTag = tilesTag;
     gTasks[taskId].tPalTag = palTag;
     gTasks[taskId].tX = x;
@@ -408,10 +416,36 @@ static void Task_MinigameCountdown(u8 taskId)
     switch (tState)
     {
     case 0:
-        Load321StartGfx(tTilesTag, tPalTag);
-        tSpriteId1 = CreateNumberSprite(tTilesTag, tPalTag, tX, tY, tSubpriority);
-        CreateStartSprite(tTilesTag, tPalTag, tX, tY, tSubpriority, &tSpriteId2, &tSpriteId3);
-        tState++;
+        tSpriteId1 = SPRITE_NONE;
+        tSpriteId2 = SPRITE_NONE;
+        tSpriteId3 = SPRITE_NONE;
+        if (Load321StartGfx(tTilesTag, tPalTag))
+        {
+            tSpriteId1 = CreateNumberSprite(tTilesTag, tPalTag, tX, tY, tSubpriority);
+            if (tSpriteId1 < MAX_SPRITES)
+                CreateStartSprite(tTilesTag, tPalTag, tX, tY, tSubpriority, &tSpriteId2, &tSpriteId3);
+        }
+
+        if (tSpriteId1 < MAX_SPRITES && tSpriteId2 < MAX_SPRITES && tSpriteId3 < MAX_SPRITES)
+        {
+            tState = 1;
+        }
+        else
+        {
+            if (tSpriteId1 < MAX_SPRITES)
+            {
+                FreeSpriteOamMatrix(&gSprites[tSpriteId1]);
+                DestroySprite(&gSprites[tSpriteId1]);
+            }
+            if (tSpriteId2 < MAX_SPRITES)
+                DestroySprite(&gSprites[tSpriteId2]);
+            if (tSpriteId3 < MAX_SPRITES)
+                DestroySprite(&gSprites[tSpriteId3]);
+            FreeSpriteTilesByTag(tTilesTag);
+            FreeSpritePaletteByTag(tPalTag);
+            tFallbackTimer = COUNTDOWN_FALLBACK_FRAMES;
+            tState = 3;
+        }
         break;
     case 1:
         if (!RunMinigameCountdownDigitsAnim(tSpriteId1))
@@ -431,6 +465,10 @@ static void Task_MinigameCountdown(u8 taskId)
             FreeSpritePaletteByTag(tPalTag);
             DestroyTask(taskId);
         }
+        break;
+    case 3:
+        if (--tFallbackTimer == 0)
+            DestroyTask(taskId);
         break;
     }
 }
@@ -600,7 +638,7 @@ static void SpriteCB_Start(struct Sprite *sprite)
 #undef sYSpeed
 #undef sY
 
-static void Load321StartGfx(u16 tileTag, u16 palTag)
+static bool8 Load321StartGfx(u16 tileTag, u16 palTag)
 {
     struct CompressedSpriteSheet spriteSheet = {s321Start_Gfx, 0xE00, 0};
     struct SpritePalette spritePalette = {s321Start_Pal, 0};
@@ -608,8 +646,8 @@ static void Load321StartGfx(u16 tileTag, u16 palTag)
     spriteSheet.tag = tileTag;
     spritePalette.tag = palTag;
 
-    LoadCompressedSpriteSheet(&spriteSheet);
-    LoadSpritePalette(&spritePalette);
+    return LoadCompressedSpriteSheet(&spriteSheet) != SPRITE_TILE_NONE
+        && LoadSpritePalette(&spritePalette) != 0xFF;
 }
 
 static const struct OamData sOamData_Numbers =
@@ -754,7 +792,11 @@ static void CreateStartSprite(u16 tileTag, u16 palTag, s16 x, s16 y, u8 subprior
     *spriteId1 = CreateSprite(&spriteTemplate, x - 32, y, subpriority);
     *spriteId2 = CreateSprite(&spriteTemplate, x + 32, y, subpriority);
 
-    gSprites[*spriteId1].invisible = TRUE;
-    gSprites[*spriteId2].invisible = TRUE;
-    StartSpriteAnim(&gSprites[*spriteId2], 1);
+    if (*spriteId1 < MAX_SPRITES)
+        gSprites[*spriteId1].invisible = TRUE;
+    if (*spriteId2 < MAX_SPRITES)
+    {
+        gSprites[*spriteId2].invisible = TRUE;
+        StartSpriteAnim(&gSprites[*spriteId2], 1);
+    }
 }

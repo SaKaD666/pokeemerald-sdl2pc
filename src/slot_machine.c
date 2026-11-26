@@ -1232,7 +1232,7 @@ static void SlotMachineSetup_InitPalsSpritesTasks(void)
 {
     ResetPaletteFade();
     ResetSpriteData();
-    gOamLimit = 0x80;
+    gOamLimit = OAM_ENTRY_COUNT;
     FreeAllSpritePalettes();
     ResetTasks();
 }
@@ -1754,24 +1754,34 @@ static bool8 SlotTask_FreeDataStructures(struct Task *task)
     {
         MainCallback exitCallback = sSlotMachine->prevMainCb;
 
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return FALSE;
+#else
         IsDma3ManagerBusyWithBgCopy();
+#endif
         SetVBlankCallback(NULL);
         ClearScheduledBgCopiesToVram();
         FreeAllWindowBuffers();
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Reel);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Time);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Insert);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Stop);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Win);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Lose);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Bonus);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Big);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Reg);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_AButton);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Smoke);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Number);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Pokeball);
-        FREE_AND_SET_NULL(sImageTable_DigitalDisplay_DPad);
+#ifdef PORTABLE
+        ResetTasks();
+        ResetSpriteData();
+#endif
+        memset(sImageTables_DigitalDisplay, 0, sizeof(sImageTables_DigitalDisplay));
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Reel);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Time);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Insert);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Stop);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Win);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Lose);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Bonus);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Big);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Reg);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_AButton);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Smoke);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Number);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_Pokeball);
+        TRY_FREE_AND_SET_NULL(sImageTable_DigitalDisplay_DPad);
         TRY_FREE_AND_SET_NULL(sImageTable_ReelTimePikachu);
         TRY_FREE_AND_SET_NULL(sImageTable_ReelTimeMachineAntennae);
         TRY_FREE_AND_SET_NULL(sImageTable_ReelTimeMachine);
@@ -1779,17 +1789,13 @@ static bool8 SlotTask_FreeDataStructures(struct Task *task)
         FREE_AND_SET_NULL(sMenuGfx);
         FREE_AND_SET_NULL(sSelectedPikaPowerTile);
         FREE_AND_SET_NULL(sReelOverlay_Tilemap);
-        FREE_AND_SET_NULL(sDigitalDisplayGfxPtr);
-        FREE_AND_SET_NULL(sReelTimeGfxPtr);
+        TRY_FREE_AND_SET_NULL(sDigitalDisplayGfxPtr);
+        TRY_FREE_AND_SET_NULL(sReelTimeGfxPtr);
         FREE_AND_SET_NULL(sReelButtonPress_Tilemap);
         FREE_AND_SET_NULL(sReelBackground_Gfx);
         FREE_AND_SET_NULL(sReelBackgroundSpriteSheet);
-        FREE_AND_SET_NULL(sSlotMachineSpritesheetsPtr);
+        TRY_FREE_AND_SET_NULL(sSlotMachineSpritesheetsPtr);
         FREE_AND_SET_NULL(sSlotMachine);
-#ifdef PORTABLE
-        ResetTasks();
-        ResetSpriteData();
-#endif
 #ifdef PLATFORM_SDL2
         SetFrameViewToGbaSize(FALSE);
 #endif
@@ -3276,14 +3282,21 @@ static void CreateInvisibleFlashMatchLineSprites(void)
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->flashMatchLineSpriteIds); i++)
     {
         u8 spriteId = CreateInvisibleSprite(SpriteCB_FlashMatchingLines);
-        gSprites[spriteId].sMatchLineId = i;
         sSlotMachine->flashMatchLineSpriteIds[i] = spriteId;
+        if (spriteId >= MAX_SPRITES)
+            continue;
+        gSprites[spriteId].sMatchLineId = i;
     }
 }
 
 static void FlashMatchLine(u8 matchLineId)
 {
-    struct Sprite *sprite = &gSprites[sSlotMachine->flashMatchLineSpriteIds[matchLineId]];
+    u8 spriteId = sSlotMachine->flashMatchLineSpriteIds[matchLineId];
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+    sprite = &gSprites[spriteId];
     sprite->sFlashing = TRUE;
     sprite->sNumFullFlashes = 4;
     sprite->sDelayTimer = 0;
@@ -3299,8 +3312,8 @@ static bool8 IsMatchLineDoneFlashingBeforePayout(void)
     u8 i;
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->flashMatchLineSpriteIds); i++)
     {
-        struct Sprite *sprite = &gSprites[sSlotMachine->flashMatchLineSpriteIds[i]];
-        if (sprite->sFlashing && sprite->sNumFullFlashes)
+        u8 spriteId = sSlotMachine->flashMatchLineSpriteIds[i];
+        if (spriteId < MAX_SPRITES && gSprites[spriteId].sFlashing && gSprites[spriteId].sNumFullFlashes)
             return FALSE;
     }
     return TRUE;
@@ -3312,7 +3325,8 @@ static bool8 TryStopMatchLinesFlashing(void)
     u8 i;
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->flashMatchLineSpriteIds); i++)
     {
-        if (!TryStopMatchLineFlashing(sSlotMachine->flashMatchLineSpriteIds[i]))
+        u8 spriteId = sSlotMachine->flashMatchLineSpriteIds[i];
+        if (spriteId < MAX_SPRITES && !TryStopMatchLineFlashing(spriteId))
             return FALSE;
     }
     return TRUE;
@@ -3462,7 +3476,7 @@ static void PikaPowerBolt_AddBolt(struct Task *task)
 // Once the anim is done, destroy the sprite and set the bolt in the tilemap instead
 static void PikaPowerBolt_WaitAnim(struct Task *task)
 {
-    if (gSprites[task->tSpriteId].data[7])
+    if ((u16)task->tSpriteId >= MAX_SPRITES || gSprites[task->tSpriteId].data[7])
     {
         s16 r5 = task->tNumBolts + 2;
         s16 r3 = 0;
@@ -3473,7 +3487,8 @@ static void PikaPowerBolt_WaitAnim(struct Task *task)
             r3 = 2, r2 = 2;
         sSelectedPikaPowerTile[r2] = sPikaPowerTileTable[r3][0];
         LoadBgTilemap(2, &sSelectedPikaPowerTile[r2], 2, r5 + 0x40);
-        DestroyPikaPowerBoltSprite(task->tSpriteId);
+        if ((u16)task->tSpriteId < MAX_SPRITES)
+            DestroyPikaPowerBoltSprite(task->tSpriteId);
         task->tState = PIKABOLT_TASK_IDLE;
         task->tAnimating = 0;
     }
@@ -3644,7 +3659,8 @@ static void ReelTime_PikachuSpeedUp1(struct Task *task)
     i = 4 - (task->tRtReelSpeed >> 8);
     SetReelTimeBoltDelay(reelTimeBoltDelays[i]);
     SetReelTimePikachuAuraFlashDelay(pikachuAuraFlashDelays[i]);
-    StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], pikachuAnimIds[i]);
+    if (sSlotMachine->reelTimePikachuSpriteId < MAX_SPRITES)
+        StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], pikachuAnimIds[i]);
     // once speed goes below 256, go to next ReelTime task and keep the speed level
     if (task->tRtReelSpeed <= 0x100)
     {
@@ -3662,7 +3678,8 @@ static void ReelTime_PikachuSpeedUp2(struct Task *task)
         task->tState++; // RT_TASK_WAIT_REEL
         task->tTimer1 = 0;
         SetReelTimePikachuAuraFlashDelay(2);
-        StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 3);
+        if (sSlotMachine->reelTimePikachuSpriteId < MAX_SPRITES)
+            StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 3);
     }
 }
 
@@ -3744,14 +3761,18 @@ static void ReelTime_PikachuReact(struct Task *task)
         if(sSlotMachine->reelTimeDraw == 0)
         {
             task->tTimer2 = 0xa0;
-            StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 5);
+            if (sSlotMachine->reelTimePikachuSpriteId < MAX_SPRITES)
+                StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 5);
             PlayFanfare(MUS_TOO_BAD);
         }
         else
         {
             task->tTimer2 = 0xc0;
-            StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 4);
-            gSprites[sSlotMachine->reelTimePikachuSpriteId].animCmdIndex = 0;
+            if (sSlotMachine->reelTimePikachuSpriteId < MAX_SPRITES)
+            {
+                StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 4);
+                gSprites[sSlotMachine->reelTimePikachuSpriteId].animCmdIndex = 0;
+            }
             if (sSlotMachine->pikaPowerBolts)
             {
                 ResetPikaPowerBolts();
@@ -3832,8 +3853,10 @@ static void ReelTime_ExplodeMachine(struct Task *task)
     DestroyReelTimeBoltSprites();
     DestroyReelTimePikachuAuraSprites();
     CreateReelTimeExplosionSprite();
-    gSprites[sSlotMachine->reelTimeShadowSpriteIds[0]].invisible = TRUE;
-    StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 5);
+    if (sSlotMachine->reelTimeShadowSpriteIds[0] < MAX_SPRITES)
+        gSprites[sSlotMachine->reelTimeShadowSpriteIds[0]].invisible = TRUE;
+    if (sSlotMachine->reelTimePikachuSpriteId < MAX_SPRITES)
+        StartSpriteAnimIfDifferent(&gSprites[sSlotMachine->reelTimePikachuSpriteId], 5);
     task->tState++; // RT_TASK_WAIT_EXPLODE
     task->data[4] = 4;
     task->tTimer1 = 0;
@@ -3856,7 +3879,8 @@ static void ReelTime_WaitExplode(struct Task *task)
         CreateReelTimeDuckSprites();
         CreateBrokenReelTimeMachineSprite();
         CreateReelTimeSmokeSprite();
-        gSprites[sSlotMachine->reelTimeShadowSpriteIds[0]].invisible = FALSE;
+        if (sSlotMachine->reelTimeShadowSpriteIds[0] < MAX_SPRITES)
+            gSprites[sSlotMachine->reelTimeShadowSpriteIds[0]].invisible = FALSE;
         task->tState++; // RT_TASK_WAIT_SMOKE
         task->tTimer1 = 0;
     }
@@ -4024,7 +4048,7 @@ static void CreateDigitalDisplayScene(u8 id)
     task = &gTasks[sSlotMachine->digDisplayTaskId];
     task->data[1] = id;
 
-    for (i = 0; sDigitalDisplayScenes[id][i].spriteTemplateId != 255; i++)
+    for (i = 0; i < NUM_TASK_DATA - 4 && sDigitalDisplayScenes[id][i].spriteTemplateId != 255; i++)
     {
         u8 spriteId;
         spriteId = CreateStdDigitalDisplaySprite(
@@ -4060,11 +4084,9 @@ static void DestroyDigitalDisplayScene(void)
 
     for (i = 4; i < NUM_TASK_DATA; i++)
     {
-        if (task->data[i] != MAX_SPRITES)
-        {
+        if ((u16)task->data[i] < MAX_SPRITES)
             DestroySprite(&gSprites[task->data[i]]);
-            task->data[i] = MAX_SPRITES;
-        }
+        task->data[i] = MAX_SPRITES;
     }
 }
 
@@ -4074,7 +4096,7 @@ static bool8 IsDigitalDisplayAnimFinished(void)
     struct Task *task = &gTasks[sSlotMachine->digDisplayTaskId];
     for (i = 4; i < NUM_TASK_DATA; i++)
     {
-        if (task->data[i] != MAX_SPRITES)
+        if ((u16)task->data[i] < MAX_SPRITES)
         {
             if (gSprites[task->data[i]].sWaitForAnim)
                 return FALSE;
@@ -4092,16 +4114,37 @@ static void DigitalDisplay_Idle(struct Task *task)
 {
 }
 
+static void SetSlotMachineSpriteTiles(struct Sprite *sprite, u16 tag)
+{
+    u16 tileStart = GetSpriteTileStartByTag(tag);
+
+    sprite->invisible = tileStart == SPRITE_TILE_NONE;
+    if (sprite->invisible)
+        return;
+
+    sprite->sheetTileStart = tileStart;
+    SetSpriteSheetFrameTileNum(sprite);
+}
+
 static void CreateReelSymbolSprites(void)
 {
     s16 i;
     s16 j;
     s16 x;
+
+    if (IndexOfSpritePaletteTag(PALTAG_REEL) == 0xFF)
+        return;
+
     for (i = 0, x = 0x30; i < 3; i++, x += 0x28)
     {
         for (j = 0; j < 120; j += 24)
         {
-            struct Sprite *sprite = gSprites + CreateSprite(&sSpriteTemplate_ReelSymbol, x, 0, 14);
+            u8 spriteId = CreateSprite(&sSpriteTemplate_ReelSymbol, x, 0, 14);
+            struct Sprite *sprite;
+
+            if (spriteId >= MAX_SPRITES)
+                continue;
+            sprite = &gSprites[spriteId];
             sprite->oam.priority = 3;
             sprite->data[0] = i;
             sprite->data[1] = j;
@@ -4115,14 +4158,16 @@ static void SpriteCB_ReelSymbol(struct Sprite *sprite)
     sprite->data[2] = sSlotMachine->reelPixelOffsets[sprite->data[0]] + sprite->data[1];
     sprite->data[2] %= 120;
     sprite->y = sSlotMachine->reelShockOffsets[sprite->data[0]] + 28 + sprite->data[2];
-    sprite->sheetTileStart = GetSpriteTileStartByTag(GetSymbolAtRest(sprite->data[0], sprite->data[2] / 24));
-    SetSpriteSheetFrameTileNum(sprite);
+    SetSlotMachineSpriteTiles(sprite, GetSymbolAtRest(sprite->data[0], sprite->data[2] / 24));
 }
 
 static void CreateCreditPayoutNumberSprites(void)
 {
     s16 i;
     s16 x;
+
+    if (IndexOfSpritePaletteTag(PALTAG_MISC) == 0xFF)
+        return;
 
     // Credit number sprite
     for (x = 203, i = 1; i <= MAX_COINS; i *= 10, x -= 7)
@@ -4140,7 +4185,12 @@ static void CreateCreditPayoutNumberSprites(void)
 
 static void CreateCoinNumberSprite(s16 x, s16 y, bool8 isPayout, s16 digitMult)
 {
-    struct Sprite *sprite = &gSprites[CreateSprite(&sSpriteTemplate_CoinNumber, x, y, 13)];
+    u8 spriteId = CreateSprite(&sSpriteTemplate_CoinNumber, x, y, 13);
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+    sprite = &gSprites[spriteId];
     sprite->oam.priority = 2;
     sprite->sIsPayout = isPayout;
     sprite->sDigitMin = digitMult;
@@ -4153,7 +4203,7 @@ static void SpriteCB_CoinNumber(struct Sprite *sprite)
     u16 tag = sSlotMachine->coins;
     if (sprite->sIsPayout)
         tag = sSlotMachine->payout;
-    if (sprite->sCurNum != tag)
+    if (sprite->sCurNum != tag || sprite->invisible)
     {
         // Convert total to current digit
         sprite->sCurNum = tag;
@@ -4161,8 +4211,7 @@ static void SpriteCB_CoinNumber(struct Sprite *sprite)
         tag /= (u16)sprite->sDigitMin;
 
         tag += GFXTAG_NUM_0;
-        sprite->sheetTileStart = GetSpriteTileStartByTag(tag);
-        SetSpriteSheetFrameTileNum(sprite);
+        SetSlotMachineSpriteTiles(sprite, tag);
     }
 }
 
@@ -4173,7 +4222,14 @@ static void SpriteCB_CoinNumber(struct Sprite *sprite)
 
 static void CreateReelBackgroundSprite(void)
 {
-    u8 spriteId = CreateSprite(&sSpriteTemplate_ReelBackground, 88, 72, 15);
+    u8 spriteId;
+
+    if (GetSpriteTileStartByTag(GFXTAG_REEL_BG) == SPRITE_TILE_NONE || IndexOfSpritePaletteTag(PALTAG_REEL) == 0xFF)
+        return;
+
+    spriteId = CreateSprite(&sSpriteTemplate_ReelBackground, 88, 72, 15);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 3;
     SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_ReelBackground);
 }
@@ -4182,8 +4238,15 @@ static void CreateReelTimePikachuSprite(void)
 {
     struct SpriteTemplate spriteTemplate;
     u8 spriteId;
+    sSlotMachine->reelTimePikachuSpriteId = MAX_SPRITES;
+    if (sReelTimeGfxPtr == NULL)
+        return;
+
     if (sImageTable_ReelTimePikachu == NULL)
         sImageTable_ReelTimePikachu = AllocZeroed(sizeof(struct SpriteFrameImage) * 5);
+
+    if (sImageTable_ReelTimePikachu == NULL)
+        return;
 
     sImageTable_ReelTimePikachu[0].data = sReelTimeGfxPtr + (0 * 0x800);
     sImageTable_ReelTimePikachu[0].size = 0x800;
@@ -4199,14 +4262,17 @@ static void CreateReelTimePikachuSprite(void)
     spriteTemplate = sSpriteTemplate_ReelTimePikachu;
     spriteTemplate.images = sImageTable_ReelTimePikachu;
     spriteId = CreateSprite(&spriteTemplate, 280, 80, 1);
+    sSlotMachine->reelTimePikachuSpriteId = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 1;
     gSprites[spriteId].coordOffsetEnabled = TRUE;
-    sSlotMachine->reelTimePikachuSpriteId = spriteId;
 }
 
 static void DestroyReelTimePikachuSprite(void)
 {
-    DestroySprite(&gSprites[sSlotMachine->reelTimePikachuSpriteId]);
+    if (sSlotMachine->reelTimePikachuSpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[sSlotMachine->reelTimePikachuSpriteId]);
     TRY_FREE_AND_SET_NULL(sImageTable_ReelTimePikachu);
 }
 
@@ -4227,33 +4293,48 @@ static void CreateReelTimeMachineSprites(void)
     u8 spriteId;
     struct Sprite *sprite;
 
+    sSlotMachine->reelTimeMachineSpriteIds[0] = MAX_SPRITES;
+    sSlotMachine->reelTimeMachineSpriteIds[1] = MAX_SPRITES;
+    if (sReelTimeGfxPtr == NULL)
+        return;
+
     if (sImageTable_ReelTimeMachineAntennae == NULL)
         sImageTable_ReelTimeMachineAntennae = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
+
+    if (sImageTable_ReelTimeMachineAntennae == NULL)
+        return;
 
     sImageTable_ReelTimeMachineAntennae[0].data = sReelTimeGfxPtr + 0x2800;
     sImageTable_ReelTimeMachineAntennae[0].size = 0x300;
     spriteTemplate = sSpriteTemplate_ReelTimeMachineAntennae;
     spriteTemplate.images = sImageTable_ReelTimeMachineAntennae;
     spriteId = CreateSprite(&spriteTemplate, 368, 52, 7);
+    sSlotMachine->reelTimeMachineSpriteIds[0] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     sprite = &gSprites[spriteId];
     sprite->oam.priority = 1;
     sprite->coordOffsetEnabled = TRUE;
     SetSubspriteTables(sprite, sSubspriteTable_ReelTimeMachineAntennae);
-    sSlotMachine->reelTimeMachineSpriteIds[0] = spriteId;
 
     if (sImageTable_ReelTimeMachine == NULL)
         sImageTable_ReelTimeMachine = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
+
+    if (sImageTable_ReelTimeMachine == NULL)
+        return;
 
     sImageTable_ReelTimeMachine[0].data = sReelTimeGfxPtr + 0x2800 + 0x300;
     sImageTable_ReelTimeMachine[0].size = 0x500;
     spriteTemplate = sSpriteTemplate_ReelTimeMachine;
     spriteTemplate.images = sImageTable_ReelTimeMachine;
     spriteId = CreateSprite(&spriteTemplate, 368, 84, 7);
+    sSlotMachine->reelTimeMachineSpriteIds[1] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     sprite = &gSprites[spriteId];
     sprite->oam.priority = 1;
     sprite->coordOffsetEnabled = TRUE;
     SetSubspriteTables(sprite, sSubspriteTable_ReelTimeMachine);
-    sSlotMachine->reelTimeMachineSpriteIds[1] = spriteId;
 }
 
 static void CreateBrokenReelTimeMachineSprite(void)
@@ -4262,19 +4343,28 @@ static void CreateBrokenReelTimeMachineSprite(void)
     u8 spriteId;
     struct Sprite *sprite;
 
+    sSlotMachine->reelTimeBrokenMachineSpriteId = MAX_SPRITES;
+    if (sReelTimeGfxPtr == NULL)
+        return;
+
     if (sImageTable_BrokenReelTimeMachine == NULL)
         sImageTable_BrokenReelTimeMachine = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
+
+    if (sImageTable_BrokenReelTimeMachine == NULL)
+        return;
 
     sImageTable_BrokenReelTimeMachine[0].data = sReelTimeGfxPtr + 0x3000;
     sImageTable_BrokenReelTimeMachine[0].size = 0x600;
     spriteTemplate = sSpriteTemplate_BrokenReelTimeMachine;
     spriteTemplate.images = sImageTable_BrokenReelTimeMachine;
     spriteId = CreateSprite(&spriteTemplate, 168 - gSpriteCoordOffsetX, 80, 7);
+    sSlotMachine->reelTimeBrokenMachineSpriteId = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     sprite = &gSprites[spriteId];
     sprite->oam.priority = 1;
     sprite->coordOffsetEnabled = TRUE;
     SetSubspriteTables(sprite, sSubspriteTable_BrokenReelTimeMachine);
-    sSlotMachine->reelTimeBrokenMachineSpriteId = spriteId;
 }
 
 static void CreateReelTimeNumberSprites(void)
@@ -4284,11 +4374,13 @@ static void CreateReelTimeNumberSprites(void)
     for (i = 0, r5 = 0; i < ARRAY_COUNT(sSlotMachine->reelTimeNumberSpriteIds); i++, r5 += 20)
     {
         u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimeNumbers, 368, 0, 10);
+        sSlotMachine->reelTimeNumberSpriteIds[i] = spriteId;
+        if (spriteId >= MAX_SPRITES)
+            continue;
         struct Sprite *sprite = &gSprites[spriteId];
         sprite->oam.priority = 1;
         sprite->coordOffsetEnabled = TRUE;
         sprite->data[7] = r5;
-        sSlotMachine->reelTimeNumberSpriteIds[i] = spriteId;
     }
 }
 
@@ -4303,44 +4395,54 @@ static void SpriteCB_ReelTimeNumbers(struct Sprite *sprite)
 static void CreateReelTimeShadowSprites(void)
 {
     u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimeShadow, 368, 100, 9);
+    sSlotMachine->reelTimeShadowSpriteIds[1] = MAX_SPRITES;
+    sSlotMachine->reelTimeShadowSpriteIds[0] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     struct Sprite *sprite = &gSprites[spriteId];
     sprite->coordOffsetEnabled = TRUE;
     sprite->oam.priority = 1;
     SetSubspriteTables(sprite, sSubspriteTable_ReelTimeShadow);
-    sSlotMachine->reelTimeShadowSpriteIds[0] = spriteId;
 
     spriteId = CreateSprite(&sSpriteTemplate_ReelTimeShadow, 288, 104, 4);
+    sSlotMachine->reelTimeShadowSpriteIds[1] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     sprite = &gSprites[spriteId];
     sprite->coordOffsetEnabled = TRUE;
     sprite->oam.priority = 1;
     SetSubspriteTables(sprite, sSubspriteTable_ReelTimeShadow);
-    sSlotMachine->reelTimeShadowSpriteIds[1] = spriteId;
 }
 
 // Creates a small black bar on the Reel Time machine to fill the gap between the numbers
 static void CreateReelTimeNumberGapSprite(void)
 {
     u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimeNumberGap, 368, 76, 11);
+    sSlotMachine->reelTimeNumberGapSpriteId = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     struct Sprite *sprite = &gSprites[spriteId];
     sprite->coordOffsetEnabled = TRUE;
     sprite->oam.priority = 1;
     SetSubspriteTables(sprite, sSubspriteTable_ReelTimeNumberGap);
-    sSlotMachine->reelTimeNumberGapSpriteId = spriteId;
 }
 
 static void DestroyReelTimeMachineSprites(void)
 {
     u8 i;
 
-    DestroySprite(&gSprites[sSlotMachine->reelTimeNumberGapSpriteId]);
+    if (sSlotMachine->reelTimeNumberGapSpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[sSlotMachine->reelTimeNumberGapSpriteId]);
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->reelTimeMachineSpriteIds); i++)
-        DestroySprite(&gSprites[sSlotMachine->reelTimeMachineSpriteIds[i]]);
+        if (sSlotMachine->reelTimeMachineSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sSlotMachine->reelTimeMachineSpriteIds[i]]);
 
     TRY_FREE_AND_SET_NULL(sImageTable_ReelTimeMachineAntennae);
     TRY_FREE_AND_SET_NULL(sImageTable_ReelTimeMachine);
 
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->reelTimeNumberSpriteIds); i++)
-        DestroySprite(&gSprites[sSlotMachine->reelTimeNumberSpriteIds[i]]);
+        if (sSlotMachine->reelTimeNumberSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sSlotMachine->reelTimeNumberSpriteIds[i]]);
 }
 
 static void DestroyReelTimeShadowSprites(void)
@@ -4348,12 +4450,14 @@ static void DestroyReelTimeShadowSprites(void)
     u8 i;
 
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->reelTimeShadowSpriteIds); i++)
-        DestroySprite(&gSprites[sSlotMachine->reelTimeShadowSpriteIds[i]]);
+        if (sSlotMachine->reelTimeShadowSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sSlotMachine->reelTimeShadowSpriteIds[i]]);
 }
 
 static void DestroyBrokenReelTimeMachineSprite(void)
 {
-    DestroySprite(&gSprites[sSlotMachine->reelTimeBrokenMachineSpriteId]);
+    if (sSlotMachine->reelTimeBrokenMachineSpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[sSlotMachine->reelTimeBrokenMachineSpriteId]);
     TRY_FREE_AND_SET_NULL(sImageTable_BrokenReelTimeMachine);
 }
 
@@ -4366,19 +4470,24 @@ static void DestroyBrokenReelTimeMachineSprite(void)
 static void CreateReelTimeBoltSprites(void)
 {
     u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimeBolt, 152, 32, 5);
+    sSlotMachine->reelTimeBoltSpriteIds[1] = MAX_SPRITES;
+    sSlotMachine->reelTimeBoltSpriteIds[0] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     struct Sprite *sprite = &gSprites[spriteId];
     sprite->oam.priority = 1;
     sprite->hFlip = TRUE;
-    sSlotMachine->reelTimeBoltSpriteIds[0] = spriteId;
     sprite->sDelayTimer = 8;
     sprite->sXDir = -1;
     sprite->sYDir = -1;
     sprite->sDelay = 32;
 
     spriteId = CreateSprite(&sSpriteTemplate_ReelTimeBolt, 184, 32, 5);
+    sSlotMachine->reelTimeBoltSpriteIds[1] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     sprite = &gSprites[spriteId];
     sprite->oam.priority = 1;
-    sSlotMachine->reelTimeBoltSpriteIds[1] = spriteId;
     sprite->sXDir = 1;
     sprite->sYDir = -1;
     sprite->sDelay = 32;
@@ -4408,8 +4517,10 @@ static void SpriteCB_ReelTimeBolt(struct Sprite *sprite)
 
 static void SetReelTimeBoltDelay(s16 delay)
 {
-    gSprites[sSlotMachine->reelTimeBoltSpriteIds[0]].sDelay = delay;
-    gSprites[sSlotMachine->reelTimeBoltSpriteIds[1]].sDelay = delay;
+    if (sSlotMachine->reelTimeBoltSpriteIds[0] < MAX_SPRITES)
+        gSprites[sSlotMachine->reelTimeBoltSpriteIds[0]].sDelay = delay;
+    if (sSlotMachine->reelTimeBoltSpriteIds[1] < MAX_SPRITES)
+        gSprites[sSlotMachine->reelTimeBoltSpriteIds[1]].sDelay = delay;
 }
 
 static void DestroyReelTimeBoltSprites(void)
@@ -4417,7 +4528,8 @@ static void DestroyReelTimeBoltSprites(void)
     u8 i;
 
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->reelTimeBoltSpriteIds); i++)
-        DestroySprite(&gSprites[sSlotMachine->reelTimeBoltSpriteIds[i]]);
+        if (sSlotMachine->reelTimeBoltSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sSlotMachine->reelTimeBoltSpriteIds[i]]);
 }
 
 #undef sDelayTimer
@@ -4435,18 +4547,23 @@ static void CreateReelTimePikachuAuraSprites(void)
 {
     // Left half of electricity orb
     u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimePikachuAura, 72, 80, 3);
+    sSlotMachine->reelTimePikachuAuraSpriteIds[1] = MAX_SPRITES;
+    sSlotMachine->reelTimePikachuAuraSpriteIds[0] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 1;
     gSprites[spriteId].sFlashPal = TRUE; // Only one of them needs to do the flashing, they share the palette
     gSprites[spriteId].sColorIdx = 0;
     gSprites[spriteId].sDelayTimer = 16;
     gSprites[spriteId].sDelay = 8;
-    sSlotMachine->reelTimePikachuAuraSpriteIds[0] = spriteId;
 
     // Right half
     spriteId = CreateSprite(&sSpriteTemplate_ReelTimePikachuAura, 104, 80, 3);
+    sSlotMachine->reelTimePikachuAuraSpriteIds[1] = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].oam.priority = 1;
     gSprites[spriteId].hFlip = TRUE;
-    sSlotMachine->reelTimePikachuAuraSpriteIds[1] = spriteId;
 }
 
 static void SpriteCB_ReelTimePikachuAura(struct Sprite *sprite)
@@ -4463,7 +4580,8 @@ static void SpriteCB_ReelTimePikachuAura(struct Sprite *sprite)
 
 static void SetReelTimePikachuAuraFlashDelay(s16 delay)
 {
-    gSprites[sSlotMachine->reelTimePikachuAuraSpriteIds[0]].sDelay = delay;
+    if (sSlotMachine->reelTimePikachuAuraSpriteIds[0] < MAX_SPRITES)
+        gSprites[sSlotMachine->reelTimePikachuAuraSpriteIds[0]].sDelay = delay;
 }
 
 static void DestroyReelTimePikachuAuraSprites(void)
@@ -4471,7 +4589,8 @@ static void DestroyReelTimePikachuAuraSprites(void)
     u8 i;
     MultiplyInvertedPaletteRGBComponents(OBJ_PLTT_ID(IndexOfSpritePaletteTag(PALTAG_PIKA_AURA)) + 3, 0, 0, 0);
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->reelTimePikachuAuraSpriteIds); i++)
-        DestroySprite(&gSprites[sSlotMachine->reelTimePikachuAuraSpriteIds[i]]);
+        if (sSlotMachine->reelTimePikachuAuraSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sSlotMachine->reelTimePikachuAuraSpriteIds[i]]);
 }
 
 #undef sFlashPal
@@ -4482,8 +4601,10 @@ static void DestroyReelTimePikachuAuraSprites(void)
 static void CreateReelTimeExplosionSprite(void)
 {
     u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimeExplosion, 168, 80, 6);
-    gSprites[spriteId].oam.priority = 1;
     sSlotMachine->reelTimeExplosionSpriteId = spriteId;
+    if (spriteId >= MAX_SPRITES)
+        return;
+    gSprites[spriteId].oam.priority = 1;
 }
 
 static void SpriteCB_ReelTimeExplosion(struct Sprite *sprite)
@@ -4493,7 +4614,8 @@ static void SpriteCB_ReelTimeExplosion(struct Sprite *sprite)
 
 static void DestroyReelTimeExplosionSprite(void)
 {
-    DestroySprite(&gSprites[sSlotMachine->reelTimeExplosionSpriteId]);
+    if (sSlotMachine->reelTimeExplosionSpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[sSlotMachine->reelTimeExplosionSpriteId]);
 }
 
 // The "confusion" ducks that circle Pikachu if the Reel Time machine explodes
@@ -4504,11 +4626,13 @@ static void CreateReelTimeDuckSprites(void)
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->reelTimeDuckSpriteIds); i++)
     {
         u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimeDuck, 80 - gSpriteCoordOffsetX, 68, 0);
+        sSlotMachine->reelTimeDuckSpriteIds[i] = spriteId;
+        if (spriteId >= MAX_SPRITES)
+            continue;
         struct Sprite *sprite = &gSprites[spriteId];
         sprite->oam.priority = 1;
         sprite->coordOffsetEnabled = TRUE;
         sprite->data[0] = sp[i];
-        sSlotMachine->reelTimeDuckSpriteIds[i] = spriteId;
     }
 }
 
@@ -4535,7 +4659,8 @@ static void DestroyReelTimeDuckSprites(void)
     u8 i;
     for (i = 0; i < ARRAY_COUNT(sSlotMachine->reelTimeDuckSpriteIds); i++)
     {
-        DestroySprite(&gSprites[sSlotMachine->reelTimeDuckSpriteIds[i]]);
+        if (sSlotMachine->reelTimeDuckSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sSlotMachine->reelTimeDuckSpriteIds[i]]);
     }
 }
 
@@ -4544,14 +4669,34 @@ static void DestroyReelTimeDuckSprites(void)
 #define sTimer        data[2]
 #define sAnimFinished data[7]
 
+static u8 CreateSlotMachineAffineEffect(const struct SpriteTemplate *template, s16 x, s16 y,
+                                       u8 subpriority, u8 priority)
+{
+    u8 spriteId;
+    struct Sprite *sprite;
+
+    if (IndexOfSpritePaletteTag(template->paletteTag) == 0xFF)
+        return MAX_SPRITES;
+
+    spriteId = CreateSprite(template, x, y, subpriority);
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    sprite = &gSprites[spriteId];
+    sprite->oam.priority = priority;
+    sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
+    if (!InitSpriteAffineAnim(sprite))
+    {
+        DestroySprite(sprite);
+        return MAX_SPRITES;
+    }
+
+    return spriteId;
+}
+
 static void CreateReelTimeSmokeSprite(void)
 {
-    u8 spriteId = CreateSprite(&sSpriteTemplate_ReelTimeSmoke, 168, 60, 8);
-    struct Sprite *sprite = &gSprites[spriteId];
-    sprite->oam.priority = 1;
-    sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    InitSpriteAffineAnim(sprite);
-    sSlotMachine->reelTimeSmokeSpriteId = spriteId;
+    sSlotMachine->reelTimeSmokeSpriteId = CreateSlotMachineAffineEffect(&sSpriteTemplate_ReelTimeSmoke, 168, 60, 8, 1);
 }
 
 static void SpriteCB_ReelTimeSmoke(struct Sprite *sprite)
@@ -4583,14 +4728,22 @@ static void SpriteCB_ReelTimeSmoke(struct Sprite *sprite)
 
 static u8 IsReelTimeSmokeAnimFinished(void)
 {
-    return gSprites[sSlotMachine->reelTimeSmokeSpriteId].sAnimFinished;
+    u8 spriteId = sSlotMachine->reelTimeSmokeSpriteId;
+
+    return spriteId >= MAX_SPRITES || gSprites[spriteId].sAnimFinished;
 }
 
 static void DestroyReelTimeSmokeSprite(void)
 {
-    struct Sprite *sprite = &gSprites[sSlotMachine->reelTimeSmokeSpriteId];
-    FreeOamMatrix(sprite->oam.matrixNum);
+    u8 spriteId = sSlotMachine->reelTimeSmokeSpriteId;
+    struct Sprite *sprite;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+    sprite = &gSprites[spriteId];
+    FreeSpriteOamMatrix(sprite);
     DestroySprite(sprite);
+    sSlotMachine->reelTimeSmokeSpriteId = MAX_SPRITES;
 }
 
 #undef sState
@@ -4600,12 +4753,7 @@ static void DestroyReelTimeSmokeSprite(void)
 
 static u8 CreatePikaPowerBoltSprite(s16 x, s16 y)
 {
-    u8 spriteId = CreateSprite(&sSpriteTemplate_PikaPowerBolt, x, y, 12);
-    struct Sprite *sprite = &gSprites[spriteId];
-    sprite->oam.priority = 2;
-    sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    InitSpriteAffineAnim(sprite);
-    return spriteId;
+    return CreateSlotMachineAffineEffect(&sSpriteTemplate_PikaPowerBolt, x, y, 12, 2);
 }
 
 static void SpriteCB_PikaPowerBolt(struct Sprite *sprite)
@@ -4617,7 +4765,7 @@ static void SpriteCB_PikaPowerBolt(struct Sprite *sprite)
 static void DestroyPikaPowerBoltSprite(u8 spriteId)
 {
     struct Sprite *sprite = &gSprites[spriteId];
-    FreeOamMatrix(sprite->oam.matrixNum);
+    FreeSpriteOamMatrix(sprite);
     DestroySprite(sprite);
 }
 
@@ -4638,7 +4786,11 @@ static u8 CreateDigitalDisplaySprite(u8 templateIdx, SpriteCallback callback, s1
 
     spriteTemplate = *sSpriteTemplates_DigitalDisplay[templateIdx];
     spriteTemplate.images = sImageTables_DigitalDisplay[templateIdx];
+    if (templateIdx != DIG_SPRITE_EMPTY && spriteTemplate.images == NULL)
+        return MAX_SPRITES;
     spriteId = CreateSprite(&spriteTemplate, x, y, 16);
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
     sprite = &gSprites[spriteId];
     sprite->oam.priority = 3;
     sprite->callback = callback;
@@ -4882,9 +5034,13 @@ static void SpriteCB_DigitalDisplay_AButtonStop(struct Sprite *sprite)
 
 static void SpriteCB_DigitalDisplay_PokeballShining(struct Sprite *sprite)
 {
+    u8 paletteIndex = IndexOfSpritePaletteTag(PALTAG_DIG_DISPLAY);
+
+    if (paletteIndex != 0xFF)
+        LoadPalette(sPokeballShiningPalTable[sprite->sCounter], OBJ_PLTT_ID(paletteIndex), PLTT_SIZE_4BPP);
+
     if (sprite->sCounter < 3)
     {
-        LoadPalette(sPokeballShiningPalTable[sprite->sCounter], OBJ_PLTT_ID(IndexOfSpritePaletteTag(PALTAG_DIG_DISPLAY)), PLTT_SIZE_4BPP);
         if (++sprite->data[2] >= 4)
         {
             sprite->data[1]++;
@@ -4893,7 +5049,6 @@ static void SpriteCB_DigitalDisplay_PokeballShining(struct Sprite *sprite)
     }
     else
     {
-        LoadPalette(sPokeballShiningPalTable[sprite->sCounter], OBJ_PLTT_ID(IndexOfSpritePaletteTag(PALTAG_DIG_DISPLAY)), PLTT_SIZE_4BPP);
         if (++sprite->data[2] >= 25)
         {
             sprite->sCounter = 0;
@@ -5022,7 +5177,10 @@ static void EndDigitalDisplayScene_StopReel(void)
 
 static void EndDigitalDisplayScene_Win(void)
 {
-    LoadPalette(sDigitalDisplay_Pal, OBJ_PLTT_ID(IndexOfSpritePaletteTag(PALTAG_DIG_DISPLAY)), PLTT_SIZE_4BPP);
+    u8 paletteIndex = IndexOfSpritePaletteTag(PALTAG_DIG_DISPLAY);
+
+    if (paletteIndex != 0xFF)
+        LoadPalette(sDigitalDisplay_Pal, OBJ_PLTT_ID(paletteIndex), PLTT_SIZE_4BPP);
 }
 
 static void EndDigitalDisplayScene_InsertBet(void)
@@ -5039,21 +5197,29 @@ static void LoadSlotMachineGfx(void)
 
     LoadReelBackground();
     sDigitalDisplayGfxPtr = Alloc(0x3200);
-    LZDecompressWram(gSlotMachineDigitalDisplay_Gfx, sDigitalDisplayGfxPtr);
+    if (sDigitalDisplayGfxPtr != NULL)
+        LZDecompressWram(gSlotMachineDigitalDisplay_Gfx, sDigitalDisplayGfxPtr);
     sReelTimeGfxPtr = Alloc(0x3600);
-    LZDecompressWram(sReelTimeGfx, sReelTimeGfxPtr);
+    if (sReelTimeGfxPtr != NULL)
+        LZDecompressWram(sReelTimeGfx, sReelTimeGfxPtr);
     sSlotMachineSpritesheetsPtr = AllocZeroed(sizeof(struct SpriteSheet) * ARRAY_COUNT(sSlotMachineSpriteSheets));
-    for (i = 0; i < ARRAY_COUNT(sSlotMachineSpriteSheets); i++)
+    if (sSlotMachineSpritesheetsPtr != NULL)
     {
-        sSlotMachineSpritesheetsPtr[i].data = sSlotMachineSpriteSheets[i].data;
-        sSlotMachineSpritesheetsPtr[i].size = sSlotMachineSpriteSheets[i].size;
-        sSlotMachineSpritesheetsPtr[i].tag = sSlotMachineSpriteSheets[i].tag;
+        memcpy(sSlotMachineSpritesheetsPtr, sSlotMachineSpriteSheets, sizeof(sSlotMachineSpriteSheets));
+        if (sDigitalDisplayGfxPtr != NULL)
+        {
+            sSlotMachineSpritesheetsPtr[GFXTAG_STOP - 1].data = sDigitalDisplayGfxPtr + 0xA00;
+            sSlotMachineSpritesheetsPtr[GFXTAG_BONUS - 1].data = sDigitalDisplayGfxPtr + 0x1400;
+            sSlotMachineSpritesheetsPtr[GFXTAG_BIG - 1].data = sDigitalDisplayGfxPtr + 0x1600;
+            sSlotMachineSpritesheetsPtr[GFXTAG_REG - 1].data = sDigitalDisplayGfxPtr + 0x1900;
+        }
+
+        for (i = 0; i < ARRAY_COUNT(sSlotMachineSpriteSheets); i++)
+        {
+            if (sSlotMachineSpritesheetsPtr[i].data != NULL)
+                LoadSpriteSheet(&sSlotMachineSpritesheetsPtr[i]);
+        }
     }
-    sSlotMachineSpritesheetsPtr[GFXTAG_STOP - 1].data = sDigitalDisplayGfxPtr + 0xA00;
-    sSlotMachineSpritesheetsPtr[GFXTAG_BONUS - 1].data = sDigitalDisplayGfxPtr + 0x1400;
-    sSlotMachineSpritesheetsPtr[GFXTAG_BIG - 1].data = sDigitalDisplayGfxPtr + 0x1600;
-    sSlotMachineSpritesheetsPtr[GFXTAG_REG - 1].data = sDigitalDisplayGfxPtr + 0x1900;
-    LoadSpriteSheets(sSlotMachineSpritesheetsPtr);
     LoadSpritePalettes(sSlotMachineSpritePalettes);
 }
 
@@ -5170,75 +5336,120 @@ static void SetDigitalDisplayImagePtrs(void)
 
 static void AllocDigitalDisplayGfx(void)
 {
+    if (sDigitalDisplayGfxPtr == NULL)
+        return;
+
     sImageTable_DigitalDisplay_Reel = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Reel[0].data = sDigitalDisplayGfxPtr;
-    sImageTable_DigitalDisplay_Reel[0].size = 0x600;
+    if (sImageTable_DigitalDisplay_Reel != NULL)
+    {
+        sImageTable_DigitalDisplay_Reel[0].data = sDigitalDisplayGfxPtr;
+        sImageTable_DigitalDisplay_Reel[0].size = 0x600;
+    }
 
     sImageTable_DigitalDisplay_Time = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Time[0].data = sDigitalDisplayGfxPtr + 0x600;
-    sImageTable_DigitalDisplay_Time[0].size = 0x200;
+    if (sImageTable_DigitalDisplay_Time != NULL)
+    {
+        sImageTable_DigitalDisplay_Time[0].data = sDigitalDisplayGfxPtr + 0x600;
+        sImageTable_DigitalDisplay_Time[0].size = 0x200;
+    }
 
     sImageTable_DigitalDisplay_Insert = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Insert[0].data = sDigitalDisplayGfxPtr + 0x800;
-    sImageTable_DigitalDisplay_Insert[0].size = 0x200;
+    if (sImageTable_DigitalDisplay_Insert != NULL)
+    {
+        sImageTable_DigitalDisplay_Insert[0].data = sDigitalDisplayGfxPtr + 0x800;
+        sImageTable_DigitalDisplay_Insert[0].size = 0x200;
+    }
 
     sImageTable_DigitalDisplay_Stop = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Stop[0].data = sDigitalDisplayGfxPtr + 0xA00;
-    sImageTable_DigitalDisplay_Stop[0].size = 0x200;
+    if (sImageTable_DigitalDisplay_Stop != NULL)
+    {
+        sImageTable_DigitalDisplay_Stop[0].data = sDigitalDisplayGfxPtr + 0xA00;
+        sImageTable_DigitalDisplay_Stop[0].size = 0x200;
+    }
 
     sImageTable_DigitalDisplay_Win = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Win[0].data = sDigitalDisplayGfxPtr + 0xC00;
-    sImageTable_DigitalDisplay_Win[0].size = 0x300;
+    if (sImageTable_DigitalDisplay_Win != NULL)
+    {
+        sImageTable_DigitalDisplay_Win[0].data = sDigitalDisplayGfxPtr + 0xC00;
+        sImageTable_DigitalDisplay_Win[0].size = 0x300;
+    }
 
     sImageTable_DigitalDisplay_Lose = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Lose[0].data = sDigitalDisplayGfxPtr + 0x1000;
-    sImageTable_DigitalDisplay_Lose[0].size = 0x400;
+    if (sImageTable_DigitalDisplay_Lose != NULL)
+    {
+        sImageTable_DigitalDisplay_Lose[0].data = sDigitalDisplayGfxPtr + 0x1000;
+        sImageTable_DigitalDisplay_Lose[0].size = 0x400;
+    }
 
     sImageTable_DigitalDisplay_Bonus = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Bonus[0].data = sDigitalDisplayGfxPtr + 0x1400;
-    sImageTable_DigitalDisplay_Bonus[0].size = 0x200;
+    if (sImageTable_DigitalDisplay_Bonus != NULL)
+    {
+        sImageTable_DigitalDisplay_Bonus[0].data = sDigitalDisplayGfxPtr + 0x1400;
+        sImageTable_DigitalDisplay_Bonus[0].size = 0x200;
+    }
 
     sImageTable_DigitalDisplay_Big = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Big[0].data = sDigitalDisplayGfxPtr + 0x1600;
-    sImageTable_DigitalDisplay_Big[0].size = 0x300;
+    if (sImageTable_DigitalDisplay_Big != NULL)
+    {
+        sImageTable_DigitalDisplay_Big[0].data = sDigitalDisplayGfxPtr + 0x1600;
+        sImageTable_DigitalDisplay_Big[0].size = 0x300;
+    }
 
     sImageTable_DigitalDisplay_Reg = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Reg[0].data = sDigitalDisplayGfxPtr + 0x1900;
-    sImageTable_DigitalDisplay_Reg[0].size = 0x300;
+    if (sImageTable_DigitalDisplay_Reg != NULL)
+    {
+        sImageTable_DigitalDisplay_Reg[0].data = sDigitalDisplayGfxPtr + 0x1900;
+        sImageTable_DigitalDisplay_Reg[0].size = 0x300;
+    }
 
     sImageTable_DigitalDisplay_AButton = AllocZeroed(sizeof(struct SpriteFrameImage) * 2);
-    sImageTable_DigitalDisplay_AButton[0].data = sDigitalDisplayGfxPtr + 0x1C00;
-    sImageTable_DigitalDisplay_AButton[0].size = 0x200;
-    sImageTable_DigitalDisplay_AButton[1].data = sDigitalDisplayGfxPtr + 0x1E00;
-    sImageTable_DigitalDisplay_AButton[1].size = 0x200;
+    if (sImageTable_DigitalDisplay_AButton != NULL)
+    {
+        sImageTable_DigitalDisplay_AButton[0].data = sDigitalDisplayGfxPtr + 0x1C00;
+        sImageTable_DigitalDisplay_AButton[0].size = 0x200;
+        sImageTable_DigitalDisplay_AButton[1].data = sDigitalDisplayGfxPtr + 0x1E00;
+        sImageTable_DigitalDisplay_AButton[1].size = 0x200;
+    }
 
     sImageTable_DigitalDisplay_Smoke = AllocZeroed(sizeof(struct SpriteFrameImage) * 1);
-    sImageTable_DigitalDisplay_Smoke[0].data = sDigitalDisplayGfxPtr + 0x2000;
-    sImageTable_DigitalDisplay_Smoke[0].size = 640;
+    if (sImageTable_DigitalDisplay_Smoke != NULL)
+    {
+        sImageTable_DigitalDisplay_Smoke[0].data = sDigitalDisplayGfxPtr + 0x2000;
+        sImageTable_DigitalDisplay_Smoke[0].size = 640;
+    }
 
     sImageTable_DigitalDisplay_Number = AllocZeroed(sizeof(struct SpriteFrameImage) * 5);
-    sImageTable_DigitalDisplay_Number[0].data = sDigitalDisplayGfxPtr + 0x2280;
-    sImageTable_DigitalDisplay_Number[0].size = 0x80;
-    sImageTable_DigitalDisplay_Number[1].data = sDigitalDisplayGfxPtr + 0x2300;
-    sImageTable_DigitalDisplay_Number[1].size = 0x80;
-    sImageTable_DigitalDisplay_Number[2].data = sDigitalDisplayGfxPtr + 0x2380;
-    sImageTable_DigitalDisplay_Number[2].size = 0x80;
-    sImageTable_DigitalDisplay_Number[3].data = sDigitalDisplayGfxPtr + 0x2400;
-    sImageTable_DigitalDisplay_Number[3].size = 0x80;
-    sImageTable_DigitalDisplay_Number[4].data = sDigitalDisplayGfxPtr + 0x2480;
-    sImageTable_DigitalDisplay_Number[4].size = 0x80;
+    if (sImageTable_DigitalDisplay_Number != NULL)
+    {
+        sImageTable_DigitalDisplay_Number[0].data = sDigitalDisplayGfxPtr + 0x2280;
+        sImageTable_DigitalDisplay_Number[0].size = 0x80;
+        sImageTable_DigitalDisplay_Number[1].data = sDigitalDisplayGfxPtr + 0x2300;
+        sImageTable_DigitalDisplay_Number[1].size = 0x80;
+        sImageTable_DigitalDisplay_Number[2].data = sDigitalDisplayGfxPtr + 0x2380;
+        sImageTable_DigitalDisplay_Number[2].size = 0x80;
+        sImageTable_DigitalDisplay_Number[3].data = sDigitalDisplayGfxPtr + 0x2400;
+        sImageTable_DigitalDisplay_Number[3].size = 0x80;
+        sImageTable_DigitalDisplay_Number[4].data = sDigitalDisplayGfxPtr + 0x2480;
+        sImageTable_DigitalDisplay_Number[4].size = 0x80;
+    }
 
     sImageTable_DigitalDisplay_Pokeball = AllocZeroed(sizeof(struct SpriteFrameImage) * 2);
-    sImageTable_DigitalDisplay_Pokeball[0].data = sDigitalDisplayGfxPtr + 0x2600;
-    sImageTable_DigitalDisplay_Pokeball[0].size = 0x480;
-    sImageTable_DigitalDisplay_Pokeball[1].data = sDigitalDisplayGfxPtr + 10880;
-    sImageTable_DigitalDisplay_Pokeball[1].size = 0x480;
+    if (sImageTable_DigitalDisplay_Pokeball != NULL)
+    {
+        sImageTable_DigitalDisplay_Pokeball[0].data = sDigitalDisplayGfxPtr + 0x2600;
+        sImageTable_DigitalDisplay_Pokeball[0].size = 0x480;
+        sImageTable_DigitalDisplay_Pokeball[1].data = sDigitalDisplayGfxPtr + 10880;
+        sImageTable_DigitalDisplay_Pokeball[1].size = 0x480;
+    }
 
     sImageTable_DigitalDisplay_DPad = AllocZeroed(sizeof(struct SpriteFrameImage) * 2);
-    sImageTable_DigitalDisplay_DPad[0].data = sDigitalDisplayGfxPtr + 0x2F00;
-    sImageTable_DigitalDisplay_DPad[0].size = 0x180;
-    sImageTable_DigitalDisplay_DPad[1].data = sDigitalDisplayGfxPtr + 0x3080;
-    sImageTable_DigitalDisplay_DPad[1].size = 0x180;
+    if (sImageTable_DigitalDisplay_DPad != NULL)
+    {
+        sImageTable_DigitalDisplay_DPad[0].data = sDigitalDisplayGfxPtr + 0x2F00;
+        sImageTable_DigitalDisplay_DPad[0].size = 0x180;
+        sImageTable_DigitalDisplay_DPad[1].data = sDigitalDisplayGfxPtr + 0x3080;
+        sImageTable_DigitalDisplay_DPad[1].size = 0x180;
+    }
 }
 
 static const u8 sReelSymbols[NUM_REELS][SYMBOLS_PER_REEL] =

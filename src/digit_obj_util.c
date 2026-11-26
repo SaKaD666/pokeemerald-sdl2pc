@@ -117,8 +117,11 @@ void DigitObjUtil_Free(void)
 bool32 DigitObjUtil_CreatePrinter(u32 id, s32 num, const struct DigitObjUtilTemplate *template)
 {
     u32 i;
+#ifdef PLATFORM_SDL2
+    bool8 loadedTiles = FALSE;
+#endif
 
-    if (sOamWork == NULL)
+    if (sOamWork == NULL || id >= sOamWork->count)
         return FALSE;
     if (sOamWork->array[id].isActive)
         return FALSE;
@@ -128,7 +131,7 @@ bool32 DigitObjUtil_CreatePrinter(u32 id, s32 num, const struct DigitObjUtilTemp
         return FALSE;
 
     sOamWork->array[id].tileStart = GetSpriteTileStartByTag(template->spriteSheet->tag);
-    if (sOamWork->array[id].tileStart == 0xFFFF)
+    if (sOamWork->array[id].tileStart == SPRITE_TILE_NONE)
     {
         if (template->spriteSheet->size != 0)
         {
@@ -143,13 +146,26 @@ bool32 DigitObjUtil_CreatePrinter(u32 id, s32 num, const struct DigitObjUtilTemp
             sOamWork->array[id].tileStart = LoadCompressedSpriteSheet(&compSpriteSheet);
         }
 
-        if (sOamWork->array[id].tileStart == 0xFFFF)
+        if (sOamWork->array[id].tileStart == SPRITE_TILE_NONE)
+#ifdef PLATFORM_SDL2
+            goto releaseSlots;
+        loadedTiles = TRUE;
+#else
             return FALSE;
+#endif
     }
 
     sOamWork->array[id].palTagIndex = IndexOfSpritePaletteTag(template->spritePal->tag);
     if (sOamWork->array[id].palTagIndex == 0xFF)
         sOamWork->array[id].palTagIndex = LoadSpritePalette(template->spritePal);
+#ifdef PLATFORM_SDL2
+    if (sOamWork->array[id].palTagIndex == 0xFF)
+    {
+        if (loadedTiles)
+            FreeSpriteTilesByTag(template->spriteSheet->tag);
+        goto releaseSlots;
+    }
+#endif
 
     sOamWork->array[id].strConvMode = template->strConvMode;
     sOamWork->array[id].oamCount = template->oamCount;
@@ -173,6 +189,23 @@ bool32 DigitObjUtil_CreatePrinter(u32 id, s32 num, const struct DigitObjUtilTemp
     DigitObjUtil_PrintNumOn(id, num);
 
     return TRUE;
+
+#ifdef PLATFORM_SDL2
+releaseSlots:
+    ReleaseOamSlots(sOamWork->array[id].firstOamId, (u16)template->oamCount + 1);
+    sOamWork->array[id].firstOamId = 0xFF;
+    return FALSE;
+#endif
+}
+
+static void SetDigitOamTile(const struct DigitPrinter *objWork, u8 slot, u32 digit)
+{
+    u16 tile = objWork->tileStart + digit * objWork->tilesPerImage;
+
+    gMain.oamBuffer[slot].tileNum = tile;
+#ifdef PLATFORM_SDL2
+    SetReservedOamSlotHandles(slot, tile, objWork->tileStart, objWork->palTagIndex);
+#endif
 }
 
 static void CopyWorkToOam(struct DigitPrinter *objWork)
@@ -189,7 +222,7 @@ static void CopyWorkToOam(struct DigitPrinter *objWork)
         gMain.oamBuffer[oamId].x = x;
         gMain.oamBuffer[oamId].shape = objWork->shape;
         gMain.oamBuffer[oamId].size = objWork->size;
-        gMain.oamBuffer[oamId].tileNum = objWork->tileStart;
+        SetDigitOamTile(objWork, oamId, 0);
         gMain.oamBuffer[oamId].priority = objWork->priority;
         gMain.oamBuffer[oamId].paletteNum = objWork->palTagIndex;
 
@@ -199,7 +232,7 @@ static void CopyWorkToOam(struct DigitPrinter *objWork)
     oamId--;
     gMain.oamBuffer[oamId].x = objWork->x - objWork->xDelta;
     gMain.oamBuffer[oamId].affineMode = ST_OAM_AFFINE_ERASE;
-    gMain.oamBuffer[oamId].tileNum = objWork->tileStart + (objWork->tilesPerImage * 10);
+    SetDigitOamTile(objWork, oamId, 10);
 }
 
 void DigitObjUtil_PrintNumOn(u32 id, s32 num)
@@ -248,7 +281,7 @@ static void DrawNumObjsLeadingZeros(struct DigitPrinter *objWork, s32 num, bool3
         num -= (digit * pow10);
         pow10 /= 10;
 
-        gMain.oamBuffer[oamId].tileNum = (digit * objWork->tilesPerImage) + objWork->tileStart;
+        SetDigitOamTile(objWork, oamId, digit);
         oamId++;
     }
 
@@ -277,7 +310,7 @@ static void DrawNumObjsMinusInFront(struct DigitPrinter *objWork, s32 num, bool3
 
         if (digit != 0 || firstDigit != -1 || pow10 == 0)
         {
-            gMain.oamBuffer[oamId].tileNum = (digit * objWork->tilesPerImage) + objWork->tileStart;
+            SetDigitOamTile(objWork, oamId, digit);
             gMain.oamBuffer[oamId].affineMode = ST_OAM_AFFINE_OFF;
 
             if (firstDigit == -1)
@@ -319,7 +352,7 @@ static void DrawNumObjsMinusInBack(struct DigitPrinter *objWork, s32 num, bool32
         if (digit != 0 || printingDigits || pow10 == 0)
         {
             printingDigits = TRUE;
-            gMain.oamBuffer[oamId].tileNum = (digit * objWork->tilesPerImage) + objWork->tileStart;
+            SetDigitOamTile(objWork, oamId, digit);
             gMain.oamBuffer[oamId].affineMode = ST_OAM_AFFINE_OFF;
 
             oamId++;
@@ -342,9 +375,9 @@ static void DrawNumObjsMinusInBack(struct DigitPrinter *objWork, s32 num, bool32
 
 void DigitObjUtil_DeletePrinter(u32 id)
 {
-    s32 oamId, oamCount, i;
+    s32 oamId, oamCount;
 
-    if (sOamWork == NULL)
+    if (sOamWork == NULL || id >= sOamWork->count)
         return;
     if (!sOamWork->array[id].isActive)
         return;
@@ -352,8 +385,12 @@ void DigitObjUtil_DeletePrinter(u32 id)
     oamCount = sOamWork->array[id].oamCount + 1;
     oamId = sOamWork->array[id].firstOamId;
 
-    for (i = 0; i < oamCount; i++, oamId++)
+#ifdef PLATFORM_SDL2
+    ReleaseOamSlots(oamId, oamCount);
+#else
+    for (s32 i = 0; i < oamCount; i++, oamId++)
         gMain.oamBuffer[oamId].affineMode = ST_OAM_AFFINE_ERASE;
+#endif
 
     if (!SharesTileWithAnyActive(id))
         FreeSpriteTilesByTag(sOamWork->array[id].tileTag);
@@ -390,6 +427,15 @@ void DigitObjUtil_HideOrShow(u32 id, bool32 hide)
 
 static u8 GetFirstOamId(u8 oamCount)
 {
+#ifdef PLATFORM_SDL2
+    u16 count = (u16)oamCount + 1;
+    u16 start;
+
+    for (start = 64; start + count <= 128; start++)
+        if (ReserveOamSlots(start, count))
+            return start;
+    return 0xFF;
+#else
     u32 i;
     u16 firstOamId = 64;
 
@@ -410,6 +456,7 @@ static u8 GetFirstOamId(u8 oamCount)
         return 0xFF;
     else
         return firstOamId;
+#endif
 }
 
 static bool32 SharesTileWithAnyActive(u32 id)

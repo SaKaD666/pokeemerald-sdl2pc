@@ -1068,11 +1068,14 @@ static void CreateMovingScenerySprites(bool8 hasVerticalMove, const struct Intro
     for(i = 0; i < numSprites; i++)
     {
         u8 sprite = CreateSprite(&sSpriteTemplate_MovingScenery, metadata[i].x, metadata[i].y, metadata[i].subpriority);
+        if (sprite >= MAX_SPRITES)
+            continue;
+
         CalcCenterToCornerVec(&gSprites[sprite], metadata[i].shape, metadata[i].size, ST_OAM_AFFINE_OFF);
         gSprites[sprite].oam.priority = 3;
         gSprites[sprite].oam.shape = metadata[i].shape;
         gSprites[sprite].oam.size = metadata[i].size;
-        gSprites[sprite].oam.paletteNum = 0;
+        SetSpritePaletteHandle(&gSprites[sprite], 0);
         gSprites[sprite].anims = anims;
         StartSpriteAnim(&gSprites[sprite], metadata[i].animNum);
         gSprites[sprite].tHasVerticalMove = hasVerticalMove;
@@ -1108,27 +1111,48 @@ static void SpriteCB_Player(struct Sprite *sprite)
 
 static void SpriteCB_Bicycle(struct Sprite *sprite)
 {
-    sprite->invisible = gSprites[sprite->sPlayerSpriteId].invisible;
-    sprite->x = gSprites[sprite->sPlayerSpriteId].x;
-    sprite->y = gSprites[sprite->sPlayerSpriteId].y + 8;
-    sprite->x2 = gSprites[sprite->sPlayerSpriteId].x2;
-    sprite->y2 = gSprites[sprite->sPlayerSpriteId].y2;
+    u16 leaderId = sprite->sPlayerSpriteId;
+
+    if (leaderId >= MAX_SPRITES || !gSprites[leaderId].inUse)
+    {
+        DestroySprite(sprite);
+        return;
+    }
+
+    sprite->invisible = gSprites[leaderId].invisible;
+    sprite->x = gSprites[leaderId].x;
+    sprite->y = gSprites[leaderId].y + 8;
+    sprite->x2 = gSprites[leaderId].x2;
+    sprite->y2 = gSprites[leaderId].y2;
+}
+
+static u8 CreateIntroCyclist(const struct SpriteTemplate *player, const struct SpriteTemplate *bicycle, s16 x, s16 y)
+{
+    u8 playerSpriteId = CreateSprite(player, x, y, 2);
+    u8 bicycleSpriteId;
+
+    if (playerSpriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    bicycleSpriteId = CreateSprite(bicycle, x, y + 8, 3);
+    if (bicycleSpriteId >= MAX_SPRITES)
+    {
+        DestroySprite(&gSprites[playerSpriteId]);
+        return MAX_SPRITES;
+    }
+
+    gSprites[bicycleSpriteId].sPlayerSpriteId = playerSpriteId;
+    return playerSpriteId;
 }
 
 u8 CreateIntroBrendanSprite(s16 x, s16 y)
 {
-    u8 playerSpriteId = CreateSprite(&sSpriteTemplate_Brendan, x, y, 2);
-    u8 bicycleSpriteId = CreateSprite(&sSpriteTemplate_BrendanBicycle, x, y + 8, 3);
-    gSprites[bicycleSpriteId].sPlayerSpriteId = playerSpriteId;
-    return playerSpriteId;
+    return CreateIntroCyclist(&sSpriteTemplate_Brendan, &sSpriteTemplate_BrendanBicycle, x, y);
 }
 
 u8 CreateIntroMaySprite(s16 x, s16 y)
 {
-    u8 playerSpriteId = CreateSprite(&sSpriteTemplate_May, x, y, 2);
-    u8 bicycleSpriteId = CreateSprite(&sSpriteTemplate_MayBicycle, x, y + 8, 3);
-    gSprites[bicycleSpriteId].sPlayerSpriteId = playerSpriteId;
-    return playerSpriteId;
+    return CreateIntroCyclist(&sSpriteTemplate_May, &sSpriteTemplate_MayBicycle, x, y);
 }
 
 #undef sPlayerSpriteId
@@ -1141,32 +1165,50 @@ static void SpriteCB_FlygonLeftHalf(struct Sprite *sprite)
 
 static void SpriteCB_FlygonRightHalf(struct Sprite *sprite)
 {
-    sprite->invisible = gSprites[sprite->sLeftSpriteId].invisible;
-    sprite->y = gSprites[sprite->sLeftSpriteId].y;
-    sprite->x2 = gSprites[sprite->sLeftSpriteId].x2;
-    sprite->y2 = gSprites[sprite->sLeftSpriteId].y2;
+    u16 leaderId = sprite->sLeftSpriteId;
+
+    if (leaderId >= MAX_SPRITES || !gSprites[leaderId].inUse)
+    {
+        DestroySprite(sprite);
+        return;
+    }
+
+    sprite->invisible = gSprites[leaderId].invisible;
+    sprite->y = gSprites[leaderId].y;
+    sprite->x2 = gSprites[leaderId].x2;
+    sprite->y2 = gSprites[leaderId].y2;
+}
+
+static u8 CreateIntroFlygonPair(const struct SpriteTemplate *template, s16 x, s16 y)
+{
+    u8 leftSpriteId = CreateSprite(template, x - 32, y, 5);
+    u8 rightSpriteId;
+
+    if (leftSpriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    rightSpriteId = CreateSprite(template, x + 32, y, 6);
+    if (rightSpriteId >= MAX_SPRITES)
+    {
+        DestroySprite(&gSprites[leftSpriteId]);
+        return MAX_SPRITES;
+    }
+
+    gSprites[rightSpriteId].sLeftSpriteId = leftSpriteId;
+    StartSpriteAnim(&gSprites[rightSpriteId], 1);
+    gSprites[rightSpriteId].callback = SpriteCB_FlygonRightHalf;
+    return leftSpriteId;
 }
 
 // In RS these were for Latios/Latias. In Emerald both are replaced with Flygon and now only 1 is used
 static u8 UNUSED CreateIntroFlygonSprite_Unused(s16 x, s16 y)
 {
-    u8 leftSpriteId = CreateSprite(&sSpriteTemplate_FlygonLatios, x - 32, y, 5);
-    u8 rightSpriteId = CreateSprite(&sSpriteTemplate_FlygonLatios, x + 32, y, 6);
-    gSprites[rightSpriteId].sLeftSpriteId = leftSpriteId;
-    StartSpriteAnim(&gSprites[rightSpriteId], 1);
-    gSprites[rightSpriteId].callback = &SpriteCB_FlygonRightHalf;
-    return leftSpriteId;
+    return CreateIntroFlygonPair(&sSpriteTemplate_FlygonLatios, x, y);
 }
-
 
 u8 CreateIntroFlygonSprite(s16 x, s16 y)
 {
-    u8 leftSpriteId = CreateSprite(&sSpriteTemplate_FlygonLatias, x - 32, y, 5);
-    u8 rightSpriteId = CreateSprite(&sSpriteTemplate_FlygonLatias, x + 32, y, 6);
-    gSprites[rightSpriteId].sLeftSpriteId = leftSpriteId;
-    StartSpriteAnim(&gSprites[rightSpriteId], 1);
-    gSprites[rightSpriteId].callback = &SpriteCB_FlygonRightHalf;
-    return leftSpriteId;
+    return CreateIntroFlygonPair(&sSpriteTemplate_FlygonLatias, x, y);
 }
 
 #undef sLeftSpriteId

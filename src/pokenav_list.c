@@ -696,6 +696,10 @@ static void SetListMarginTile(struct PokenavListMenuWindow *listWindow, bool32 d
 
     tilemapBuffer[0] = var;
     tilemapBuffer[0x20] = var;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapRamRange(&tilemapBuffer[0], sizeof(*tilemapBuffer));
+    InvalidateBgTilemapRamRange(&tilemapBuffer[0x20], sizeof(*tilemapBuffer));
+#endif
 }
 
 // Print the trainer's name and title at the top of their check page
@@ -847,12 +851,12 @@ static void CreateListArrowSprites(const struct PokenavListWindowState *windowSt
     x = list->listWindow.x * 8 + (list->listWindow.width - 1) * 4;
     spriteId = CreateSprite(&sSpriteTemplate_UpDownArrow, x, list->listWindow.y * 8 + windowState->entriesOnscreen * 16, 7);
     list->downArrow = &gSprites[spriteId];
-    list->downArrow->oam.tileNum += 2;
+    SetSpriteSheetTileOffset(list->downArrow, 2);
     list->downArrow->callback = SpriteCB_DownArrow;
 
     spriteId = CreateSprite(&sSpriteTemplate_UpDownArrow, x, list->listWindow.y * 8, 7);
     list->upArrow = &gSprites[spriteId];
-    list->upArrow->oam.tileNum += 4;
+    SetSpriteSheetTileOffset(list->upArrow, 4);
     list->upArrow->callback = SpriteCB_UpArrow;
 }
 

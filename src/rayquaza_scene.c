@@ -1336,7 +1336,12 @@ static void Task_EndAfterFadeScreen(u8 taskId)
         MainCallback exitCallback = sRayScene->exitCallback;
         u8 bg;
 
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#else
         IsDma3ManagerBusyWithBgCopy();
+#endif
         SetVBlankHBlankCallbacksToNull();
         ScanlineEffect_Stop();
         ClearScheduledBgCopiesToVram();
@@ -1438,17 +1443,36 @@ static void Task_HandleDuoFightPre(u8 taskId)
     }
 }
 
+static void DestroyRayquazaSceneSprite(u8 spriteId)
+{
+    if (spriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[spriteId]);
+}
+
 static u8 DuoFightPre_CreateGroudonSprites(void)
 {
     u8 spriteId;
     s16 *data;
 
     spriteId = CreateSprite(&sSpriteTemplate_DuoFightPre_Groudon, 88, 72, 3);
-    gSprites[spriteId].callback = SpriteCB_DuoFightPre_Groudon;
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
     data = gSprites[spriteId].data;
     sGroudonBodySpriteId = CreateSprite(&sSpriteTemplate_DuoFightPre_Groudon, 56, 104, 3);
     sGroudonShoulderSpriteId = CreateSprite(&sSpriteTemplate_DuoFightPre_GroudonShoulder, 75, 101, 0);
     sGroudonClawSpriteId = CreateSprite(&sSpriteTemplate_DuoFightPre_GroudonClaw, 109, 114, 1);
+    if (sGroudonBodySpriteId >= MAX_SPRITES || sGroudonShoulderSpriteId >= MAX_SPRITES
+     || sGroudonClawSpriteId >= MAX_SPRITES)
+    {
+        DestroyRayquazaSceneSprite(spriteId);
+        DestroyRayquazaSceneSprite(sGroudonBodySpriteId);
+        DestroyRayquazaSceneSprite(sGroudonShoulderSpriteId);
+        DestroyRayquazaSceneSprite(sGroudonClawSpriteId);
+        return MAX_SPRITES;
+    }
+
+    gSprites[spriteId].callback = SpriteCB_DuoFightPre_Groudon;
     StartSpriteAnim(&gSprites[sGroudonBodySpriteId], 1);
     return spriteId;
 }
@@ -1493,11 +1517,14 @@ static void SpriteCB_DuoFightPre_Groudon(struct Sprite *sprite)
 static u8 DuoFightPre_CreateKyogreSprites(void)
 {
     u8 spriteId;
-    s16 *data;
+    u16 *data;
+    u8 i;
 
     spriteId = CreateSprite(&sSpriteTemplate_DuoFightPre_Kyogre, 136, 96, 1);
-    gSprites[spriteId].callback = SpriteCB_DuoFightPre_Kyogre;
-    data = gSprites[spriteId].data;
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    data = (u16 *)gSprites[spriteId].data;
 
     data[0]  = CreateSprite(&sSpriteTemplate_DuoFightPre_Kyogre, 168,  96, 1) << 8;
     data[0] |= CreateSprite(&sSpriteTemplate_DuoFightPre_Kyogre, 136, 112, 1);
@@ -1510,6 +1537,21 @@ static u8 DuoFightPre_CreateKyogreSprites(void)
     data[4]  = CreateSprite(&sSpriteTemplate_DuoFightPre_KyogrePectoralFin, 208, 132, 0) << 8;
     data[4] |= CreateSprite(&sSpriteTemplate_DuoFightPre_KyogreDorsalFin, 200, 120, 1);
 
+    for (i = 0; i < 5; i++)
+    {
+        if ((data[i] >> 8) >= MAX_SPRITES || (u8)data[i] >= MAX_SPRITES)
+        {
+            for (i = 0; i < 5; i++)
+            {
+                DestroyRayquazaSceneSprite(data[i] >> 8);
+                DestroyRayquazaSceneSprite((u8)data[i]);
+            }
+            DestroyRayquazaSceneSprite(spriteId);
+            return MAX_SPRITES;
+        }
+    }
+
+    gSprites[spriteId].callback = SpriteCB_DuoFightPre_Kyogre;
     StartSpriteAnim(&gSprites[data[0] >> 8], 1);
     StartSpriteAnim(&gSprites[data[0] & 0xFF], 2);
     StartSpriteAnim(&gSprites[data[1] >> 8], 3);
@@ -1524,14 +1566,14 @@ static u8 DuoFightPre_CreateKyogreSprites(void)
 
 static void SpriteCB_DuoFightPre_Kyogre(struct Sprite *sprite)
 {
-    s16 *data = sprite->data;
+    u16 *data = (u16 *)sprite->data;
     data[5]++;
     data[5] &= 0x1F;
     if (data[5] == 0 && sprite->x != 152)
     {
         sprite->x++;
-        gSprites[sprite->data[0] >> 8].x++;
-        gSprites[sprite->data[0] & 0xFF].x++;
+        gSprites[data[0] >> 8].x++;
+        gSprites[data[0] & 0xFF].x++;
         gSprites[data[1] >> 8].x++;
         gSprites[data[1] & 0xFF].x++;
         gSprites[data[2] >> 8].x++;
@@ -1597,9 +1639,6 @@ static void InitDuoFightSceneBgs(void)
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     ShowBg(1);
@@ -1607,12 +1646,14 @@ static void InitDuoFightSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadDuoFightSceneGfx(void)
+static void QueueDuoFightSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(0, gRaySceneDuoFight_Clouds_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadDuoFightSceneGfx(void)
+{
     LZDecompressWram(gRaySceneDuoFight_Clouds2_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneDuoFight_Clouds1_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneDuoFight_Clouds3_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -1627,12 +1668,34 @@ static void LoadDuoFightSceneGfx(void)
     LoadCompressedSpritePalette(&sSpritePal_DuoFight_Kyogre);
 }
 
+static void Task_FinishDuoFightSetup(u8 taskId);
+
 static void Task_DuoFightAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     ScanlineEffect_Clear();
     InitDuoFightSceneBgs();
+    QueueDuoFightSceneTiles();
+    Task_FinishDuoFightSetup(taskId);
+}
+
+static void Task_FinishDuoFightSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishDuoFightSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadDuoFightSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
     CpuFastFill16(0, gScanlineEffectRegBuffers, sizeof(gScanlineEffectRegBuffers));
     ScanlineEffect_SetParams(sScanlineParams_DuoFight_Clouds);
     tTimer = 0;
@@ -1791,8 +1854,10 @@ static void DuoFight_PanOffScene(u8 taskId)
 {
     u16 bgY;
     s16 *data = gTasks[taskId].data;
-    DuoFight_SlideGroudonDown(&gSprites[tGroudonSpriteId]);
-    DuoFight_SlideKyogreDown(&gSprites[tKyogreSpriteId]);
+    if ((u16)tGroudonSpriteId < MAX_SPRITES)
+        DuoFight_SlideGroudonDown(&gSprites[tGroudonSpriteId]);
+    if ((u16)tKyogreSpriteId < MAX_SPRITES)
+        DuoFight_SlideKyogreDown(&gSprites[tKyogreSpriteId]);
 
     bgY = GetBgY(1);
     if (GetBgY(1) == 0 || bgY > 0x8000)
@@ -1835,11 +1900,24 @@ static u8 DuoFight_CreateGroudonSprites(void)
     s16 *data;
 
     spriteId = CreateSprite(&sSpriteTemplate_DuoFight_Groudon, 98, 72, 3);
-    gSprites[spriteId].callback = SpriteCB_DuoFight_Groudon;
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
     data = gSprites[spriteId].data;
     sGroudonBodySpriteId = CreateSprite(&sSpriteTemplate_DuoFight_Groudon, 66, 104, 3);
     sGroudonShoulderSpriteId = CreateSprite(&sSpriteTemplate_DuoFight_GroudonShoulder, 85, 101, 0);
     sGroudonClawSpriteId = CreateSprite(&sSpriteTemplate_DuoFight_GroudonClaw, 119, 114, 1);
+    if (sGroudonBodySpriteId >= MAX_SPRITES || sGroudonShoulderSpriteId >= MAX_SPRITES
+     || sGroudonClawSpriteId >= MAX_SPRITES)
+    {
+        DestroyRayquazaSceneSprite(spriteId);
+        DestroyRayquazaSceneSprite(sGroudonBodySpriteId);
+        DestroyRayquazaSceneSprite(sGroudonShoulderSpriteId);
+        DestroyRayquazaSceneSprite(sGroudonClawSpriteId);
+        return MAX_SPRITES;
+    }
+
+    gSprites[spriteId].callback = SpriteCB_DuoFight_Groudon;
     StartSpriteAnim(&gSprites[sGroudonBodySpriteId], 1);
     return spriteId;
 }
@@ -1896,11 +1974,14 @@ static void DuoFight_SlideGroudonDown(struct Sprite *sprite)
 static u8 DuoFight_CreateKyogreSprites(void)
 {
     u8 spriteId;
-    s16 *data;
+    u16 *data;
+    u8 i;
 
     spriteId = CreateSprite(&sSpriteTemplate_DuoFight_Kyogre, 126, 96, 1);
-    gSprites[spriteId].callback = SpriteCB_DuoFight_Kyogre;
-    data = gSprites[spriteId].data;
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    data = (u16 *)gSprites[spriteId].data;
 
     data[0] = CreateSprite(&sSpriteTemplate_DuoFight_Kyogre, 158, 96, 1) << 8;
     data[0] |= CreateSprite(&sSpriteTemplate_DuoFight_Kyogre, 126, 112, 1);
@@ -1913,6 +1994,21 @@ static u8 DuoFight_CreateKyogreSprites(void)
     data[4] = CreateSprite(&sSpriteTemplate_DuoFight_KyogrePectoralFin, 198, 132, 0) << 8;
     data[4] |= CreateSprite(&sSpriteTemplate_DuoFight_KyogreDorsalFin, 190, 120, 1);
 
+    for (i = 0; i < 5; i++)
+    {
+        if ((data[i] >> 8) >= MAX_SPRITES || (u8)data[i] >= MAX_SPRITES)
+        {
+            for (i = 0; i < 5; i++)
+            {
+                DestroyRayquazaSceneSprite(data[i] >> 8);
+                DestroyRayquazaSceneSprite((u8)data[i]);
+            }
+            DestroyRayquazaSceneSprite(spriteId);
+            return MAX_SPRITES;
+        }
+    }
+
+    gSprites[spriteId].callback = SpriteCB_DuoFight_Kyogre;
     StartSpriteAnim(&gSprites[data[0] >> 8], 1);
     StartSpriteAnim(&gSprites[data[0] & 0xFF], 2);
     StartSpriteAnim(&gSprites[data[1] >> 8], 3);
@@ -1927,14 +2023,14 @@ static u8 DuoFight_CreateKyogreSprites(void)
 
 static void SpriteCB_DuoFight_Kyogre(struct Sprite *sprite)
 {
-    s16 *data = sprite->data;
+    u16 *data = (u16 *)sprite->data;
     data[5]++;
     data[5] &= 0xF;
     if (!(data[5] & 7) && sprite->x != 152)
     {
         sprite->x++;
-        gSprites[sprite->data[0] >> 8].x++;
-        gSprites[sprite->data[0] & 0xFF].x++;
+        gSprites[data[0] >> 8].x++;
+        gSprites[data[0] & 0xFF].x++;
         gSprites[data[1] >> 8].x++;
         gSprites[data[1] & 0xFF].x++;
         gSprites[data[2] >> 8].x++;
@@ -1988,12 +2084,12 @@ static void SpriteCB_DuoFight_Kyogre(struct Sprite *sprite)
 
 static void DuoFight_SlideKyogreDown(struct Sprite *sprite)
 {
-    s16 *data = sprite->data;
+    const u16 *data = (const u16 *)sprite->data;
     if (sprite->y <= GBA_DISPLAY_HEIGHT)
     {
         sprite->y += 8;
-        gSprites[sprite->data[0] >> 8].y += 8;
-        gSprites[sprite->data[0] & 0xFF].y += 8;
+        gSprites[data[0] >> 8].y += 8;
+        gSprites[data[0] & 0xFF].y += 8;
         gSprites[data[1] >> 8].y += 8;
         gSprites[data[1] & 0xFF].y += 8;
         gSprites[data[2] >> 8].y += 8;
@@ -2034,9 +2130,6 @@ static void InitTakesFlightSceneBgs(void)
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     ShowBg(1);
@@ -2044,14 +2137,16 @@ static void InitTakesFlightSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadTakesFlightSceneGfx(void)
+static void QueueTakesFlightSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(0, gRaySceneDuoFight_Clouds_Gfx, 0, 0, 0); // Re-uses clouds from previous scene
     DecompressAndCopyTileDataToVram(1, gRaySceneTakesFlight_Bg_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(2, gRaySceneTakesFlight_Rayquaza_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadTakesFlightSceneGfx(void)
+{
     LZDecompressWram(gRaySceneDuoFight_Clouds2_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneTakesFlight_Bg_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneTakesFlight_Rayquaza_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -2060,12 +2155,34 @@ static void LoadTakesFlightSceneGfx(void)
     LoadCompressedSpritePalette(&sSpritePal_TakesFlight_Smoke);
 }
 
+static void Task_FinishRayTakesFlightSetup(u8 taskId);
+
 static void Task_RayTakesFlightAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     PlayNewMapMusic(MUS_RAYQUAZA_APPEARS);
     InitTakesFlightSceneBgs();
+    QueueTakesFlightSceneTiles();
+    Task_FinishRayTakesFlightSetup(taskId);
+}
+
+static void Task_FinishRayTakesFlightSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayTakesFlightSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadTakesFlightSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_OBJ | BLDCNT_TGT2_BG1 | BLDCNT_EFFECT_BLEND);
     SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(8, 8));
     BlendPalettes(PALETTES_ALL, 16, 0);
@@ -2181,11 +2298,15 @@ static void Task_TakesFlight_CreateSmoke(u8 taskId)
                                    (sTakesFlight_SmokeCoords[tSmokeId][0] * 4) + 120,
                                    (sTakesFlight_SmokeCoords[tSmokeId][1] * 4) + 80,
                                    0);
-        gSprites[spriteId].sSmokeId = (s8)(tSmokeId);
-        gSprites[spriteId].oam.objMode = ST_OAM_OBJ_BLEND;
-        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-        gSprites[spriteId].oam.priority = 2;
-        InitSpriteAffineAnim(&gSprites[spriteId]);
+        if (spriteId < MAX_SPRITES)
+        {
+            gSprites[spriteId].sSmokeId = (s8)(tSmokeId);
+            gSprites[spriteId].oam.objMode = ST_OAM_OBJ_BLEND;
+            gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
+            gSprites[spriteId].oam.priority = 2;
+            if (!InitSpriteAffineAnim(&gSprites[spriteId]))
+                gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
+        }
         if (tSmokeId == MAX_SMOKE - 1)
         {
             DestroyTask(taskId);
@@ -2235,10 +2356,6 @@ static void InitDescendsSceneBgs(void)
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     SetBgTilemapBuffer(3, sRayScene->tilemapBuffers[3]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
-    ScheduleBgCopyTilemapToVram(3);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     ShowBg(1);
@@ -2247,13 +2364,15 @@ static void InitDescendsSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadDescendsSceneGfx(void)
+static void QueueDescendsSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(0, gRaySceneDescends_Light_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(1, gRaySceneDescends_Bg_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadDescendsSceneGfx(void)
+{
     LZDecompressWram(gRaySceneDescends_Light_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneDescends_Bg_Tilemap, sRayScene->tilemapBuffers[3]);
     CpuFastFill16(0, sRayScene->tilemapBuffers[2], BG_SCREEN_SIZE);
@@ -2315,11 +2434,34 @@ static void VBlankCB_RayDescends(void)
 #define tState data[0]
 #define tTimer data[1]
 
+static void Task_FinishRayDescendsSetup(u8 taskId);
+
 static void Task_RayDescendsAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     InitDescendsSceneBgs();
+    QueueDescendsSceneTiles();
+    Task_FinishRayDescendsSetup(taskId);
+}
+
+static void Task_FinishRayDescendsSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayDescendsSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadDescendsSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
+    ScheduleBgCopyTilemapToVram(3);
     SetGpuRegBits(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3 | BLDCNT_TGT2_OBJ | BLDCNT_EFFECT_BLEND);
     SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(0, 16));
     BlendPalettes(PALETTES_ALL, 0x10, RGB_BLACK);
@@ -2421,8 +2563,19 @@ static void Task_RayDescendsEnd(u8 taskId)
 static u8 CreateDescendsRayquazaSprite(void)
 {
     u8 spriteId = CreateSprite(&sSpriteTemplate_Descends_Rayquaza, 160, 0, 0);
-    s16 *data = gSprites[spriteId].data;
+    s16 *data;
+
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    data = gSprites[spriteId].data;
     sTailSpriteId = CreateSprite(&sSpriteTemplate_Descends_RayquazaTail, 184, -48, 0);
+    if ((u16)sTailSpriteId >= MAX_SPRITES)
+    {
+        DestroySprite(&gSprites[spriteId]);
+        return MAX_SPRITES;
+    }
+
     gSprites[spriteId].callback = SpriteCB_Descends_Rayquaza;
     gSprites[spriteId].oam.priority = 3;
     gSprites[sTailSpriteId].oam.priority = 3;
@@ -2503,10 +2656,6 @@ static void InitChargesSceneBgs(void)
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     SetBgTilemapBuffer(3, sRayScene->tilemapBuffers[3]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
-    ScheduleBgCopyTilemapToVram(3);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_WIN0_ON);
     ShowBg(0);
     ShowBg(1);
@@ -2515,14 +2664,16 @@ static void InitChargesSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadChargesSceneGfx(void)
+static void QueueChargesSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(1, gRaySceneCharges_Rayquaza_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(2, gRaySceneCharges_Streaks_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(3, gRaySceneCharges_Bg_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadChargesSceneGfx(void)
+{
     LZDecompressWram(gRaySceneCharges_Orbs_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneCharges_Rayquaza_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneCharges_Streaks_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -2535,11 +2686,34 @@ static void LoadChargesSceneGfx(void)
 #define tRayquazaTaskId data[2]
 #define tSoundTimer     data[3]
 
+static void Task_FinishRayChargesSetup(u8 taskId);
+
 static void Task_RayChargesAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     InitChargesSceneBgs();
+    QueueChargesSceneTiles();
+    Task_FinishRayChargesSetup(taskId);
+}
+
+static void Task_FinishRayChargesSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayChargesSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadChargesSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
+    ScheduleBgCopyTilemapToVram(3);
     SetWindowsHideVertBorders();
     BlendPalettes(PALETTES_ALL, 0x10, RGB_BLACK);
     SetVBlankCallback(VBlankCB_RayquazaScene);
@@ -2690,9 +2864,6 @@ static void InitChasesAwaySceneBgs(void)
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_WIN0_ON);
     ShowBg(0);
     ShowBg(1);
@@ -2700,13 +2871,15 @@ static void InitChasesAwaySceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadChasesAwaySceneGfx(void)
+static void QueueChasesAwaySceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(2, gRaySceneChasesAway_Ring_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(0, gRaySceneChasesAway_Light_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadChasesAwaySceneGfx(void)
+{
     LZDecompressWram(gRaySceneChasesAway_Bg_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneChasesAway_Light_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneChasesAway_Ring_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -2727,11 +2900,33 @@ static void LoadChasesAwaySceneGfx(void)
 #define tTimer    data[1]
 #define tBgTaskId data[2]
 
+static void Task_FinishRayChasesAwaySetup(u8 taskId);
+
 static void Task_RayChasesAwayAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     InitChasesAwaySceneBgs();
+    QueueChasesAwaySceneTiles();
+    Task_FinishRayChasesAwaySetup(taskId);
+}
+
+static void Task_FinishRayChasesAwaySetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayChasesAwaySetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadChasesAwaySceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
     SetWindowsHideVertBorders();
     ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_BG2_ON);
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_EFFECT_BLEND);
@@ -2770,7 +2965,7 @@ static void Task_HandleRayChasesAway(u8 taskId)
         break;
     case 1:
         // Wait for Rayquaza to enter and finish shout anim
-        if (gSprites[data[5]].callback == SpriteCB_ChasesAway_RayquazaFloat)
+        if ((u16)data[5] >= MAX_SPRITES || gSprites[data[5]].callback == SpriteCB_ChasesAway_RayquazaFloat)
         {
             // Delay, then start Groudon/Kyogre leaving
             if (tTimer == 64)
@@ -2888,26 +3083,61 @@ static void ChasesAway_CreateTrioSprites(u8 taskId)
     taskData = gTasks[taskId].data;
 
     tGroudonSpriteId = CreateSprite(&sSpriteTemplate_ChasesAway_Groudon, 64, 120, 0);
-    spriteData = gSprites[tGroudonSpriteId].data;
-    spriteData[0] = CreateSprite(&sSpriteTemplate_ChasesAway_GroudonTail, 16, 130, 0);
-    gSprites[tGroudonSpriteId].oam.priority = 1;
-    gSprites[spriteData[0]].oam.priority = 1;
+    if (tGroudonSpriteId < MAX_SPRITES)
+    {
+        spriteData = gSprites[tGroudonSpriteId].data;
+        spriteData[0] = CreateSprite(&sSpriteTemplate_ChasesAway_GroudonTail, 16, 130, 0);
+        if ((u16)spriteData[0] >= MAX_SPRITES)
+        {
+            DestroySprite(&gSprites[tGroudonSpriteId]);
+            tGroudonSpriteId = MAX_SPRITES;
+        }
+        else
+        {
+            gSprites[tGroudonSpriteId].oam.priority = 1;
+            gSprites[spriteData[0]].oam.priority = 1;
+        }
+    }
 
     tKyogreSpriteId = CreateSprite(&sSpriteTemplate_ChasesAway_Kyogre, 160, 128, 1);
-    spriteData = gSprites[tKyogreSpriteId].data;
-    spriteData[0] = CreateSprite(&sSpriteTemplate_ChasesAway_Kyogre, 192, 128, 1);
-    spriteData[1] = CreateSprite(&sSpriteTemplate_ChasesAway_Kyogre, 224, 128, 1);
-    gSprites[tKyogreSpriteId].oam.priority = 1;
-    gSprites[spriteData[0]].oam.priority = 1;
-    gSprites[spriteData[1]].oam.priority = 1;
-    StartSpriteAnim(&gSprites[spriteData[0]], 1);
-    StartSpriteAnim(&gSprites[spriteData[1]], 2);
+    if (tKyogreSpriteId < MAX_SPRITES)
+    {
+        spriteData = gSprites[tKyogreSpriteId].data;
+        spriteData[0] = CreateSprite(&sSpriteTemplate_ChasesAway_Kyogre, 192, 128, 1);
+        spriteData[1] = CreateSprite(&sSpriteTemplate_ChasesAway_Kyogre, 224, 128, 1);
+        if ((u16)spriteData[0] >= MAX_SPRITES || (u16)spriteData[1] >= MAX_SPRITES)
+        {
+            DestroyRayquazaSceneSprite(spriteData[0]);
+            DestroyRayquazaSceneSprite(spriteData[1]);
+            DestroySprite(&gSprites[tKyogreSpriteId]);
+            tKyogreSpriteId = MAX_SPRITES;
+        }
+        else
+        {
+            gSprites[tKyogreSpriteId].oam.priority = 1;
+            gSprites[spriteData[0]].oam.priority = 1;
+            gSprites[spriteData[1]].oam.priority = 1;
+            StartSpriteAnim(&gSprites[spriteData[0]], 1);
+            StartSpriteAnim(&gSprites[spriteData[1]], 2);
+        }
+    }
 
     tRayquazaSpriteId = CreateSprite(&sSpriteTemplate_ChasesAway_Rayquaza, 120, -65, 0);
-    spriteData = gSprites[tRayquazaSpriteId].data;
-    spriteData[0] = CreateSprite(&sSpriteTemplate_ChasesAway_RayquazaTail, 120, -113, 0);
-    gSprites[tRayquazaSpriteId].oam.priority = 1;
-    gSprites[spriteData[0]].oam.priority = 1;
+    if (tRayquazaSpriteId < MAX_SPRITES)
+    {
+        spriteData = gSprites[tRayquazaSpriteId].data;
+        spriteData[0] = CreateSprite(&sSpriteTemplate_ChasesAway_RayquazaTail, 120, -113, 0);
+        if ((u16)spriteData[0] >= MAX_SPRITES)
+        {
+            DestroySprite(&gSprites[tRayquazaSpriteId]);
+            tRayquazaSpriteId = MAX_SPRITES;
+        }
+        else
+        {
+            gSprites[tRayquazaSpriteId].oam.priority = 1;
+            gSprites[spriteData[0]].oam.priority = 1;
+        }
+    }
 }
 
 #define sBodyPartSpriteId1 data[0]
@@ -2921,17 +3151,23 @@ static void ChasesAway_PushDuoBack(u8 taskId)
 {
     s16 *taskData = gTasks[taskId].data;
 
-    gSprites[tGroudonSpriteId].callback = SpriteCB_ChasesAway_DuoRingPush;
-    gSprites[tGroudonSpriteId].sTimer = 0;
-    gSprites[tGroudonSpriteId].sDecel = 0;
-    gSprites[tGroudonSpriteId].sSpeed = 4;
-    gSprites[tGroudonSpriteId].sIsKyogre = FALSE;
+    if ((u16)tGroudonSpriteId < MAX_SPRITES)
+    {
+        gSprites[tGroudonSpriteId].callback = SpriteCB_ChasesAway_DuoRingPush;
+        gSprites[tGroudonSpriteId].sTimer = 0;
+        gSprites[tGroudonSpriteId].sDecel = 0;
+        gSprites[tGroudonSpriteId].sSpeed = 4;
+        gSprites[tGroudonSpriteId].sIsKyogre = FALSE;
+    }
 
-    gSprites[tKyogreSpriteId].callback = SpriteCB_ChasesAway_DuoRingPush;
-    gSprites[tKyogreSpriteId].sTimer = 0;
-    gSprites[tKyogreSpriteId].sDecel = 0;
-    gSprites[tKyogreSpriteId].sSpeed = 4;
-    gSprites[tKyogreSpriteId].sIsKyogre = TRUE;
+    if ((u16)tKyogreSpriteId < MAX_SPRITES)
+    {
+        gSprites[tKyogreSpriteId].callback = SpriteCB_ChasesAway_DuoRingPush;
+        gSprites[tKyogreSpriteId].sTimer = 0;
+        gSprites[tKyogreSpriteId].sDecel = 0;
+        gSprites[tKyogreSpriteId].sSpeed = 4;
+        gSprites[tKyogreSpriteId].sIsKyogre = TRUE;
+    }
 }
 
 // Pushes Groudon/Kyogre back slightly, for when Rayquaza's hyper voice ring comes out
@@ -2976,6 +3212,10 @@ static void SpriteCB_ChasesAway_DuoRingPush(struct Sprite *sprite)
 static void ChasesAway_GroudonStartLeave(u8 taskId)
 {
     s16 *taskData = gTasks[taskId].data;
+
+    if ((u16)tGroudonSpriteId >= MAX_SPRITES)
+        return;
+
     gSprites[tGroudonSpriteId].callback = SpriteCB_ChasesAway_GroudonLeave;
     StartSpriteAnim(&gSprites[tGroudonSpriteId], 1);
 }
@@ -3010,6 +3250,9 @@ static void ChasesAway_KyogreStartLeave(u8 taskId)
     s16 *taskData, *spriteData;
 
     taskData = gTasks[taskId].data;
+    if ((u16)tKyogreSpriteId >= MAX_SPRITES)
+        return;
+
     spriteData = gSprites[tKyogreSpriteId].data;
 
     gSprites[tKyogreSpriteId].callback = SpriteCB_ChasesAway_KyogreLeave;
@@ -3028,11 +3271,16 @@ static void SpriteCB_ChasesAway_KyogreLeave(struct Sprite *sprite)
     }
     if (sprite->data[5] == 128)
     {
-        sprite->data[7] = CreateSprite(&sSpriteTemplate_ChasesAway_KyogreSplash, 152, 132, 0);
-        gSprites[sprite->data[7]].oam.priority = 1;
-        sprite->data[7] = CreateSprite(&sSpriteTemplate_ChasesAway_KyogreSplash, 224, 132, 0);
-        gSprites[sprite->data[7]].oam.priority = 1;
-        gSprites[sprite->data[7]].hFlip = 1;
+        u8 splashId = CreateSprite(&sSpriteTemplate_ChasesAway_KyogreSplash, 152, 132, 0);
+        if (splashId < MAX_SPRITES)
+            gSprites[splashId].oam.priority = 1;
+
+        splashId = CreateSprite(&sSpriteTemplate_ChasesAway_KyogreSplash, 224, 132, 0);
+        if (splashId < MAX_SPRITES)
+        {
+            gSprites[splashId].oam.priority = 1;
+            gSprites[splashId].hFlip = 1;
+        }
         sprite->data[5]++;
     }
     if (sprite->data[5] > 127)

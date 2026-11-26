@@ -786,8 +786,10 @@ void DestroyWirelessStatusIndicatorSprite(void)
         gSprites[gWirelessStatusIndicatorSpriteId].sValidator = 0;
         DestroySprite(&gSprites[gWirelessStatusIndicatorSpriteId]);
         gWirelessStatusIndicatorSpriteId = SPRITE_NONE;
+#ifndef PLATFORM_SDL2
         CpuCopy16(&gDummyOamData, &gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX], offsetof(struct OamData, affineParam));
         CpuCopy16(&gDummyOamData, (struct OamData *)OAM + WIRELESS_STATUS_OAM_INDEX, offsetof(struct OamData, affineParam));
+#endif
     }
 }
 
@@ -872,12 +874,14 @@ void UpdateWirelessStatusIndicatorSprite(void)
         {
             sprite->sFrameDelay++;
         }
+#ifndef PLATFORM_SDL2
         CpuCopy16(&sWirelessStatusIndicatorOamData, &gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX], offsetof(struct OamData, affineParam));
         gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX].x = sprite->x + sprite->centerToCornerVecX;
         gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX].y = sprite->y + sprite->centerToCornerVecY;
         gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX].paletteNum = sprite->oam.paletteNum;
         gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX].tileNum = sprite->sTileStart + sprite->anims[sprite->sCurrAnimNum][sprite->sFrameIdx].frame.imageValue;
         CpuCopy16(&gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX], (struct OamData *)OAM + WIRELESS_STATUS_OAM_INDEX, offsetof(struct OamData, affineParam));
+#endif
         if (RfuGetStatus() == RFU_STATUS_FATAL_ERROR)
             DestroyWirelessStatusIndicatorSprite();
     }

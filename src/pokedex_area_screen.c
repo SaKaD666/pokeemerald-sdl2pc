@@ -507,7 +507,7 @@ static void BuildAreaGlowTilemap(void)
 
 static void StartAreaGlow(void)
 {
-    if (sPokedexAreaScreen->numSpecialAreas && sPokedexAreaScreen->numOverworldAreas == 0)
+    if (sPokedexAreaScreen->numAreaMarkerSprites && sPokedexAreaScreen->numOverworldAreas == 0)
         sPokedexAreaScreen->showingMarkers = TRUE;
     else
         sPokedexAreaScreen->showingMarkers = FALSE;
@@ -546,7 +546,7 @@ static void DoAreaGlow(void)
             {
                 // Done glowing, reset and try to switch to the special area markers
                 sPokedexAreaScreen->glowTimer = 0;
-                if (sPokedexAreaScreen->numSpecialAreas != 0)
+                if (sPokedexAreaScreen->numAreaMarkerSprites != 0)
                     sPokedexAreaScreen->showingMarkers = TRUE;
             }
         }
@@ -564,7 +564,7 @@ static void DoAreaGlow(void)
             // Flash the marker
             // With a max of 4, the marker will disappear twice
             sPokedexAreaScreen->markerFlashCounter++;
-            for (i = 0; i < sPokedexAreaScreen->numSpecialAreas; i++)
+            for (i = 0; i < sPokedexAreaScreen->numAreaMarkerSprites; i++)
                 sPokedexAreaScreen->areaMarkerSprites[i]->invisible = sPokedexAreaScreen->markerFlashCounter & 1;
 
             if (sPokedexAreaScreen->markerFlashCounter > 4)
@@ -635,13 +635,12 @@ static void Task_ShowPokedexAreaScreen(u8 taskId)
         CreateAreaUnknownSprites();
         break;
     case 9:
-        BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 16, 0, RGB_BLACK);
+        BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 16, 0, RGB_BLACK);
         break;
     case 10:
         SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_ALL);
         StartAreaGlow();
         ShowBg(2);
-        ShowBg(3); // TryShowPokedexAreaMap will have done this already
         SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON);
         break;
     case 11:
@@ -680,7 +679,7 @@ static void Task_HandlePokedexAreaScreenInput(u8 taskId)
             return;
         break;
     case 2:
-        BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 16, RGB_BLACK);
+        BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 16, RGB_BLACK);
         break;
     case 3:
         if (gPaletteFade.active)
@@ -689,7 +688,7 @@ static void Task_HandlePokedexAreaScreenInput(u8 taskId)
         sPokedexAreaScreen->screenSwitchState[0] = gTasks[taskId].data[1];
         ResetPokedexAreaMapBg();
         DestroyTask(taskId);
-        FreePokedexAreaMapBgNum();
+        ResetPokedexAreaMapState();
         FREE_AND_SET_NULL(sPokedexAreaScreen);
         return;
     }
@@ -784,7 +783,7 @@ static void CreateAreaUnknownSprites(void)
             u8 spriteId = CreateSprite(&sAreaUnknownSpriteTemplate, i * 32 + 160, 140, 0);
             if (spriteId != MAX_SPRITES)
             {
-                gSprites[spriteId].oam.tileNum += i * 16;
+                SetSpriteSheetTileOffset(&gSprites[spriteId], i * 16);
                 sPokedexAreaScreen->areaUnknownSprites[i] = &gSprites[spriteId];
             }
             else

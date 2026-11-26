@@ -1,4 +1,7 @@
 #include "global.h"
+#ifdef PLATFORM_SDL2
+#include "bg.h"
+#endif
 #include "braille_puzzles.h"
 #include "event_data.h"
 #include "event_scripts.h"
@@ -239,6 +242,7 @@ static void LoadCaveTransitionBg(void)
             tilemap[x / 32 * 1024 + y * 32 + x % 32] = row[column];
         }
     }
+    InvalidateBgTilemapVramRange(tilemap, 2 * BG_SCREEN_SIZE);
     SetGpuReg(REG_OFFSET_BG0VOFS, (GBA_DISPLAY_HEIGHT - DISPLAY_HEIGHT) / 2);
     SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(3)
                                | BGCNT_SCREENBASE(30) | BGCNT_16COLOR | BGCNT_TXT512x256);

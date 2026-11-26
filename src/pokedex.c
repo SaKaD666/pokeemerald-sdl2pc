@@ -1679,7 +1679,9 @@ static void Task_HandlePokedexInput(u8 taskId)
         if (JOY_NEW(A_BUTTON) && sPokedexView->pokedexList[sPokedexView->selectedPokemon].seen)
         {
             UpdateSelectedMonSpriteId();
-            BeginNormalPaletteFade(~(1 << (gSprites[sPokedexView->selectedMonSpriteId].oam.paletteNum + 16)), 0, 0, 0x10, RGB_BLACK);
+            if (sPokedexView->selectedMonSpriteId >= MAX_SPRITES)
+                return;
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sPokedexView->selectedMonSpriteId])), 0, 0, 0x10, RGB_BLACK);
             gSprites[sPokedexView->selectedMonSpriteId].callback = SpriteCB_MoveMonForInfoScreen;
             gTasks[taskId].func = Task_OpenInfoScreenAfterMonMovement;
             PlaySE(SE_PIN);
@@ -1884,12 +1886,14 @@ static void Task_HandleSearchResultsInput(u8 taskId)
     {
         if (JOY_NEW(A_BUTTON) && sPokedexView->pokedexList[sPokedexView->selectedPokemon].seen)
         {
-            u32 a;
+            PaletteMask a;
 
             UpdateSelectedMonSpriteId();
-            a = (1 << (gSprites[sPokedexView->selectedMonSpriteId].oam.paletteNum + 16));
+            if (sPokedexView->selectedMonSpriteId >= MAX_SPRITES)
+                return;
+            a = ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sPokedexView->selectedMonSpriteId]));
             gSprites[sPokedexView->selectedMonSpriteId].callback = SpriteCB_MoveMonForInfoScreen;
-            BeginNormalPaletteFade(~a, 0, 0, 0x10, RGB_BLACK);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~a, 0, 0, 0x10, RGB_BLACK);
             gTasks[taskId].func = Task_OpenSearchResultsInfoScreenAfterMonMovement;
             PlaySE(SE_PIN);
             FreeWindowAndBgBuffers();
@@ -2665,15 +2669,12 @@ static void UpdateSelectedMonSpriteId(void)
 {
     u16 i;
 
+    sPokedexView->selectedMonSpriteId = SPRITE_NONE;
     for (i = 0; i < MAX_MONS_ON_SCREEN; i++)
     {
         u16 spriteId = sPokedexView->monSpriteIds[i];
 
-#ifndef PORTABLE
-        if (gSprites[spriteId].x2 == 0 && gSprites[spriteId].y2 == 0 && spriteId != 0xFFFF)
-#else
-        if (spriteId != 0xFFFF && gSprites[spriteId].x2 == 0 && gSprites[spriteId].y2 == 0)
-#endif
+        if (spriteId < MAX_SPRITES && gSprites[spriteId].inUse && gSprites[spriteId].x2 == 0 && gSprites[spriteId].y2 == 0)
             sPokedexView->selectedMonSpriteId = spriteId;
     }
 }
@@ -2745,6 +2746,9 @@ static u8 ClearMonSprites(void)
         if (sPokedexView->monSpriteIds[i] != 0xFFFF)
         {
             FreeAndDestroyMonPicSprite(sPokedexView->monSpriteIds[i]);
+#ifdef PLATFORM_SDL2
+            ReleaseOamMatrices(i + 1, 1);
+#endif
             sPokedexView->monSpriteIds[i] = 0xFFFF;
         }
     }
@@ -2769,9 +2773,23 @@ static u32 CreatePokedexMonSprite(u16 num, s16 x, s16 y)
     {
         if (sPokedexView->monSpriteIds[i] == 0xFFFF)
         {
-            u8 spriteId = CreateMonSpriteFromNationalDexNumber(num, x, y, i);
+            u16 spriteId;
+
+#ifdef PLATFORM_SDL2
+            if (!ReserveOamMatrices(i + 1, 1))
+                continue;
+#endif
+            spriteId = CreateMonSpriteFromNationalDexNumber(num, x, y, i);
+            if (spriteId >= MAX_SPRITES)
+            {
+#ifdef PLATFORM_SDL2
+                ReleaseOamMatrices(i + 1, 1);
+#endif
+                return 0xFFFF;
+            }
 
             gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
+            SetSpriteMatrixHandle(&gSprites[spriteId], i + 1);
             gSprites[spriteId].oam.priority = 3;
             gSprites[spriteId].data[0] = 0;
             gSprites[spriteId].data[1] = i;
@@ -2785,43 +2803,72 @@ static u32 CreatePokedexMonSprite(u16 num, s16 x, s16 y)
 
 #define sIsDownArrow data[1]
 
+static void CreateRotatingPokedexBall(u8 matrix, u8 angle)
+{
+    u8 spriteId;
+
+#ifdef PLATFORM_SDL2
+    if (!ReserveOamMatrices(matrix, 1))
+        return;
+#endif
+    spriteId = CreateSprite(&sRotatingPokeBallSpriteTemplate, 0, GBA_DISPLAY_HEIGHT / 2, 2);
+    if (spriteId >= MAX_SPRITES)
+    {
+#ifdef PLATFORM_SDL2
+        ReleaseOamMatrices(matrix, 1);
+#endif
+        return;
+    }
+
+    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
+    SetSpriteMatrixHandle(&gSprites[spriteId], matrix);
+    gSprites[spriteId].data[1] = angle;
+}
+
 static void CreateInterfaceSprites(u8 page)
 {
     u8 spriteId;
     u16 digitNum;
 
+    if (GetSpriteTileStartByTag(TAG_DEX_INTERFACE) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(TAG_DEX_INTERFACE) == 0xFF)
+        return;
+
     // Scroll arrows
     spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, 4, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].sIsDownArrow = FALSE;
     spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, GBA_DISPLAY_HEIGHT - 4, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].sIsDownArrow = TRUE;
     gSprites[spriteId].vFlip = TRUE;
 
-    CreateSprite(&sScrollBarSpriteTemplate, 230, 20, 0);
+    if (CreateSprite(&sScrollBarSpriteTemplate, 230, 20, 0) >= MAX_SPRITES)
+        return;
     // Start button
-    CreateSprite(&sInterfaceTextSpriteTemplate, 16, 120, 0);
+    if (CreateSprite(&sInterfaceTextSpriteTemplate, 16, 120, 0) >= MAX_SPRITES)
+        return;
     // Menu text
     spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 48, 120, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     StartSpriteAnim(&gSprites[spriteId], 3);
     // Select button
     spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 16, GBA_DISPLAY_HEIGHT - 16, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     StartSpriteAnim(&gSprites[spriteId], 2);
     gSprites[spriteId].data[2] = 0x80;
     // Search text
     spriteId = CreateSprite(&sInterfaceTextSpriteTemplate, 48, GBA_DISPLAY_HEIGHT - 16, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     StartSpriteAnim(&gSprites[spriteId], 1);
 
-    spriteId = CreateSprite(&sRotatingPokeBallSpriteTemplate, 0, GBA_DISPLAY_HEIGHT / 2, 2);
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[spriteId].oam.matrixNum = 30;
-    gSprites[spriteId].data[0] = 30;
-    gSprites[spriteId].data[1] = 0;
-
-    spriteId = CreateSprite(&sRotatingPokeBallSpriteTemplate, 0, GBA_DISPLAY_HEIGHT / 2, 2);
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[spriteId].oam.matrixNum = 31;
-    gSprites[spriteId].data[0] = 31;
-    gSprites[spriteId].data[1] = 128;
+    CreateRotatingPokedexBall(30, 0);
+    CreateRotatingPokedexBall(31, 128);
 
     if (page == PAGE_MAIN)
     {
@@ -2830,14 +2877,19 @@ static void CreateInterfaceSprites(u8 page)
         if (!IsNationalPokedexEnabled())
         {
             // Seen text
-            CreateSprite(&sSeenOwnTextSpriteTemplate, 32, 40, 1);
+            if (CreateSprite(&sSeenOwnTextSpriteTemplate, 32, 40, 1) >= MAX_SPRITES)
+                return;
             // Own text
             spriteId = CreateSprite(&sSeenOwnTextSpriteTemplate, 32, 72, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             StartSpriteAnim(&gSprites[spriteId], 1);
 
             // Seen value - 100s
             drawNextDigit = FALSE;
             spriteId = CreateSprite(&sHoennDexSeenOwnNumberSpriteTemplate, 24, 48, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = sPokedexView->seenCount / 100;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
             if (digitNum != 0)
@@ -2847,6 +2899,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // Seen value - 10s
             spriteId = CreateSprite(&sHoennDexSeenOwnNumberSpriteTemplate, 32, 48, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->seenCount % 100) / 10;
             if (digitNum != 0 || drawNextDigit)
                 StartSpriteAnim(&gSprites[spriteId], digitNum);
@@ -2855,12 +2909,16 @@ static void CreateInterfaceSprites(u8 page)
 
             // Seen value - 1s
             spriteId = CreateSprite(&sHoennDexSeenOwnNumberSpriteTemplate, 40, 48, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->seenCount % 100) % 10;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
 
             // Owned value - 100s
             drawNextDigit = FALSE;
             spriteId = CreateSprite(&sHoennDexSeenOwnNumberSpriteTemplate, 24, 80, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = sPokedexView->ownCount / 100;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
             if (digitNum != 0)
@@ -2870,6 +2928,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // Owned value - 10s
             spriteId = CreateSprite(&sHoennDexSeenOwnNumberSpriteTemplate, 32, 80, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->ownCount % 100) / 10;
             if (digitNum != 0 || drawNextDigit)
                 StartSpriteAnim(&gSprites[spriteId], digitNum);
@@ -2878,6 +2938,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // Owned value - 1s
             spriteId = CreateSprite(&sHoennDexSeenOwnNumberSpriteTemplate, 40, 80, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->ownCount % 100) % 10;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
         }
@@ -2886,29 +2948,40 @@ static void CreateInterfaceSprites(u8 page)
             u16 seenOwnedCount;
 
             // Seen text
-            CreateSprite(&sSeenOwnTextSpriteTemplate, 32, 40, 1);
+            if (CreateSprite(&sSeenOwnTextSpriteTemplate, 32, 40, 1) >= MAX_SPRITES)
+                return;
             // Own text
             spriteId = CreateSprite(&sSeenOwnTextSpriteTemplate, 32, 76, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             StartSpriteAnim(&gSprites[spriteId], 1);
 
             // Hoenn text (seen)
-            CreateSprite(&sHoennNationalTextSpriteTemplate, 17, 45, 1);
+            if (CreateSprite(&sHoennNationalTextSpriteTemplate, 17, 45, 1) >= MAX_SPRITES)
+                return;
 
             // National text (seen)
             spriteId = CreateSprite(&sHoennNationalTextSpriteTemplate, 17, 55, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             StartSpriteAnim(&gSprites[spriteId], 1);
 
             // Hoenn text (own)
-            CreateSprite(&sHoennNationalTextSpriteTemplate, 17, 81, 1);
+            if (CreateSprite(&sHoennNationalTextSpriteTemplate, 17, 81, 1) >= MAX_SPRITES)
+                return;
 
             // National text (own)
             spriteId = CreateSprite(&sHoennNationalTextSpriteTemplate, 17, 91, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             StartSpriteAnim(&gSprites[spriteId], 1);
 
             // Hoenn seen value - 100s
             seenOwnedCount = GetHoennPokedexCount(FLAG_GET_SEEN);
             drawNextDigit = FALSE;
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 40, 45, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = seenOwnedCount / 100;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
             if (digitNum != 0)
@@ -2918,6 +2991,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // Hoenn seen value - 10s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 48, 45, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (seenOwnedCount % 100) / 10;
             if (digitNum != 0 || drawNextDigit)
                 StartSpriteAnim(&gSprites[spriteId], digitNum);
@@ -2926,12 +3001,16 @@ static void CreateInterfaceSprites(u8 page)
 
             // Hoenn seen value - 1s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 56, 45, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (seenOwnedCount % 100) % 10;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
 
             // National seen value - 100s
             drawNextDigit = FALSE;
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 40, 55, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = sPokedexView->seenCount / 100;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
             if (digitNum != 0)
@@ -2941,6 +3020,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // National seen value - 10s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 48, 55, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->seenCount % 100) / 10;
             if (digitNum != 0 || drawNextDigit)
                 StartSpriteAnim(&gSprites[spriteId], digitNum);
@@ -2949,6 +3030,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // National seen value - 1s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 56, 55, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->seenCount % 100) % 10;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
 
@@ -2957,6 +3040,8 @@ static void CreateInterfaceSprites(u8 page)
             // Hoenn owned value - 100s
             drawNextDigit = FALSE;
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 40, 81, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = seenOwnedCount / 100;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
             if (digitNum != 0)
@@ -2966,6 +3051,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // Hoenn owned value - 10s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 48, 81, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (seenOwnedCount % 100) / 10;
             if (digitNum != 0 || drawNextDigit)
                 StartSpriteAnim(&gSprites[spriteId], digitNum);
@@ -2974,12 +3061,16 @@ static void CreateInterfaceSprites(u8 page)
 
             // Hoenn owned value - 1s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 56, 81, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (seenOwnedCount % 100) % 10;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
 
             // National owned value - 100s
             drawNextDigit = FALSE;
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 40, 91, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = sPokedexView->ownCount / 100;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
             if (digitNum != 0)
@@ -2989,6 +3080,8 @@ static void CreateInterfaceSprites(u8 page)
 
             // National owned value  - 10s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 48, 91, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->ownCount % 100) / 10;
             if (digitNum != 0 || drawNextDigit)
                 StartSpriteAnim(&gSprites[spriteId], digitNum);
@@ -2997,15 +3090,21 @@ static void CreateInterfaceSprites(u8 page)
 
             // National owned value - 1s
             spriteId = CreateSprite(&sNationalDexSeenOwnNumberSpriteTemplate, 56, 91, 1);
+            if (spriteId >= MAX_SPRITES)
+                return;
             digitNum = (sPokedexView->ownCount % 100) % 10;
             StartSpriteAnim(&gSprites[spriteId], digitNum);
         }
         spriteId = CreateSprite(&sDexListStartMenuCursorSpriteTemplate, 136, 96, 1);
+        if (spriteId >= MAX_SPRITES)
+            return;
         gSprites[spriteId].invisible = TRUE;
     }
     else // PAGE_SEARCH_RESULTS
     {
         spriteId = CreateSprite(&sDexListStartMenuCursorSpriteTemplate, 136, 80, 1);
+        if (spriteId >= MAX_SPRITES)
+            return;
         gSprites[spriteId].invisible = TRUE;
     }
 }
@@ -3024,6 +3123,10 @@ static void SpriteCB_SeenOwnInfo(struct Sprite *sprite)
 void SpriteCB_MoveMonForInfoScreen(struct Sprite *sprite)
 {
     sprite->oam.priority = 0;
+#ifdef PLATFORM_SDL2
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+        ReleaseOamMatrices(GetSpriteMatrixHandle(sprite), 1);
+#endif
     sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
     sprite->x2 = 0;
     sprite->y2 = 0;
@@ -3052,6 +3155,9 @@ static void SpriteCB_PokedexListMonSprite(struct Sprite *sprite)
     if (sPokedexView->currentPage != PAGE_MAIN && sPokedexView->currentPage != PAGE_SEARCH_RESULTS)
     {
         FreeAndDestroyMonPicSprite(sPokedexView->monSpriteIds[monId]);
+#ifdef PLATFORM_SDL2
+        ReleaseOamMatrices(monId + 1, 1);
+#endif
         sPokedexView->monSpriteIds[monId] = 0xFFFF;
     }
     else
@@ -3061,8 +3167,7 @@ static void SpriteCB_PokedexListMonSprite(struct Sprite *sprite)
         var = SAFE_DIV(0x10000, gSineTable[sprite->data[5] + 64]);
         if (var > 0xFFFF)
             var = 0xFFFF;
-        SetOamMatrix(sprite->data[1] + 1, 0x100, 0, 0, var);
-        sprite->oam.matrixNum = monId + 1;
+        SetOamMatrix(GetSpriteMatrixHandle(sprite), 0x100, 0, 0, var);
 
         if (sprite->data[5] > -64 && sprite->data[5] < 64)
         {
@@ -3077,6 +3182,9 @@ static void SpriteCB_PokedexListMonSprite(struct Sprite *sprite)
         if ((sprite->data[5] <= -64 || sprite->data[5] >= 64) && sprite->data[0] != 0)
         {
             FreeAndDestroyMonPicSprite(sPokedexView->monSpriteIds[monId]);
+#ifdef PLATFORM_SDL2
+            ReleaseOamMatrices(monId + 1, 1);
+#endif
             sPokedexView->monSpriteIds[monId] = 0xFFFF;
         }
     }
@@ -3135,7 +3243,13 @@ static void SpriteCB_RotatingPokeBall(struct Sprite *sprite)
 {
     if (sPokedexView->currentPage != PAGE_MAIN && sPokedexView->currentPage != PAGE_SEARCH_RESULTS)
     {
+#ifdef PLATFORM_SDL2
+        u8 matrix = GetSpriteMatrixHandle(sprite);
+#endif
         DestroySprite(sprite);
+#ifdef PLATFORM_SDL2
+        ReleaseOamMatrices(matrix, 1);
+#endif
     }
     else
     {
@@ -3146,7 +3260,7 @@ static void SpriteCB_RotatingPokeBall(struct Sprite *sprite)
         val = sPokedexView->pokeBallRotation + sprite->data[1];
         r3 = gSineTable[val];
         r0 = gSineTable[val + 64];
-        SetOamMatrix(sprite->data[0], r0, r3, -r3, r0);
+        SetOamMatrix(GetSpriteMatrixHandle(sprite), r0, r3, -r3, r0);
 
         val = sPokedexView->pokeBallRotation + (sprite->data[1] + 64);
         r3 = gSineTable[val];
@@ -3196,6 +3310,9 @@ static void PrintInfoScreenText(const u8 *str, u8 left, u8 top)
 #define tSkipCry         data[3]
 #define tMonSpriteId     data[4]
 #define tTrainerSpriteId data[5]
+#ifdef PLATFORM_SDL2
+#define tSizeMatricesReserved data[6]
+#endif
 
 static u8 LoadInfoScreen(struct PokedexListItem *item, u8 monSpriteId)
 {
@@ -3300,13 +3417,13 @@ static void Task_LoadInfoScreen(u8 taskId)
         break;
     case 6:
         {
-            u32 preservedPalettes = 0;
+            PaletteMask preservedPalettes = 0;
 
             if (gTasks[taskId].tBgLoaded)
                 preservedPalettes = 0x14; // each bit represents a palette index
-            if (gTasks[taskId].tMonSpriteDone)
-                preservedPalettes |= (1 << (gSprites[gTasks[taskId].tMonSpriteId].oam.paletteNum + 16));
-            BeginNormalPaletteFade(~preservedPalettes, 0, 16, 0, RGB_BLACK);
+            if (gTasks[taskId].tMonSpriteDone && (u16)gTasks[taskId].tMonSpriteId < MAX_SPRITES)
+                preservedPalettes |= ObjPaletteMask(GetSpritePaletteHandle(&gSprites[gTasks[taskId].tMonSpriteId]));
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~preservedPalettes, 0, 16, 0, RGB_BLACK);
             SetVBlankCallback(gPokedexVBlankCB);
             gMain.state++;
         }
@@ -3393,13 +3510,13 @@ static void Task_HandleInfoScreenInput(u8 taskId)
         switch (sPokedexView->selectedScreen)
         {
         case AREA_SCREEN:
-            BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 16, RGB_BLACK);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 16, RGB_BLACK);
             sPokedexView->screenSwitchState = 1;
             gTasks[taskId].func = Task_SwitchScreensFromInfoScreen;
             PlaySE(SE_PIN);
             break;
         case CRY_SCREEN:
-            BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 0x10, RGB_BLACK);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 0x10, RGB_BLACK);
             sPokedexView->screenSwitchState = 2;
             gTasks[taskId].func = Task_SwitchScreensFromInfoScreen;
             PlaySE(SE_PIN);
@@ -3411,7 +3528,7 @@ static void Task_HandleInfoScreenInput(u8 taskId)
             }
             else
             {
-                BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 0x10, RGB_BLACK);
+                BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 0x10, RGB_BLACK);
                 sPokedexView->screenSwitchState = 3;
                 gTasks[taskId].func = Task_SwitchScreensFromInfoScreen;
                 PlaySE(SE_PIN);
@@ -3623,7 +3740,7 @@ static void Task_LoadCryScreen(u8 taskId)
         }
         break;
     case 8:
-        BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0x10, 0, RGB_BLACK);
+        BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0x10, 0, RGB_BLACK);
         SetVBlankCallback(gPokedexVBlankCB);
         gMain.state++;
         break;
@@ -3665,7 +3782,7 @@ static void Task_HandleCryScreenInput(u8 taskId)
     {
         if (JOY_NEW(B_BUTTON))
         {
-            BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 0x10, RGB_BLACK);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 0x10, RGB_BLACK);
             m4aMPlayContinue(&gMPlayInfo_BGM);
             sPokedexView->screenSwitchState = 1;
             gTasks[taskId].func = Task_SwitchScreensFromCryScreen;
@@ -3675,7 +3792,7 @@ static void Task_HandleCryScreenInput(u8 taskId)
         if (JOY_NEW(DPAD_LEFT)
          || (JOY_NEW(L_BUTTON) && gSaveBlock2Ptr->optionsButtonMode == OPTIONS_BUTTON_MODE_LR))
         {
-            BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 0x10, RGB_BLACK);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 0x10, RGB_BLACK);
             m4aMPlayContinue(&gMPlayInfo_BGM);
             sPokedexView->screenSwitchState = 2;
             gTasks[taskId].func = Task_SwitchScreensFromCryScreen;
@@ -3691,7 +3808,7 @@ static void Task_HandleCryScreenInput(u8 taskId)
             }
             else
             {
-                BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 0x10, RGB_BLACK);
+                BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 0x10, RGB_BLACK);
                 m4aMPlayContinue(&gMPlayInfo_BGM);
                 sPokedexView->screenSwitchState = 3;
                 gTasks[taskId].func = Task_SwitchScreensFromCryScreen;
@@ -3737,7 +3854,7 @@ static void LoadPlayArrowPalette(bool8 cryPlaying)
 
 static void Task_LoadSizeScreen(u8 taskId)
 {
-    u8 spriteId;
+    u16 spriteId;
 
     switch (gMain.state)
     {
@@ -3778,27 +3895,50 @@ static void Task_LoadSizeScreen(u8 taskId)
         break;
     case 4:
         ResetPaletteFade();
+#ifdef PLATFORM_SDL2
+        gTasks[taskId].tSizeMatricesReserved = ReserveOamMatrices(1, 2);
+#endif
         gMain.state++;
         break;
     case 5:
+        spriteId = SPRITE_NONE;
+#ifdef PLATFORM_SDL2
+        if (gTasks[taskId].tSizeMatricesReserved)
+#endif
         spriteId = CreateSizeScreenTrainerPic(PlayerGenderToFrontTrainerPicId(gSaveBlock2Ptr->playerGender), 152, 56, 0);
-        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        gSprites[spriteId].oam.matrixNum = 1;
-        gSprites[spriteId].oam.priority = 0;
-        gSprites[spriteId].y2 = gPokedexEntries[sPokedexListItem->dexNum].trainerOffset;
-        SetOamMatrix(1, gPokedexEntries[sPokedexListItem->dexNum].trainerScale, 0, 0, gPokedexEntries[sPokedexListItem->dexNum].trainerScale);
-        LoadPalette(sSizeScreenSilhouette_Pal, OBJ_PLTT_ID2(gSprites[spriteId].oam.paletteNum), PLTT_SIZE_4BPP);
+        if (spriteId < MAX_SPRITES)
+        {
+            u8 palette = GetSpritePaletteHandle(&gSprites[spriteId]);
+
+            gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
+            SetSpriteMatrixHandle(&gSprites[spriteId], 1);
+            gSprites[spriteId].oam.priority = 0;
+            gSprites[spriteId].y2 = gPokedexEntries[sPokedexListItem->dexNum].trainerOffset;
+            SetOamMatrix(1, gPokedexEntries[sPokedexListItem->dexNum].trainerScale, 0, 0, gPokedexEntries[sPokedexListItem->dexNum].trainerScale);
+            if (ObjPaletteMask(palette) != 0)
+                LoadPalette(sSizeScreenSilhouette_Pal, OBJ_PLTT_ID(palette), PLTT_SIZE_4BPP);
+        }
         gTasks[taskId].tTrainerSpriteId = spriteId;
         gMain.state++;
         break;
     case 6:
+        spriteId = SPRITE_NONE;
+#ifdef PLATFORM_SDL2
+        if (gTasks[taskId].tSizeMatricesReserved)
+#endif
         spriteId = CreateMonSpriteFromNationalDexNumber(sPokedexListItem->dexNum, 88, 56, 1);
-        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        gSprites[spriteId].oam.matrixNum = 2;
-        gSprites[spriteId].oam.priority = 0;
-        gSprites[spriteId].y2 = gPokedexEntries[sPokedexListItem->dexNum].pokemonOffset;
-        SetOamMatrix(2, gPokedexEntries[sPokedexListItem->dexNum].pokemonScale, 0, 0, gPokedexEntries[sPokedexListItem->dexNum].pokemonScale);
-        LoadPalette(sSizeScreenSilhouette_Pal, OBJ_PLTT_ID2(gSprites[spriteId].oam.paletteNum), PLTT_SIZE_4BPP);
+        if (spriteId < MAX_SPRITES)
+        {
+            u8 palette = GetSpritePaletteHandle(&gSprites[spriteId]);
+
+            gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
+            SetSpriteMatrixHandle(&gSprites[spriteId], 2);
+            gSprites[spriteId].oam.priority = 0;
+            gSprites[spriteId].y2 = gPokedexEntries[sPokedexListItem->dexNum].pokemonOffset;
+            SetOamMatrix(2, gPokedexEntries[sPokedexListItem->dexNum].pokemonScale, 0, 0, gPokedexEntries[sPokedexListItem->dexNum].pokemonScale);
+            if (ObjPaletteMask(palette) != 0)
+                LoadPalette(sSizeScreenSilhouette_Pal, OBJ_PLTT_ID(palette), PLTT_SIZE_4BPP);
+        }
         gTasks[taskId].tMonSpriteId = spriteId;
         CopyWindowToVram(WIN_INFO, COPYWIN_FULL);
         CopyBgTilemapBufferToVram(1);
@@ -3807,7 +3947,7 @@ static void Task_LoadSizeScreen(u8 taskId)
         gMain.state++;
         break;
     case 7:
-        BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0x10, 0, RGB_BLACK);
+        BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0x10, 0, RGB_BLACK);
         SetVBlankCallback(gPokedexVBlankCB);
         gMain.state++;
         break;
@@ -3837,7 +3977,7 @@ static void Task_HandleSizeScreenInput(u8 taskId)
 {
     if (JOY_NEW(B_BUTTON))
     {
-        BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 0x10, RGB_BLACK);
+        BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 0x10, RGB_BLACK);
         sPokedexView->screenSwitchState = 1;
         gTasks[taskId].func = Task_SwitchScreensFromSizeScreen;
         PlaySE(SE_PC_OFF);
@@ -3845,7 +3985,7 @@ static void Task_HandleSizeScreenInput(u8 taskId)
     else if (JOY_NEW(DPAD_LEFT)
      || (JOY_NEW(L_BUTTON) && gSaveBlock2Ptr->optionsButtonMode == OPTIONS_BUTTON_MODE_LR))
     {
-        BeginNormalPaletteFade(PALETTES_ALL & ~(0x14), 0, 0, 0x10, RGB_BLACK);
+        BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)0x14, 0, 0, 0x10, RGB_BLACK);
         sPokedexView->screenSwitchState = 2;
         gTasks[taskId].func = Task_SwitchScreensFromSizeScreen;
         PlaySE(SE_DEX_PAGE);
@@ -3858,6 +3998,13 @@ static void Task_SwitchScreensFromSizeScreen(u8 taskId)
     {
         FreeAndDestroyMonPicSprite(gTasks[taskId].tMonSpriteId);
         FreeAndDestroyTrainerPicSprite(gTasks[taskId].tTrainerSpriteId);
+#ifdef PLATFORM_SDL2
+        if (gTasks[taskId].tSizeMatricesReserved)
+        {
+            ReleaseOamMatrices(1, 2);
+            gTasks[taskId].tSizeMatricesReserved = FALSE;
+        }
+#endif
         switch (sPokedexView->screenSwitchState)
         {
         default:
@@ -3877,6 +4024,9 @@ static void Task_SwitchScreensFromSizeScreen(u8 taskId)
 #undef tSkipCry
 #undef tMonSpriteId
 #undef tTrainerSpriteId
+#ifdef PLATFORM_SDL2
+#undef tSizeMatricesReserved
+#endif
 
 static void LoadScreenSelectBarMain(u16 unused)
 {
@@ -3891,8 +4041,6 @@ static void LoadScreenSelectBarSubmenu(u16 unused)
 static void HighlightScreenSelectBarItem(u8 selectedScreen, u16 unused)
 {
     u8 i;
-    u8 j;
-    u16 *ptr = GetBgTilemapBuffer(1);
 
     for (i = 0; i < SCREEN_COUNT; i++)
     {
@@ -3906,11 +4054,7 @@ static void HighlightScreenSelectBarItem(u8 selectedScreen, u16 unused)
                 newPalette = 0x2000;
         } while (0);
 
-        for (j = 0; j < 7; j++)
-        {
-            ptr[row + j] = (ptr[row + j] % 0x1000) | newPalette;
-            ptr[row + j + 0x20] = (ptr[row + j + 0x20] % 0x1000) | newPalette;
-        }
+        SetBgTilemapPalette(1, row, 0, 7, 2, newPalette >> 12);
     }
     CopyBgTilemapBufferToVram(1);
 }
@@ -3918,8 +4062,6 @@ static void HighlightScreenSelectBarItem(u8 selectedScreen, u16 unused)
 static void HighlightSubmenuScreenSelectBarItem(u8 a, u16 b)
 {
     u8 i;
-    u8 j;
-    u16 *ptr = GetBgTilemapBuffer(1);
 
     for (i = 0; i < 4; i++)
     {
@@ -3934,11 +4076,7 @@ static void HighlightSubmenuScreenSelectBarItem(u8 a, u16 b)
                 newPalette = 0x4000;
         } while (0);
 
-        for (j = 0; j < 7; j++)
-        {
-            ptr[row + j] = (ptr[row + j] % 0x1000) | newPalette;
-            ptr[row + j + 0x20] = (ptr[row + j + 0x20] % 0x1000) | newPalette;
-        }
+        SetBgTilemapPalette(1, row, 0, 7, 2, newPalette >> 12);
     }
     CopyBgTilemapBufferToVram(1);
 }
@@ -4083,13 +4221,20 @@ static void Task_ExitCaughtMonPage(u8 taskId)
         species = NationalPokedexNumToSpecies(gTasks[taskId].tDexNum);
         otId = ((u16)gTasks[taskId].tOtIdHi << 16) | (u16)gTasks[taskId].tOtIdLo;
         personality = ((u16)gTasks[taskId].tPersonalityHi << 16) | (u16)gTasks[taskId].tPersonalityLo;
-        paletteNum = gSprites[gTasks[taskId].tMonSpriteId].oam.paletteNum;
+        paletteNum = (u16)gTasks[taskId].tMonSpriteId < MAX_SPRITES
+            ? GetSpritePaletteHandle(&gSprites[gTasks[taskId].tMonSpriteId]) : 0xFF;
         lzPaletteData = GetMonSpritePalFromSpeciesAndPersonality(species, otId, personality);
-        LoadCompressedPalette(lzPaletteData, OBJ_PLTT_ID(paletteNum), PLTT_SIZE_4BPP);
+        if (ObjPaletteMask(paletteNum) != 0)
+            LoadCompressedPalette(lzPaletteData, OBJ_PLTT_ID(paletteNum), PLTT_SIZE_4BPP);
 #ifdef PLATFORM_SDL2
-        gSprites[gTasks[taskId].tMonSpriteId].x += (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
-        gSprites[gTasks[taskId].tMonSpriteId].y += (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
-        gSprites[gTasks[taskId].tMonSpriteId].callback = SpriteCallbackDummy;
+        if ((u16)gTasks[taskId].tMonSpriteId < MAX_SPRITES)
+        {
+            struct Sprite *monSprite = &gSprites[gTasks[taskId].tMonSpriteId];
+
+            monSprite->x += (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
+            monSprite->y += (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
+            monSprite->callback = SpriteCallbackDummy;
+        }
         SetFrameViewToGbaSize(FALSE);
 #endif
         DestroyTask(taskId);
@@ -4639,6 +4784,10 @@ static void UNUSED RS_DrawFootprint(u16 offset, u16 tileNum)
     *(u16 *)(VRAM + offset * 0x800 + 0x234) = 0xF000 + tileNum + 1;
     *(u16 *)(VRAM + offset * 0x800 + 0x272) = 0xF000 + tileNum + 2;
     *(u16 *)(VRAM + offset * 0x800 + 0x274) = 0xF000 + tileNum + 3;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange((void *)(VRAM + offset * 0x800 + 0x232), 2 * sizeof(u16));
+    InvalidateBgTilemapVramRange((void *)(VRAM + offset * 0x800 + 0x272), 2 * sizeof(u16));
+#endif
 }
 
 static u16 GetNextPosition(u8 direction, u16 position, u16 min, u16 max)
@@ -5281,22 +5430,7 @@ static void Task_ExitSearchWaitForFade(u8 taskId)
 
 void SetSearchRectHighlight(u8 flags, u8 x, u8 y, u8 width)
 {
-    u16 i;
-    u16 temp; //should be a pointer, but does not match as one
-    void* ptr = GetBgTilemapBuffer(3); //same as above
-
-    for (i = 0; i < width; i++)
-    {
-        temp = *(u16 *)(ptr + (y + 0) * 64 + (x + i) * 2);
-        temp &= 0x0fff;
-        temp |= (flags << 12);
-        *(u16 *)(ptr + (y + 0) * 64 + (x + i) * 2) = temp;
-
-        temp = *(u16 *)(ptr + (y + 1) * 64 + (x + i) * 2);
-        temp &= 0x0fff;
-        temp |= (flags << 12);
-        *(u16 *)(ptr + (y + 1) * 64 + (x + i) * 2) = temp;
-    }
+    SetBgTilemapPalette(3, x, y, width, 2, flags);
 }
 
 #define SEARCH_BG_SEARCH                SEARCH_TOPBAR_SEARCH
@@ -5488,6 +5622,10 @@ static void DrawOrEraseSearchParameterBox(bool8 erase)
             }
         }
     }
+#ifdef PLATFORM_SDL2
+    for (j = 0; j < 14; j++)
+        InvalidateBgTilemapRamRange(ptr + j * 32 + 0x11, (erase ? 13 : 14) * sizeof(*ptr));
+#endif
 }
 
 // Prints the currently viewable search parameter titles in the right-hand text box
@@ -5639,12 +5777,20 @@ static void CreateSearchParameterScrollArrows(u8 taskId)
 {
     u8 spriteId;
 
+    if (GetSpriteTileStartByTag(TAG_DEX_INTERFACE) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(TAG_DEX_INTERFACE) == 0xFF)
+        return;
+
     spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, 4, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sIsDownArrow = FALSE;
     gSprites[spriteId].callback = SpriteCB_SearchParameterScrollArrow;
 
     spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, 108, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sIsDownArrow = TRUE;
     gSprites[spriteId].vFlip = TRUE;

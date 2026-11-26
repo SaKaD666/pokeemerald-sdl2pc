@@ -1165,6 +1165,7 @@ static void Task_OrbEffect(u8 taskId)
                 {
                     u32 index = GetTileMapIndexFromCoords(x, y, FIELD_UI_SCREEN_SIZE, 64, 32);
                     tilemap[index] = (tilemap[index] & 0xFFF) | 0xF000;
+                    SetBgTilemapEntryBanks(0, index, GetBgTilemapEntryBanks(0, index) & BG_TILEMAP_TILE_BANK);
                 }
             }
         }

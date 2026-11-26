@@ -1,5 +1,18 @@
 #ifdef PORTABLE
 #include "global.h"
+#ifdef PLATFORM_SDL2
+#include "bg.h"
+#include "sprite.h"
+#endif
+
+#ifdef PLATFORM_SDL2
+static void InvalidateGraphicsWrite(const volatile void *dest, u32 size)
+{
+    InvalidateBgTilemapRamRange(dest, size);
+    InvalidateBgTilemapVramRange(dest, size);
+    InvalidateOamResourceHandles(dest, size);
+}
+#endif
 
 // BIOS function implementations are based on the VBA-M source code.
 
@@ -96,6 +109,9 @@ void CpuSet(const void *src, volatile void *dst, u32 cnt)
             }
         }
     }
+#ifdef PLATFORM_SDL2
+    InvalidateGraphicsWrite(dst, dest - (volatile u8 *)dst);
+#endif
 }
 
 void CpuFastSet(const void *src, void *dst, u32 cnt)
@@ -138,6 +154,9 @@ void CpuFastSet(const void *src, void *dst, u32 cnt)
             count -= 8;
         }
     }
+#ifdef PLATFORM_SDL2
+    InvalidateGraphicsWrite(dst, dest - (volatile u8 *)dst);
+#endif
 }
 
 void LZ77UnCompVram(const u32 *src_, void *dest_)
@@ -179,6 +198,9 @@ void LZ77UnCompVram(const u32 *src_, void *dest_)
             }
 
             if (destPos == destSize) {
+#ifdef PLATFORM_SDL2
+                InvalidateGraphicsWrite(dest_, destPos);
+#endif
                 return;
             }
 
@@ -187,6 +209,9 @@ void LZ77UnCompVram(const u32 *src_, void *dest_)
     }
 
 fail:
+#ifdef PLATFORM_SDL2
+    InvalidateGraphicsWrite(dest_, destPos);
+#endif
     puts("Fatal error while decompressing LZ file.\n");
 }
 
@@ -199,6 +224,10 @@ void LZ77UnCompWram(const u32 *src, void *dst)
     source += 4;
 
     int len = header >> 8;
+
+#ifdef PLATFORM_SDL2
+    InvalidateGraphicsWrite(dst, len);
+#endif
 
     while (len > 0) {
         uint8_t d = CPUReadByte(source++);
@@ -242,6 +271,9 @@ void RLUnCompWram(const u32 *src, void *dest)
     int padding = (4 - remaining) & 0x3;
     int blockHeader;
     int block;
+#ifdef PLATFORM_SDL2
+    InvalidateGraphicsWrite(dest, remaining + padding);
+#endif
     src += 4;
     while (remaining > 0)
     {
@@ -287,6 +319,10 @@ void RLUnCompVram(const u32 *src, void *dest)
     int blockHeader;
     int block;
     int halfWord = 0;
+#ifdef PLATFORM_SDL2
+    uintptr_t start = (uintptr_t)dest & ~(uintptr_t)1;
+    void *paddingStart;
+#endif
     src += 4;
     while (remaining > 0)
     {
@@ -330,13 +366,22 @@ void RLUnCompVram(const u32 *src, void *dest)
             }
         }
     }
+#ifdef PLATFORM_SDL2
+    InvalidateGraphicsWrite((void *)start, ((uintptr_t)dest & ~(uintptr_t)1) - start);
+#endif
     if ((uintptr_t)dest & 1)
     {
         padding--;
         dest++;
     }
+#ifdef PLATFORM_SDL2
+    paddingStart = dest;
+#endif
     for (; padding > 0; padding -= 2, dest += 2)
         CPUWriteHalfWord(dest, 0);
+#ifdef PLATFORM_SDL2
+    InvalidateGraphicsWrite(paddingStart, (u8 *)dest - (u8 *)paddingStart);
+#endif
 }
 
 const s16 sineTable[256] = {

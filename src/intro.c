@@ -138,6 +138,7 @@ enum {
 // Used by various tasks and sprites
 #define tState data[0]
 #define sState data[0]
+#define BIG_DROP_LEAF_END_ANGLE 64
 
 /*
     gIntroFrameCounter is used as a persistent timer throughout the
@@ -665,7 +666,9 @@ static const union AnimCmd *const sAnims_PlayerBicycle[] =
 static const struct OamData sOamData_GameFreakLetter =
 {
     .y = GBA_DISPLAY_HEIGHT,
+#ifndef PLATFORM_SDL2
     .affineMode = ST_OAM_AFFINE_DOUBLE,
+#endif
     .objMode = ST_OAM_OBJ_NORMAL,
     .mosaic = FALSE,
     .bpp = ST_OAM_4BPP,
@@ -697,7 +700,9 @@ static const struct OamData sOamData_PresentsLetter =
 static const struct OamData sOamData_GameFreakLogo =
 {
     .y = GBA_DISPLAY_HEIGHT,
+#ifndef PLATFORM_SDL2
     .affineMode = ST_OAM_AFFINE_DOUBLE,
+#endif
     .objMode = ST_OAM_OBJ_BLEND,
     .mosaic = FALSE,
     .bpp = ST_OAM_4BPP,
@@ -1174,6 +1179,9 @@ void CB2_InitCopyrightScreenAfterTitleScreen(void)
 }
 
 #define sBigDropSpriteId data[0]
+#ifdef PLATFORM_SDL2
+static bool8 sBigDropMatricesReserved;
+#endif
 
 static void Task_Scene1_Load(u8 taskId)
 {
@@ -1236,13 +1244,13 @@ static void Task_Scene1_FadeIn(u8 taskId)
 
 static void Task_Scene1_WaterDrops(u8 taskId)
 {
-    if (gIntroFrameCounter == TIMER_BIG_DROP_START)
+    if (gIntroFrameCounter == TIMER_BIG_DROP_START && gTasks[taskId].sBigDropSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].sBigDropSpriteId].sState = 1;
 
     if (gIntroFrameCounter == TIMER_LOGO_APPEAR)
         CreateTask(Task_BlendLogoIn, 0);
 
-    if (gIntroFrameCounter == TIMER_BIG_DROP_FALLS)
+    if (gIntroFrameCounter == TIMER_BIG_DROP_FALLS && gTasks[taskId].sBigDropSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].sBigDropSpriteId].sState = 2;
 
     if (gIntroFrameCounter == TIMER_LOGO_BLEND_OUT)
@@ -1342,8 +1350,14 @@ static void Task_Scene1_PanUp(u8 taskId)
         if (gIntroFrameCounter == TIMER_FLYGON_SILHOUETTE_APPEAR)
         {
             // Show Flygon silhouette
-            u8 spriteId = CreateSprite(&sSpriteTemplate_FlygonSilhouette, 120, GBA_DISPLAY_HEIGHT, 10);
-            gSprites[spriteId].invisible = TRUE;
+#ifdef PLATFORM_SDL2
+            if (sBigDropMatricesReserved)
+#endif
+            {
+                u8 spriteId = CreateSprite(&sSpriteTemplate_FlygonSilhouette, 120, GBA_DISPLAY_HEIGHT, 10);
+                if (spriteId < MAX_SPRITES)
+                    gSprites[spriteId].invisible = TRUE;
+            }
         }
     }
     else
@@ -1410,12 +1424,16 @@ static void Task_Scene2_CreateSprites(u8 taskId)
     else
         spriteId = CreateIntroMaySprite(GBA_DISPLAY_WIDTH + 32, 100);
 
-    gSprites[spriteId].callback = SpriteCB_PlayerOnBicycle;
-    gSprites[spriteId].anims = sAnims_PlayerBicycle;
+    if (spriteId < MAX_SPRITES)
+    {
+        gSprites[spriteId].callback = SpriteCB_PlayerOnBicycle;
+        gSprites[spriteId].anims = sAnims_PlayerBicycle;
+    }
     gTasks[taskId].tPlayerSpriteId = spriteId;
     CreateSprite(&sSpriteTemplate_Volbeat, GBA_DISPLAY_WIDTH + 32, 80, 4);
     spriteId = CreateIntroFlygonSprite(-64, 60);
-    gSprites[spriteId].callback = SpriteCB_Flygon;
+    if (spriteId < MAX_SPRITES)
+        gSprites[spriteId].callback = SpriteCB_Flygon;
     gTasks[taskId].tFlygonSpriteId = spriteId;
 
     // Fade in and start bike ride
@@ -1446,17 +1464,17 @@ static void Task_Scene2_BikeRide(u8 taskId)
 
     // Check for updates to player/flygon sprites
     // These states are for SpriteCB_PlayerOnBicycle and SpriteCB_Flygon respectively
-    if (gIntroFrameCounter == TIMER_PLAYER_DRIFT_BACK)
+    if (gIntroFrameCounter == TIMER_PLAYER_DRIFT_BACK && gTasks[taskId].tPlayerSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].tPlayerSpriteId].sState = 1;
-    if (gIntroFrameCounter == TIMER_PLAYER_MOVE_FORWARD)
+    if (gIntroFrameCounter == TIMER_PLAYER_MOVE_FORWARD && gTasks[taskId].tPlayerSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].tPlayerSpriteId].sState = 0;
-    if (gIntroFrameCounter == TIMER_FLYGON_ENTER)
+    if (gIntroFrameCounter == TIMER_FLYGON_ENTER && gTasks[taskId].tFlygonSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].tFlygonSpriteId].sState = 1;
-    if (gIntroFrameCounter == TIMER_PLAYER_MOVE_BACKWARD)
+    if (gIntroFrameCounter == TIMER_PLAYER_MOVE_BACKWARD && gTasks[taskId].tPlayerSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].tPlayerSpriteId].sState = 2;
-    if (gIntroFrameCounter == TIMER_PLAYER_HOLD_POSITION)
+    if (gIntroFrameCounter == TIMER_PLAYER_HOLD_POSITION && gTasks[taskId].tPlayerSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].tPlayerSpriteId].sState = 3;
-    if (gIntroFrameCounter == TIMER_PLAYER_EXIT)
+    if (gIntroFrameCounter == TIMER_PLAYER_EXIT && gTasks[taskId].tPlayerSpriteId < MAX_SPRITES)
         gSprites[gTasks[taskId].tPlayerSpriteId].sState = 4;
 
     // Handle flygon's y movement
@@ -1962,7 +1980,7 @@ static void Task_Scene3_Groudon(u8 taskId)
         tZoom = Sin((tTrigIdx & 0xFF00) >> 8, 64) + 256;
         if (tScreenX == 120)
         {
-            BeginNormalPaletteFade(PALETTES_ALL & ~1, 3, 0, 16, RGB_WHITE);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)1, 3, 0, 16, RGB_WHITE);
             tZoom = 256;
             tYShake = 0;
             tState++;
@@ -2006,6 +2024,9 @@ static void CreateGroudonRockSprites(u8 taskId)
     for (i = 0; i < (int)ARRAY_COUNT(sGroudonRockData); i++)
     {
         spriteId = CreateSprite(&gAncientPowerRockSpriteTemplate, sGroudonRockData[i][0], GBA_DISPLAY_HEIGHT, i);
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
         gSprites[spriteId].callback = SpriteCB_GroudonRocks;
         gSprites[spriteId].oam.priority = 0;
         gSprites[spriteId].sRockId = i;
@@ -2068,7 +2089,7 @@ static void Task_Scene3_LoadKyogre(u8 taskId)
     LZDecompressVram(gIntroKyogreBg_Tilemap, (void *)(BG_SCREEN_ADDR(28)));
     LoadCompressedSpriteSheet(sSpriteSheet_Bubbles);
     LoadSpritePalette(sSpritePalette_Bubbles);
-    BeginNormalPaletteFade(PALETTES_ALL & ~1, 0, 16, 0, RGB_WHITEALPHA);
+    BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)1, 0, 16, 0, RGB_WHITEALPHA);
     gTasks[taskId].func = Task_Scene3_Kyogre;
     gTasks[taskId].tState = 0;
     gTasks[taskId].tScreenX = 336;
@@ -2202,7 +2223,7 @@ static void Task_Scene3_Kyogre(u8 taskId)
         gTasks[taskId].tScreenX = Sin(tTrigIdx, 0x3C) + 88;
         if (tTrigIdx == 64)
         {
-            BeginNormalPaletteFade(PALETTES_ALL & ~1, 3, 0, 16, RGB_WHITE);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)1, 3, 0, 16, RGB_WHITE);
             tState++;
         }
         break;
@@ -2255,6 +2276,9 @@ static void CreateKyogreBubbleSprites_Body(u8 taskId)
                                 sKyogreBubbleData[i][0],
                                 sKyogreBubbleData[i][1],
                                 i);
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
         gSprites[spriteId].invisible = TRUE;
         gSprites[spriteId].sTaskId = taskId;
         gSprites[spriteId].sDelay = sKyogreBubbleData[i][2];
@@ -2413,7 +2437,7 @@ static void Task_Scene3_Clouds(u8 taskId)
         if (--tCloudPos == 0)
         {
             // Start fade in from white, set cloud starting positions
-            BeginNormalPaletteFade(PALETTES_ALL & ~1, 0, 16, 0, RGB_WHITEALPHA);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL & ~(PaletteMask)1, 0, 16, 0, RGB_WHITEALPHA);
             tCloudPos = 80 << 8;
             tState++;
         }
@@ -2469,9 +2493,11 @@ static void Task_Scene3_Lightning(u8 taskId)
             // Do first lightning bolt
             CreateSprite(&sSpriteTemplate_Lightning, 200, 48, 0);
             spriteId = CreateSprite(&sSpriteTemplate_Lightning, 200, 80, 1);
-            StartSpriteAnim(&gSprites[spriteId], 1);
+            if (spriteId < MAX_SPRITES)
+                StartSpriteAnim(&gSprites[spriteId], 1);
             spriteId = CreateSprite(&sSpriteTemplate_Lightning, 200, 112, 2);
-            StartSpriteAnim(&gSprites[spriteId], 2);
+            if (spriteId < MAX_SPRITES)
+                StartSpriteAnim(&gSprites[spriteId], 2);
             tState++;
             tDelay = 72;
         }
@@ -2482,9 +2508,11 @@ static void Task_Scene3_Lightning(u8 taskId)
             // Do second lightning bolt
             CreateSprite(&sSpriteTemplate_Lightning, 40, 48, 0);
             spriteId = CreateSprite(&sSpriteTemplate_Lightning, 40, 80, 1);
-            StartSpriteAnim(&gSprites[spriteId], 1);
+            if (spriteId < MAX_SPRITES)
+                StartSpriteAnim(&gSprites[spriteId], 1);
             spriteId = CreateSprite(&sSpriteTemplate_Lightning, 40, 112, 2);
-            StartSpriteAnim(&gSprites[spriteId], 2);
+            if (spriteId < MAX_SPRITES)
+                StartSpriteAnim(&gSprites[spriteId], 2);
             tState++;
             tDelay = 48;
         }
@@ -2663,10 +2691,23 @@ static void Task_RayquazaAttack(u8 taskId)
             }
             if (data[1] == 6)
             {
+#ifdef PLATFORM_SDL2
+                spriteId = SPRITE_NONE;
+                if (ReserveOamMatrices(18, 1))
+                {
+                    spriteId = CreateSprite(&sSpriteTemplate_RayquazaOrb, 120, 88, 15);
+                    if (spriteId >= MAX_SPRITES)
+                        ReleaseOamMatrices(18, 1);
+                }
+#else
                 spriteId = CreateSprite(&sSpriteTemplate_RayquazaOrb, 120, 88, 15);
+#endif
                 PlaySE(SE_INTRO_BLAST);
-                gSprites[spriteId].invisible = TRUE;
-                gSprites[spriteId].data[3] = tRayquazaTaskId;
+                if (spriteId < MAX_SPRITES)
+                {
+                    gSprites[spriteId].invisible = TRUE;
+                    gSprites[spriteId].data[3] = tRayquazaTaskId;
+                }
                 tState++;
                 data[3] = 16;
             }
@@ -2857,7 +2898,7 @@ static void SpriteCB_WaterDrop_Ripple(struct Sprite *sprite)
             palNum = (sprite->data[2] - 192) / 128 + 9;
             if (palNum > 15)
                 palNum = 15;
-            sprite->oam.paletteNum = palNum;
+            SetSpritePaletteHandle(sprite, palNum);
         }
     }
     else
@@ -2951,7 +2992,7 @@ static void SpriteCB_WaterDrop_ReachLeafEnd(struct Sprite *sprite)
     SetOamMatrix(sprite->data[1], sprite->data[6] + 64, 0, 0, sprite->data[6] + 64);
     SetOamMatrix(sprite->data[1] + 1, sprite->data[6] + 64, 0, 0, sprite->data[6] + 64);
     SetOamMatrix(sprite->data[1] + 2, sprite->data[6] + 64, 0, 0, sprite->data[6] + 64);
-    if (sprite->data[4] != MAX_SPRITES)
+    if (sprite->data[4] != BIG_DROP_LEAF_END_ANGLE)
     {
         u16 sinIdx;
         sprite->data[4] -= 8;
@@ -3032,10 +3073,37 @@ static void SpriteCB_WaterDropShort(struct Sprite *sprite)
 static u8 CreateWaterDrop(s16 x, s16 y, u16 c, u16 d, u16 e, u8 fallImmediately)
 {
     u8 spriteId;
-    u8 oldSpriteId;
+    u8 spriteIds[3];
+    u8 i;
+
+#ifdef PLATFORM_SDL2
+    // The three fixed ranges are released by the scene's sprite reset.
+    bool8 reserved = ReserveOamMatrices(d, ARRAY_COUNT(spriteIds));
+
+    if (d == 1)
+        sBigDropMatricesReserved = reserved;
+    if (!reserved)
+        return MAX_SPRITES;
+#endif
+
+    for (i = 0; i < ARRAY_COUNT(spriteIds); i++)
+    {
+        spriteIds[i] = CreateSprite(&sSpriteTemplate_WaterDrop, x, y, 1);
+        if (spriteIds[i] >= MAX_SPRITES)
+        {
+            while (i > 0)
+                DestroySprite(&gSprites[spriteIds[--i]]);
+#ifdef PLATFORM_SDL2
+            // Flygon uses matrix 1 later even if the big drop cannot be created.
+            if (d != 1)
+                ReleaseOamMatrices(d, ARRAY_COUNT(spriteIds));
+#endif
+            return MAX_SPRITES;
+        }
+    }
 
     // Create water drop reflection
-    spriteId = CreateSprite(&sSpriteTemplate_WaterDrop, x, y, 1);
+    spriteId = spriteIds[0];
     gSprites[spriteId].data[0] = 0;
     gSprites[spriteId].data[7] = 0;
     gSprites[spriteId].data[1] = d;
@@ -3044,32 +3112,31 @@ static u8 CreateWaterDrop(s16 x, s16 y, u16 c, u16 d, u16 e, u8 fallImmediately)
     gSprites[spriteId].data[5] = e;
     gSprites[spriteId].data[6] = c;
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    gSprites[spriteId].oam.matrixNum = d;
+    SetSpriteMatrixHandle(&gSprites[spriteId], d);
     CalcCenterToCornerVec(&gSprites[spriteId], SPRITE_SHAPE(32x32), SPRITE_SIZE(32x32), ST_OAM_AFFINE_ERASE);
     StartSpriteAnim(&gSprites[spriteId], DROP_ANIM_REFLECTION);
     if (!fallImmediately)
         gSprites[spriteId].callback = SpriteCB_WaterDrop; // Do full anim, for 1st drop that slides along the leaf
     else
         gSprites[spriteId].callback = SpriteCB_WaterDropShort; // Skip to drop falling into the water, for 2nd and 3rd drops
-    oldSpriteId = spriteId;
 
     // Create water drop upper half
     // Implicitly anim number 0, DROP_ANIM_UPPER_HALF
-    spriteId = CreateSprite(&sSpriteTemplate_WaterDrop, x, y, 1);
-    gSprites[spriteId].data[7] = oldSpriteId;
+    spriteId = spriteIds[1];
+    gSprites[spriteId].data[7] = spriteIds[0];
     gSprites[spriteId].data[1] = d + 1;
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    gSprites[spriteId].oam.matrixNum = d + 1;
+    SetSpriteMatrixHandle(&gSprites[spriteId], d + 1);
     CalcCenterToCornerVec(&gSprites[spriteId], SPRITE_SHAPE(32x32), SPRITE_SIZE(32x32), ST_OAM_AFFINE_ERASE);
     gSprites[spriteId].callback = SpriteCB_WaterDropHalf;
 
     // Create water drop lower half
-    spriteId = CreateSprite(&sSpriteTemplate_WaterDrop, x, y, 1);
-    gSprites[spriteId].data[7] = oldSpriteId;
+    spriteId = spriteIds[2];
+    gSprites[spriteId].data[7] = spriteIds[0];
     gSprites[spriteId].data[1] = d + 2;
     StartSpriteAnim(&gSprites[spriteId], DROP_ANIM_LOWER_HALF);
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    gSprites[spriteId].oam.matrixNum = d + 2;
+    SetSpriteMatrixHandle(&gSprites[spriteId], d + 2);
     CalcCenterToCornerVec(&gSprites[spriteId], SPRITE_SHAPE(32x32), SPRITE_SIZE(32x32), ST_OAM_AFFINE_ERASE);
     gSprites[spriteId].callback = SpriteCB_WaterDropHalf;
 
@@ -3077,7 +3144,7 @@ static u8 CreateWaterDrop(s16 x, s16 y, u16 c, u16 d, u16 e, u8 fallImmediately)
     SetOamMatrix(d + 1, c + 32, 0, 0, c + 32);
     SetOamMatrix(d + 2, c + 32, 0, 0, 2 * (c + 32));
 
-    return oldSpriteId;
+    return spriteIds[0];
 }
 
 // State is handled by Task_Scene2_BikeRide
@@ -3306,29 +3373,49 @@ static void SpriteCB_GameFreakLogo(struct Sprite *sprite)
     }
 }
 
+static void ConfigureGameFreakLogoMatrix(struct Sprite *sprite, u8 matrix)
+{
+#ifdef PLATFORM_SDL2
+    sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
+    CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
+#endif
+    SetSpriteMatrixHandle(sprite, matrix);
+}
+
 static u8 CreateGameFreakLogoSprites(s16 x, s16 y, s16 unused)
 {
     u16 i;
     u8 spriteId;
 
+#ifdef PLATFORM_SDL2
+    if (!ReserveOamMatrices(12, NUM_GF_LETTERS + 1))
+        return MAX_SPRITES;
+#endif
+
     // Create "Game Freak" letters
     for (i = 0; i < NUM_GF_LETTERS; i++)
     {
         spriteId = CreateSprite(&sSpriteTemplate_GameFreakLetter, sGameFreakLetterData[i][1] + x, y - 4, 0);
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
         gSprites[spriteId].sState = 0;
         gSprites[spriteId].sTimer = sGameFreakLetterStartDelays[i];
         gSprites[spriteId].sLetterId = i;
         gSprites[spriteId].invisible = TRUE;
-        gSprites[spriteId].oam.matrixNum = i + 12;
+        ConfigureGameFreakLogoMatrix(&gSprites[spriteId], i + 12);
         StartSpriteAnim(&gSprites[spriteId], sGameFreakLetterData[i][0]);
         StartSpriteAffineAnim(&gSprites[spriteId], 0);
     }
 
     // Create Game Freak logo
     spriteId = CreateSprite(&sSpriteTemplate_GameFreakLogo, 120, y - 6, 0);
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
     gSprites[spriteId].sState = 0;
     gSprites[spriteId].invisible = TRUE;
-    gSprites[spriteId].oam.matrixNum = i + 12;
+    ConfigureGameFreakLogoMatrix(&gSprites[spriteId], i + 12);
     StartSpriteAffineAnim(&gSprites[spriteId], 1);
 
     return spriteId;
@@ -3364,7 +3451,7 @@ static void SpriteCB_FlygonSilhouette(struct Sprite *sprite)
         b = Q_8_8_TO_INT( sin * sprite->sScale);
         a = Q_8_8_TO_INT( cos * sprite->sScale);
 
-        SetOamMatrix(1, a, b, c, d);
+        SetOamMatrix(GetSpriteMatrixHandle(sprite), a, b, c, d);
     }
 
     switch (sprite->sState)
@@ -3372,7 +3459,7 @@ static void SpriteCB_FlygonSilhouette(struct Sprite *sprite)
     case 0:
     default:
         sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-        sprite->oam.matrixNum = 1;
+        SetSpriteMatrixHandle(sprite, 1);
         CalcCenterToCornerVec(sprite, SPRITE_SHAPE(64x32), SPRITE_SIZE(64x32), ST_OAM_AFFINE_DOUBLE);
         sprite->invisible = FALSE;
         sprite->sState = 1;
@@ -3420,7 +3507,7 @@ static void SpriteCB_RayquazaOrb(struct Sprite *sprite)
     default:
         sprite->invisible = FALSE;
         sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-        sprite->oam.matrixNum = 18;
+        SetSpriteMatrixHandle(sprite, 18);
         CalcCenterToCornerVec(sprite, SPRITE_SHAPE(64x64), SPRITE_SIZE(64x64), ST_OAM_AFFINE_DOUBLE);
         sprite->data[1] = 0;
         sprite->sState = 1;
@@ -3438,7 +3525,7 @@ static void SpriteCB_RayquazaOrb(struct Sprite *sprite)
                 sprite->data[1]++;
         }
         foo = 256 - gSineTable[(u8)sprite->data[1]] / 2;
-        SetOamMatrix(18, foo, 0, 0, foo);
+        SetOamMatrix(GetSpriteMatrixHandle(sprite), foo, 0, 0, foo);
         break;
     }
 }

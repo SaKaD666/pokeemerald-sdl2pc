@@ -18,6 +18,7 @@
 #include "palette.h"
 #include "window.h"
 #include "decompress.h"
+#include "dma3.h"
 #include "menu_helpers.h"
 #include "menu.h"
 #include "bg.h"
@@ -861,6 +862,10 @@ static bool32 HideFrontierPass(void)
         FreeCursorAndSymbolSprites();
         break;
     case 4:
+#ifdef PLATFORM_SDL2
+        ClearScheduledBgCopiesToVram();
+        ClearDma3Requests();
+#endif
         ResetGpuRegsAndBgs();
         ResetTasks();
         ResetSpriteData();
@@ -870,6 +875,7 @@ static bool32 HideFrontierPass(void)
         UnsetBgTilemapBuffer(0);
         UnsetBgTilemapBuffer(1);
         UnsetBgTilemapBuffer(2);
+        UnsetBgTilemapBuffer(3);
         FreeFrontierPassGfx();
         sPassData->state = 0;
         return TRUE;
@@ -1006,6 +1012,17 @@ static bool32 TryCallPassAreaFunction(u8 taskId, u8 cursorArea)
 static void Task_HandleFrontierPassInput(u8 taskId)
 {
     u8 var = FALSE; // Reused, first informs whether the cursor moves, then used as the new cursor area.
+
+    if (sPassGfx->cursorSprite == NULL)
+    {
+        if (JOY_NEW(B_BUTTON))
+        {
+            PlaySE(SE_PC_OFF);
+            SetMainCallback2(CB2_HideFrontierPass);
+            DestroyTask(taskId);
+        }
+        return;
+    }
 
     if (JOY_HELD(DPAD_UP) && sPassGfx->cursorSprite->y >= 9)
     {
@@ -1331,11 +1348,20 @@ static void LoadCursorAndSymbolSprites(void)
     FreeAllSpritePalettes();
     ResetAffineAnimData();
     LoadSpritePalettes(sSpritePalettes);
-    LoadCompressedSpriteSheet(&sCursorSpriteSheets[0]);
-    LoadCompressedSpriteSheet(&sCursorSpriteSheets[2]);
-    spriteId = CreateSprite(&sSpriteTemplates_Cursors[0], sPassData->cursorX, sPassData->cursorY, 0);
-    sPassGfx->cursorSprite = &gSprites[spriteId];
-    sPassGfx->cursorSprite->oam.priority = 0;
+    sPassGfx->cursorSprite = NULL;
+    if (LoadCompressedSpriteSheet(&sCursorSpriteSheets[0]) != SPRITE_TILE_NONE
+     && IndexOfSpritePaletteTag(sSpriteTemplates_Cursors[0].paletteTag) != 0xFF)
+    {
+        spriteId = CreateSprite(&sSpriteTemplates_Cursors[0], sPassData->cursorX, sPassData->cursorY, 0);
+        if (spriteId < MAX_SPRITES)
+        {
+            sPassGfx->cursorSprite = &gSprites[spriteId];
+            sPassGfx->cursorSprite->oam.priority = 0;
+        }
+    }
+
+    if (LoadCompressedSpriteSheet(&sCursorSpriteSheets[2]) == SPRITE_TILE_NONE)
+        return;
 
     for (i = 0; i < NUM_FRONTIER_FACILITIES; i++)
     {
@@ -1344,7 +1370,13 @@ static void LoadCursorAndSymbolSprites(void)
             struct SpriteTemplate sprite = sSpriteTemplate_Medal;
 
             sprite.paletteTag += sPassData->facilitySymbols[i] - 1; // Adds 1 if gold for TAG_MEDAL_GOLD
+            if (IndexOfSpritePaletteTag(sprite.paletteTag) == 0xFF)
+                continue;
+
             spriteId = CreateSprite(&sprite, sPassAreasLayout[i + CURSOR_AREA_SYMBOL - 1].xStart + 8, sPassAreasLayout[i + CURSOR_AREA_SYMBOL - 1].yStart + 6, i + 1);
+            if (spriteId >= MAX_SPRITES)
+                continue;
+
             sPassGfx->symbolSprites[i] = &gSprites[spriteId];
             sPassGfx->symbolSprites[i]->oam.priority = 2;
             StartSpriteAnim(sPassGfx->symbolSprites[i], i);
@@ -1356,8 +1388,11 @@ static void FreeCursorAndSymbolSprites(void)
 {
     u8 i = 0;
 
-    DestroySprite(sPassGfx->cursorSprite);
-    sPassGfx->cursorSprite = NULL;
+    if (sPassGfx->cursorSprite != NULL)
+    {
+        DestroySprite(sPassGfx->cursorSprite);
+        sPassGfx->cursorSprite = NULL;
+    }
     for (i = 0; i < NUM_FRONTIER_FACILITIES; i++)
     {
         if (sPassGfx->symbolSprites[i] != NULL)
@@ -1568,7 +1603,8 @@ static void Task_HandleFrontierMap(u8 taskId)
         }
         else
         {
-            sMapData->cursorSprite->y += 4;
+            if (sMapData->cursorSprite != NULL)
+                sMapData->cursorSprite->y += 4;
             tMoveSteps++;
         }
         return;
@@ -1581,7 +1617,8 @@ static void Task_HandleFrontierMap(u8 taskId)
         }
         else
         {
-            sMapData->cursorSprite->y -= 4;
+            if (sMapData->cursorSprite != NULL)
+                sMapData->cursorSprite->y -= 4;
             tMoveSteps++;
         }
         return;
@@ -1649,28 +1686,48 @@ static u8 MapNumToFrontierFacilityId(u16 mapNum) // id + 1, zero means not a fro
         return 0;
 }
 
+static struct Sprite *CreateFrontierMapSprite(const struct CompressedSpriteSheet *sheet,
+                                              const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
+{
+    u8 spriteId;
+
+    if (IndexOfSpritePaletteTag(template->paletteTag) == 0xFF
+     || LoadCompressedSpriteSheet(sheet) == SPRITE_TILE_NONE)
+        return NULL;
+
+    spriteId = CreateSprite(template, x, y, subpriority);
+    if (spriteId < MAX_SPRITES)
+        return &gSprites[spriteId];
+
+    FreeSpriteTilesByTag(sheet->tag);
+    return NULL;
+}
+
 static void InitFrontierMapSprites(void)
 {
     struct SpriteTemplate sprite;
-    u8 spriteId;
     u8 id;
     s16 x = 0, y;
 
     FreeAllSpritePalettes();
     LoadSpritePalettes(sSpritePalettes);
 
-    LoadCompressedSpriteSheet(&sCursorSpriteSheets[0]);
-    spriteId = CreateSprite(&sSpriteTemplates_Cursors[0], 155, (sMapData->cursorPos * 16) + 8, 2);
-    sMapData->cursorSprite = &gSprites[spriteId];
-    sMapData->cursorSprite->oam.priority = 0;
-    sMapData->cursorSprite->hFlip = TRUE;
-    StartSpriteAnim(sMapData->cursorSprite, 1);
+    sMapData->cursorSprite = CreateFrontierMapSprite(&sCursorSpriteSheets[0], &sSpriteTemplates_Cursors[0],
+                                                     155, (sMapData->cursorPos * 16) + 8, 2);
+    if (sMapData->cursorSprite != NULL)
+    {
+        sMapData->cursorSprite->oam.priority = 0;
+        sMapData->cursorSprite->hFlip = TRUE;
+        StartSpriteAnim(sMapData->cursorSprite, 1);
+    }
 
-    LoadCompressedSpriteSheet(&sCursorSpriteSheets[1]);
-    spriteId = CreateSprite(&sSpriteTemplates_Cursors[1], sMapLandmarks[sMapData->cursorPos].x, sMapLandmarks[sMapData->cursorPos].y, 1);
-    sMapData->mapIndicatorSprite = &gSprites[spriteId];
-    sMapData->mapIndicatorSprite->oam.priority = 0;
-    StartSpriteAnim(sMapData->mapIndicatorSprite, sMapLandmarks[sMapData->cursorPos].animNum);
+    sMapData->mapIndicatorSprite = CreateFrontierMapSprite(&sCursorSpriteSheets[1], &sSpriteTemplates_Cursors[1],
+                                                           sMapLandmarks[sMapData->cursorPos].x, sMapLandmarks[sMapData->cursorPos].y, 1);
+    if (sMapData->mapIndicatorSprite != NULL)
+    {
+        sMapData->mapIndicatorSprite->oam.priority = 0;
+        StartSpriteAnim(sMapData->mapIndicatorSprite, sMapLandmarks[sMapData->cursorPos].animNum);
+    }
 
     // Create player indicator head sprite only if it's in vicinity of battle frontier.
     id = GetCurrentRegionMapSectionId();
@@ -1712,24 +1769,21 @@ static void InitFrontierMapSprites(void)
             }
         }
 
-        LoadCompressedSpriteSheet(sHeadsSpriteSheet);
         sprite = sSpriteTemplate_PlayerHead;
         sprite.paletteTag = gSaveBlock2Ptr->playerGender + TAG_HEAD_MALE; // TAG_HEAD_FEMALE if gender is FEMALE
-        if (id != 0)
+        if (id == 0)
         {
-            spriteId = CreateSprite(&sprite, x, y, 0);
-        }
-        else
-        {
-            x *= 8;
-            y *= 8;
-            spriteId = CreateSprite(&sprite, x + 20, y + 36, 0);
+            x = x * 8 + 20;
+            y = y * 8 + 36;
         }
 
-        sMapData->playerHeadSprite = &gSprites[spriteId];
-        sMapData->playerHeadSprite->oam.priority = 0;
-        if (gSaveBlock2Ptr->playerGender != MALE)
-            StartSpriteAnim(sMapData->playerHeadSprite, 1);
+        sMapData->playerHeadSprite = CreateFrontierMapSprite(sHeadsSpriteSheet, &sprite, x, y, 0);
+        if (sMapData->playerHeadSprite != NULL)
+        {
+            sMapData->playerHeadSprite->oam.priority = 0;
+            if (gSaveBlock2Ptr->playerGender != MALE)
+                StartSpriteAnim(sMapData->playerHeadSprite, 1);
+        }
     }
 }
 
@@ -1777,11 +1831,15 @@ static void HandleFrontierMapCursorMove(u8 direction)
     AddTextPrinterParameterized3(MAP_WINDOW_NAME, FONT_NARROW, 4, (oldCursorPos * 16) + 1, sTextColors[1], 0, sMapLandmarks[oldCursorPos].name);
     AddTextPrinterParameterized3(MAP_WINDOW_NAME, FONT_NARROW, 4, (sMapData->cursorPos * 16) + 1, sTextColors[2], 0, sMapLandmarks[sMapData->cursorPos].name);
 
-    sMapData->cursorSprite->y = (sMapData->cursorPos * 16) + 8;
+    if (sMapData->cursorSprite != NULL)
+        sMapData->cursorSprite->y = (sMapData->cursorPos * 16) + 8;
 
-    StartSpriteAnim(sMapData->mapIndicatorSprite, sMapLandmarks[sMapData->cursorPos].animNum);
-    sMapData->mapIndicatorSprite->x = sMapLandmarks[sMapData->cursorPos].x;
-    sMapData->mapIndicatorSprite->y = sMapLandmarks[sMapData->cursorPos].y;
+    if (sMapData->mapIndicatorSprite != NULL)
+    {
+        StartSpriteAnim(sMapData->mapIndicatorSprite, sMapLandmarks[sMapData->cursorPos].animNum);
+        sMapData->mapIndicatorSprite->x = sMapLandmarks[sMapData->cursorPos].x;
+        sMapData->mapIndicatorSprite->y = sMapLandmarks[sMapData->cursorPos].y;
+    }
     FillWindowPixelBuffer(MAP_WINDOW_DESCRIPTION, PIXEL_FILL(0));
     AddTextPrinterParameterized3(MAP_WINDOW_DESCRIPTION, FONT_NORMAL, 4, 0, sTextColors[0], 0, sMapLandmarks[sMapData->cursorPos].description);
 

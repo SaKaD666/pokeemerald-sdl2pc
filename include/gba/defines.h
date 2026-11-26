@@ -26,9 +26,18 @@
 #define ALIGNED(n) __attribute__((aligned(n)))
 
 #define BG_PLTT_SIZE  0x200
-#define OBJ_PLTT      (PLTT + BG_PLTT_SIZE)
 #define OBJ_PLTT_SIZE 0x200
-#define PLTT_SIZE     (BG_PLTT_SIZE + OBJ_PLTT_SIZE)
+
+#ifdef PLATFORM_SDL2
+#define BG_PLTT_CAPACITY  (2 * BG_PLTT_SIZE)
+#define OBJ_PLTT_CAPACITY (2 * OBJ_PLTT_SIZE)
+#else
+#define BG_PLTT_CAPACITY  BG_PLTT_SIZE
+#define OBJ_PLTT_CAPACITY OBJ_PLTT_SIZE
+#endif
+
+#define OBJ_PLTT  (PLTT + BG_PLTT_CAPACITY)
+#define PLTT_SIZE (BG_PLTT_CAPACITY + OBJ_PLTT_CAPACITY)
 
 #ifndef PORTABLE
 #define SOUND_INFO_PTR (*(struct SoundInfo **)0x3007FF0)
@@ -51,7 +60,11 @@ extern unsigned char PLTT[PLTT_SIZE] __attribute__ ((aligned (4)));
 
 #define BG_PLTT       PLTT
 
+#ifdef PLATFORM_SDL2
+#define VRAM_SIZE 0x30000
+#else
 #define VRAM_SIZE 0x18000
+#endif
 #ifndef PORTABLE
 #define VRAM      0x6000000
 #else
@@ -75,11 +88,24 @@ extern unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
 #define OBJ_VRAM0      (VRAM + 0x10000)
 #define OBJ_VRAM0_SIZE 0x8000
 
+#ifdef PLATFORM_SDL2
+#define OBJ_VRAM_EXT     (OBJ_VRAM0 + OBJ_VRAM0_SIZE)
+#define OBJ_VRAM_EXT_SIZE OBJ_VRAM0_SIZE
+#define BG_VRAM_EXT      (OBJ_VRAM_EXT + OBJ_VRAM_EXT_SIZE)
+#define BG_VRAM_EXT_SIZE BG_VRAM_SIZE
+#endif
+
 // bitmap-mode BG
 #define OBJ_VRAM1      (VRAM + 0x14000)
 #define OBJ_VRAM1_SIZE 0x4000
 
+#ifdef PLATFORM_SDL2
+#define OAM_ENTRY_COUNT 255
+#define OAM_SIZE 0x7F8
+#else
+#define OAM_ENTRY_COUNT 128
 #define OAM_SIZE 0x400
+#endif
 #ifndef PORTABLE
 #define OAM      0x7000000
 #else
@@ -117,7 +143,12 @@ extern unsigned char OAM[OAM_SIZE] __attribute__ ((aligned (4)));
 #define TILE_OFFSET_4BPP(n) ((n) * TILE_SIZE_4BPP)
 #define TILE_OFFSET_8BPP(n) ((n) * TILE_SIZE_8BPP)
 
-#define TOTAL_OBJ_TILE_COUNT 1024
+#define LEGACY_OBJ_TILE_COUNT (OBJ_VRAM0_SIZE / TILE_SIZE_4BPP)
+#ifdef PLATFORM_SDL2
+#define TOTAL_OBJ_TILE_COUNT (LEGACY_OBJ_TILE_COUNT + OBJ_VRAM_EXT_SIZE / TILE_SIZE_4BPP)
+#else
+#define TOTAL_OBJ_TILE_COUNT LEGACY_OBJ_TILE_COUNT
+#endif
 
 #define PLTT_SIZEOF(n) ((n) * sizeof(u16))
 #define PLTT_SIZE_4BPP PLTT_SIZEOF(16)

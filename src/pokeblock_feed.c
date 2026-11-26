@@ -130,7 +130,6 @@ static void SpriteCB_MonJumpForPokeblock(struct Sprite *);
 static void CalculateMonAnimMovement(void);
 static void CalculateMonAnimMovementEnd(void);
 static bool8 InitMonAnimStage(void);
-static bool8 FreeMonSpriteOamMatrix(void);
 static bool8 DoMonAnimStep(void);
 static bool8 LoadMonAndSceneGfx(struct Pokemon *);
 static u8 CreatePokeblockSprite(void);
@@ -814,6 +813,11 @@ static void Task_HandlePokeblockFeed(u8 taskId)
         switch (gTasks[taskId].tState)
         {
         case 0:
+            if (sPokeblockFeed->monSpriteId >= MAX_SPRITES)
+            {
+                gTasks[taskId].func = Task_PrintAtePokeblockMessage;
+                return;
+            }
             sPokeblockFeed->animRunState = 0;
             sPokeblockFeed->timer = 0;
             CalculateMonAnimLength();
@@ -908,7 +912,13 @@ static void Task_FadeOutPokeblockFeed(u8 taskId)
 static u8 CreateMonSprite(struct Pokemon *mon)
 {
     u16 species = GetMonData(mon, MON_DATA_SPECIES_OR_EGG);
-    u8 spriteId = CreateSprite(&gMultiuseSpriteTemplate, MON_X, MON_Y, 2);
+    u8 spriteId;
+
+    if (IndexOfSpritePaletteTag(gMultiuseSpriteTemplate.paletteTag) == 0xFF)
+        return SPRITE_NONE;
+    spriteId = CreateSprite(&gMultiuseSpriteTemplate, MON_X, MON_Y, 2);
+    if (spriteId >= MAX_SPRITES)
+        return SPRITE_NONE;
 
     sPokeblockFeed->species = species;
     sPokeblockFeed->monSpriteId_ = spriteId;
@@ -954,16 +964,23 @@ static void SpriteCB_MonJumpForPokeblock(struct Sprite *sprite)
 static u8 CreatePokeblockCaseSpriteForFeeding(void)
 {
     u8 spriteId = CreatePokeblockCaseSprite(188, 100, 2);
+    if (spriteId >= MAX_SPRITES)
+        return SPRITE_NONE;
+
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
     gSprites[spriteId].affineAnims = sAffineAnims_PokeblockCase_Still;
     gSprites[spriteId].callback = SpriteCallbackDummy;
-    InitSpriteAffineAnim(&gSprites[spriteId]);
+    if (!InitSpriteAffineAnim(&gSprites[spriteId]))
+        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
     return spriteId;
 }
 
 static void DoPokeblockCaseThrowEffect(u8 spriteId, bool8 horizontalThrow)
 {
-    FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
+    if (spriteId >= MAX_SPRITES)
+        return;
+
+    FreeSpriteOamMatrix(&gSprites[spriteId]);
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
 
     if (!horizontalThrow)
@@ -971,12 +988,21 @@ static void DoPokeblockCaseThrowEffect(u8 spriteId, bool8 horizontalThrow)
     else
         gSprites[spriteId].affineAnims = sAffineAnims_PokeblockCase_ThrowFromHorizontal;
 
-    InitSpriteAffineAnim(&gSprites[spriteId]);
+    if (!InitSpriteAffineAnim(&gSprites[spriteId]))
+        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
 }
 
 static u8 CreatePokeblockSprite(void)
 {
-    u8 spriteId = CreateSprite(&sSpriteTemplate_Pokeblock, 174, 84, 1);
+    u8 spriteId;
+
+    if (GetSpriteTileStartByTag(sSpriteTemplate_Pokeblock.tileTag) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(sSpriteTemplate_Pokeblock.paletteTag) == 0xFF)
+        return SPRITE_NONE;
+    spriteId = CreateSprite(&sSpriteTemplate_Pokeblock, 174, 84, 1);
+    if (spriteId >= MAX_SPRITES)
+        return SPRITE_NONE;
+
     gSprites[spriteId].sSpeed = -12;
     gSprites[spriteId].sAccel = 1;
     return spriteId;
@@ -1028,14 +1054,16 @@ static void UpdateMonAnim(void)
         if (sNatureToMonPokeblockAnim[pokeblockFeed->nature][1] != AFFINE_NONE)
         {
             // Initialize affine anim
+            FreeSpriteOamMatrix(pokeblockFeed->monSpritePtr);
             pokeblockFeed->monSpritePtr->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-            pokeblockFeed->monSpritePtr->oam.matrixNum = 0;
             pokeblockFeed->monSpritePtr->affineAnims = sAffineAnims_Mon;
-            InitSpriteAffineAnim(pokeblockFeed->monSpritePtr);
+            if (!InitSpriteAffineAnim(pokeblockFeed->monSpritePtr))
+                pokeblockFeed->monSpritePtr->oam.affineMode = ST_OAM_AFFINE_OFF;
         }
         pokeblockFeed->animRunState = 50;
     case 50:
-        if (sNatureToMonPokeblockAnim[pokeblockFeed->nature][1] != AFFINE_NONE)
+        if (sNatureToMonPokeblockAnim[pokeblockFeed->nature][1] != AFFINE_NONE
+         && (pokeblockFeed->monSpritePtr->oam.affineMode & ST_OAM_AFFINE_ON_MASK))
         {
             // Start affine anim
             if (!pokeblockFeed->noMonFlip) // double negation, so mon's sprite is flipped
@@ -1058,13 +1086,12 @@ static void UpdateMonAnim(void)
             else
             {
                 // End animation
-                FreeOamMatrix(pokeblockFeed->monSpritePtr->oam.matrixNum);
+                FreeSpriteOamMatrix(pokeblockFeed->monSpritePtr);
                 pokeblockFeed->animRunState = 70;
             }
         }
         break;
     case 70:
-        FreeMonSpriteOamMatrix();
         pokeblockFeed->animId = 0;
         pokeblockFeed->animRunState = 0;
         break;
@@ -1116,12 +1143,6 @@ static bool8 DoMonAnimStep(void)
         return TRUE;
     else
         return FALSE;
-}
-
-static bool8 FreeMonSpriteOamMatrix(void)
-{
-    FreeSpriteOamMatrix(sPokeblockFeed->monSpritePtr);
-    return FALSE;
 }
 
 static void CalculateMonAnimMovementEnd(void)

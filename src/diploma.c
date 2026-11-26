@@ -50,6 +50,8 @@ static const u16 sDiplomaPalettes[][16] =
 static const u32 sDiplomaTilemap[] = INCGFX_U32("graphics/diploma/tilemap.bin", ".lz");
 static const u32 sDiplomaTiles[] = INCGFX_U32("graphics/diploma/tiles.png", ".4bpp.lz");
 
+static void CB2_FinishDiplomaSetup(void);
+
 void CB2_ShowDiploma(void)
 {
     SetVBlankCallback(NULL);
@@ -84,8 +86,21 @@ void CB2_ShowDiploma(void)
     InitDiplomaWindow();
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(1, &sDiplomaTiles, 0, 0, 0);
+    CB2_FinishDiplomaSetup();
+}
+
+static void CB2_FinishDiplomaSetup(void)
+{
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        SetMainCallback2(CB2_FinishDiplomaSetup);
+        return;
+    }
+#else
     while (FreeTempTileDataBuffersIfPossible())
         ;
+#endif
     LZDecompressWram(sDiplomaTilemap, sDiplomaTilemapPtr);
     CopyBgTilemapBufferToVram(1);
     DisplayDiplomaText();
@@ -126,7 +141,12 @@ static void Task_DiplomaFadeOut(u8 taskId)
     {
         SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#else
         IsDma3ManagerBusyWithBgCopy();
+#endif
         ClearScheduledBgCopiesToVram();
 #endif
         FreeAllWindowBuffers();

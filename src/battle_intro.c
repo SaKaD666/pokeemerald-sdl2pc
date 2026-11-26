@@ -476,10 +476,14 @@ static void BattleIntroSlideLink(u8 taskId)
         if (--gTasks[taskId].data[2] == 0)
         {
             gTasks[taskId].tState++;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_V].oam.objMode = ST_OAM_OBJ_WINDOW;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_V].callback = SpriteCB_VsLetterInit;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_S].oam.objMode = ST_OAM_OBJ_WINDOW;
-            gSprites[gBattleStruct->linkBattleVsSpriteId_S].callback = SpriteCB_VsLetterInit;
+            if (gBattleStruct->linkBattleVsSpriteId_V < MAX_SPRITES
+             && gBattleStruct->linkBattleVsSpriteId_S < MAX_SPRITES)
+            {
+                gSprites[gBattleStruct->linkBattleVsSpriteId_V].oam.objMode = ST_OAM_OBJ_WINDOW;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_V].callback = SpriteCB_VsLetterInit;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_S].oam.objMode = ST_OAM_OBJ_WINDOW;
+                gSprites[gBattleStruct->linkBattleVsSpriteId_S].callback = SpriteCB_VsLetterInit;
+            }
             SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR);
             SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WINOBJ_BG_ALL | WINOUT_WINOBJ_OBJ | WINOUT_WINOBJ_CLR | WINOUT_WIN01_BG1 | WINOUT_WIN01_BG2);
         }
@@ -608,6 +612,9 @@ void DrawBattlerOnBg(int bgId, u8 x, u8 y, u8 battlerPosition, u8 paletteId, u8 
             tilemap[i * 32 + j] = offset | (paletteId << 12);
             offset++;
         }
+#ifdef PLATFORM_SDL2
+        InvalidateBgTilemapRamRange(&tilemap[i * 32 + x], 8 * sizeof(*tilemap));
+#endif
     }
     LoadBgTilemap(bgId, tilemap, BG_SCREEN_SIZE, 0);
 }

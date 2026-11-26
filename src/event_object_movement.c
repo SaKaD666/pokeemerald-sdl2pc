@@ -1230,7 +1230,7 @@ static void CreateReflectionEffectSprites(void)
             continue;
         }
 
-        gReflectionEffectMatrixIds[i] = sprite->oam.matrixNum;
+        gReflectionEffectMatrixIds[i] = GetSpriteMatrixHandle(sprite);
         StartSpriteAffineAnim(sprite, i);
         sprite->invisible = TRUE;
     }
@@ -1481,7 +1481,7 @@ static u8 TrySetupObjectEventSprite(const struct ObjectEventTemplate *objectEven
     sprite->centerToCornerVecY = -(graphicsInfo->height >> 1);
     sprite->x += 8;
     sprite->y += 16 + sprite->centerToCornerVecY;
-    sprite->oam.paletteNum = paletteSlot;
+    SetSpritePaletteHandle(sprite, paletteSlot);
     sprite->coordOffsetEnabled = TRUE;
     sprite->sObjEventId = objectEventId;
     objectEvent->spriteId = spriteId;
@@ -1696,9 +1696,7 @@ u8 CreateVirtualObject(u8 graphicsId, u8 virtualObjId, s16 x, s16 y, u8 elevatio
         sprite->centerToCornerVecX = -(graphicsInfo->width >> 1);
         sprite->centerToCornerVecY = -(graphicsInfo->height >> 1);
         sprite->y += sprite->centerToCornerVecY;
-        sprite->oam.paletteNum = graphicsInfo->paletteSlot;
-        if (sprite->oam.paletteNum >= 16)
-            sprite->oam.paletteNum -= 16;
+        SetSpritePaletteHandle(sprite, graphicsInfo->paletteSlot);
 
         sprite->coordOffsetEnabled = TRUE;
         sprite->sVirtualObjId = virtualObjId;
@@ -1984,7 +1982,7 @@ static void SpawnObjectEventOnReturnToField(u8 objectEventId, s16 x, s16 y)
         if (subspriteTables != NULL)
             SetSubspriteTables(sprite, subspriteTables);
 
-        sprite->oam.paletteNum = paletteSlot;
+        SetSpritePaletteHandle(sprite, paletteSlot);
         sprite->coordOffsetEnabled = TRUE;
         sprite->sObjEventId = objectEventId;
         objectEvent->spriteId = i;
@@ -2044,7 +2042,7 @@ void ObjectEventSetGraphicsId(struct ObjectEvent *objectEvent, u8 graphicsId)
     sprite->images = graphicsInfo->images;
     sprite->anims = graphicsInfo->anims;
     sprite->subspriteTables = graphicsInfo->subspriteTables;
-    sprite->oam.paletteNum = paletteSlot;
+    SetSpritePaletteHandle(sprite, paletteSlot);
     objectEvent->inanimate = graphicsInfo->inanimate;
     objectEvent->graphicsId = graphicsId;
     SetSpritePosToMapCoords(objectEvent->currentCoords.x, objectEvent->currentCoords.y, &sprite->x, &sprite->y);
@@ -2106,7 +2104,7 @@ static void SetBerryTreeGraphics(struct ObjectEvent *objectEvent, struct Sprite 
 
         ObjectEventSetGraphicsId(objectEvent, gBerryTreeObjectEventGraphicsIdTablePointers[berryId][berryStage]);
         sprite->images = gBerryTreePicTablePointers[berryId];
-        sprite->oam.paletteNum = gBerryTreePaletteSlotTablePointers[berryId][berryStage];
+        SetSpritePaletteHandle(sprite, gBerryTreePaletteSlotTablePointers[berryId][berryStage]);
         StartSpriteAnim(sprite, berryStage);
     }
 }
@@ -2535,11 +2533,14 @@ u8 CopySprite(struct Sprite *sprite, s16 x, s16 y, u8 subpriority)
 {
     u8 i;
 
+    if (sprite == NULL || !sprite->inUse)
+        return MAX_SPRITES;
+
     for (i = 0; i < MAX_SPRITES; i++)
     {
         if (!gSprites[i].inUse)
         {
-            gSprites[i] = *sprite;
+            CopySpriteState(&gSprites[i], sprite);
             gSprites[i].x = x;
             gSprites[i].y = y;
             gSprites[i].subpriority = subpriority;
@@ -2553,11 +2554,14 @@ u8 CreateCopySpriteAt(struct Sprite *sprite, s16 x, s16 y, u8 subpriority)
 {
     s16 i;
 
+    if (sprite == NULL || !sprite->inUse)
+        return MAX_SPRITES;
+
     for (i = MAX_SPRITES - 1; i > -1; i--)
     {
         if (!gSprites[i].inUse)
         {
-            gSprites[i] = *sprite;
+            CopySpriteState(&gSprites[i], sprite);
             gSprites[i].x = x;
             gSprites[i].y = y;
             gSprites[i].subpriority = subpriority;
@@ -6826,7 +6830,11 @@ bool8 MovementAction_ClearFixedPriority_Step0(struct ObjectEvent *objectEvent, s
 bool8 MovementAction_InitAffineAnim_Step0(struct ObjectEvent *objectEvent, struct Sprite *sprite)
 {
     sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    InitSpriteAffineAnim(sprite);
+    if (!InitSpriteAffineAnim(sprite))
+    {
+        sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+        return TRUE;
+    }
     sprite->affineAnimPaused = TRUE;
     sprite->subspriteMode = SUBSPRITES_OFF;
     return TRUE;
@@ -6834,8 +6842,7 @@ bool8 MovementAction_InitAffineAnim_Step0(struct ObjectEvent *objectEvent, struc
 
 bool8 MovementAction_ClearAffineAnim_Step0(struct ObjectEvent *objectEvent, struct Sprite *sprite)
 {
-    FreeOamMatrix(sprite->oam.matrixNum);
-    sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+    FreeSpriteOamMatrix(sprite);
     CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
     return TRUE;
 }
@@ -6856,7 +6863,8 @@ bool8 MovementAction_WalkDownStartAffine_Step0(struct ObjectEvent *objectEvent, 
 {
     InitWalkSlow(objectEvent, sprite, DIR_SOUTH);
     sprite->affineAnimPaused = FALSE;
-    StartSpriteAffineAnimIfDifferent(sprite, 0);
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+        StartSpriteAffineAnimIfDifferent(sprite, 0);
     return MovementAction_WalkDownStartAffine_Step1(objectEvent, sprite);
 }
 
@@ -6875,7 +6883,8 @@ bool8 MovementAction_WalkDownAffine_Step0(struct ObjectEvent *objectEvent, struc
 {
     InitWalkSlow(objectEvent, sprite, DIR_SOUTH);
     sprite->affineAnimPaused = FALSE;
-    ChangeSpriteAffineAnimIfDifferent(sprite, 1);
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+        ChangeSpriteAffineAnimIfDifferent(sprite, 1);
     return MovementAction_WalkDownAffine_Step1(objectEvent, sprite);
 }
 
@@ -6894,7 +6903,8 @@ bool8 MovementAction_WalkLeftAffine_Step0(struct ObjectEvent *objectEvent, struc
 {
     InitMovementNormal(objectEvent, sprite, DIR_WEST, MOVE_SPEED_FAST_1);
     sprite->affineAnimPaused = FALSE;
-    ChangeSpriteAffineAnimIfDifferent(sprite, 2);
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+        ChangeSpriteAffineAnimIfDifferent(sprite, 2);
     return MovementAction_WalkLeftAffine_Step1(objectEvent, sprite);
 }
 
@@ -6913,7 +6923,8 @@ bool8 MovementAction_WalkRightAffine_Step0(struct ObjectEvent *objectEvent, stru
 {
     InitMovementNormal(objectEvent, sprite, DIR_EAST, MOVE_SPEED_FAST_1);
     sprite->affineAnimPaused = FALSE;
-    ChangeSpriteAffineAnimIfDifferent(sprite, 3);
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+        ChangeSpriteAffineAnimIfDifferent(sprite, 3);
     return MovementAction_WalkRightAffine_Step1(objectEvent, sprite);
 }
 
@@ -8863,7 +8874,7 @@ void SetVirtualObjectGraphics(u8 virtualObjId, u8 graphicsId)
 
         sprite->oam = *graphicsInfo->oam;
         sprite->oam.tileNum = tileNum;
-        sprite->oam.paletteNum = graphicsInfo->paletteSlot;
+        SetSpritePaletteHandle(sprite, graphicsInfo->paletteSlot);
         sprite->images = graphicsInfo->images;
 
         if (graphicsInfo->subspriteTables == NULL)

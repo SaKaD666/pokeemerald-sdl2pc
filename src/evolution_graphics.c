@@ -115,11 +115,40 @@ static void SpriteCB_Sparkle_Dummy(struct Sprite *sprite)
 
 }
 
+#define EVO_MATRIX_FIRST 20
+
+#ifdef PLATFORM_SDL2
+static bool8 sEvolutionMatricesReserved;
+
+void ReleaseEvolutionMatrices(void)
+{
+    if (sEvolutionMatricesReserved)
+    {
+        ReleaseOamMatrices(EVO_MATRIX_FIRST, ARRAY_COUNT(sEvoSparkleMatrices));
+        sEvolutionMatricesReserved = FALSE;
+    }
+}
+#endif
+
+static void SetEvolutionSparkleMatrix(struct Sprite *sprite, u8 matrix)
+{
+#ifdef PLATFORM_SDL2
+    if (!sEvolutionMatricesReserved)
+        return;
+#endif
+    sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
+    SetSpriteMatrixHandle(sprite, matrix);
+}
+
 static void SetEvoSparklesMatrices(void)
 {
     u16 i;
+#ifdef PLATFORM_SDL2
+    if (!sEvolutionMatricesReserved)
+        return;
+#endif
     for (i = 0; i < ARRAY_COUNT(sEvoSparkleMatrices); i++)
-        SetOamMatrix(20 + i, sEvoSparkleMatrices[i], 0, 0, sEvoSparkleMatrices[i]);
+        SetOamMatrix(EVO_MATRIX_FIRST + i, sEvoSparkleMatrices[i], 0, 0, sEvoSparkleMatrices[i]);
 }
 
 #define sSpeed     data[3]
@@ -147,7 +176,7 @@ static void SpriteCB_Sparkle_SpiralUpward(struct Sprite *sprite)
         matrixNum = sprite->sAmplitude / 4 + 20;
         if (matrixNum > 31)
             matrixNum = 31;
-        sprite->oam.matrixNum = matrixNum;
+        SetEvolutionSparkleMatrix(sprite, matrixNum);
     }
     else
     {
@@ -163,8 +192,7 @@ static void CreateSparkle_SpiralUpward(u8 trigIdx)
         gSprites[spriteId].sAmplitude = 48;
         gSprites[spriteId].sTrigIdx = trigIdx;
         gSprites[spriteId].sTimer = 0;
-        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        gSprites[spriteId].oam.matrixNum = 31;
+        SetEvolutionSparkleMatrix(&gSprites[spriteId], 31);
         gSprites[spriteId].callback = SpriteCB_Sparkle_SpiralUpward;
     }
 }
@@ -193,8 +221,7 @@ static void CreateSparkle_ArcDown(u8 trigIdx)
         gSprites[spriteId].sAmplitude = 8;
         gSprites[spriteId].sTrigIdx = trigIdx;
         gSprites[spriteId].sTimer = 0;
-        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        gSprites[spriteId].oam.matrixNum = 25;
+        SetEvolutionSparkleMatrix(&gSprites[spriteId], 25);
         gSprites[spriteId].subpriority = 1;
         gSprites[spriteId].callback = SpriteCB_Sparkle_ArcDown;
     }
@@ -224,8 +251,7 @@ static void CreateSparkle_CircleInward(u8 trigIdx, u8 speed)
         gSprites[spriteId].sAmplitude = 120;
         gSprites[spriteId].sTrigIdx = trigIdx;
         gSprites[spriteId].sTimer = 0;
-        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        gSprites[spriteId].oam.matrixNum = 31;
+        SetEvolutionSparkleMatrix(&gSprites[spriteId], 31);
         gSprites[spriteId].subpriority = 1;
         gSprites[spriteId].callback = SpriteCB_Sparkle_CircleInward;
     }
@@ -256,7 +282,7 @@ static void SpriteCB_Sparkle_Spray(struct Sprite *sprite)
         }
         if (matrixNum < 20)
             matrixNum = 20;
-        sprite->oam.matrixNum = matrixNum;
+        SetEvolutionSparkleMatrix(sprite, matrixNum);
         sprite->sTimer++;
     }
     else
@@ -273,8 +299,7 @@ static void CreateSparkle_Spray(u8 id)
         gSprites[spriteId].sSpeed = 3 - (Random() % 7);
         gSprites[spriteId].sAmplitude = 48 + (Random() & 0x3F);
         gSprites[spriteId].sTimer = 0;
-        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        gSprites[spriteId].oam.matrixNum = 31;
+        SetEvolutionSparkleMatrix(&gSprites[spriteId], 31);
         gSprites[spriteId].subpriority = 20;
         gSprites[spriteId].callback = SpriteCB_Sparkle_Spray;
     }
@@ -289,9 +314,12 @@ void LoadEvoSparkleSpriteAndPal(void)
 #define tPalNum data[1]
 #define tTimer  data[15]
 
-u8 EvolutionSparkles_SpiralUpward(u16 palNum)
+u8 EvolutionSparkles_SpiralUpward(u8 palNum)
 {
     u8 taskId = CreateTask(Task_Sparkles_SpiralUpward_Init, 0);
+#ifdef PLATFORM_SDL2
+    sEvolutionMatricesReserved = ReserveOamMatrices(EVO_MATRIX_FIRST, ARRAY_COUNT(sEvoSparkleMatrices));
+#endif
     gTasks[taskId].tPalNum = palNum;
     return taskId;
 }
@@ -300,7 +328,11 @@ static void Task_Sparkles_SpiralUpward_Init(u8 taskId)
 {
     SetEvoSparklesMatrices();
     gTasks[taskId].tTimer = 0;
-    BeginNormalPaletteFade(3 << gTasks[taskId].tPalNum, 0xA, 0, 0x10, RGB_WHITE);
+    u8 palette = gTasks[taskId].tPalNum;
+    PaletteMask mask = ObjPaletteMask(palette);
+
+    if (mask != 0)
+        BeginNormalPaletteFade(mask | ObjPaletteMask(palette + 1), 0xA, 0, 0x10, RGB_WHITE);
     gTasks[taskId].func = Task_Sparkles_SpiralUpward;
     PlaySE(SE_M_MEGA_KICK); // 'Charging up' sound for the sparkles as they spiral upwards
 }
@@ -546,23 +578,49 @@ u8 CycleEvolutionMonSprite(u8 preEvoSpriteId, u8 postEvoSpriteId)
     gTasks[taskId].tPreEvoScale = MON_MAX_SCALE;
     gTasks[taskId].tPostEvoScale = MON_MIN_SCALE;
 
+    gTasks[taskId].tEvoStopped = FALSE;
+#ifdef PLATFORM_SDL2
+    if (!sEvolutionMatricesReserved)
+    {
+        gTasks[taskId].func = Task_CycleEvolutionMonSprite_TryEnd;
+        gTasks[taskId].tScaleSpeed = 128;
+        return taskId;
+    }
+#endif
     toDiv = 65536;
     SetOamMatrix(MATRIX_PRE_EVO, MON_MAX_SCALE, 0, 0, MON_MAX_SCALE);
     SetOamMatrix(MATRIX_POST_EVO, toDiv / gTasks[taskId].tPostEvoScale, 0, 0, toDiv / gTasks[taskId].tPostEvoScale);
 
-    gSprites[preEvoSpriteId].callback = SpriteCB_EvolutionMonSprite;
-    gSprites[preEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[preEvoSpriteId].oam.matrixNum = MATRIX_PRE_EVO;
-    gSprites[preEvoSpriteId].invisible = FALSE;
-    CpuSet(monPalette, &gPlttBufferFaded[OBJ_PLTT_ID(gSprites[preEvoSpriteId].oam.paletteNum)], 16);
+    if (preEvoSpriteId < MAX_SPRITES)
+    {
+        gSprites[preEvoSpriteId].callback = SpriteCB_EvolutionMonSprite;
+#ifdef PLATFORM_SDL2
+        FreeSpriteOamMatrix(&gSprites[preEvoSpriteId]);
+#endif
+        gSprites[preEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
+        SetSpriteMatrixHandle(&gSprites[preEvoSpriteId], MATRIX_PRE_EVO);
+        gSprites[preEvoSpriteId].invisible = FALSE;
+        u8 palette = GetSpritePaletteHandle(&gSprites[preEvoSpriteId]);
 
-    gSprites[postEvoSpriteId].callback = SpriteCB_EvolutionMonSprite;
-    gSprites[postEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[postEvoSpriteId].oam.matrixNum = MATRIX_POST_EVO;
-    gSprites[postEvoSpriteId].invisible = FALSE;
-    CpuSet(monPalette, &gPlttBufferFaded[OBJ_PLTT_ID(gSprites[postEvoSpriteId].oam.paletteNum)], 16);
+        if (ObjPaletteMask(palette) != 0)
+            CpuSet(monPalette, &gPlttBufferFaded[OBJ_PLTT_ID(palette)], 16);
+    }
 
-    gTasks[taskId].tEvoStopped = FALSE;
+    if (postEvoSpriteId < MAX_SPRITES)
+    {
+        gSprites[postEvoSpriteId].callback = SpriteCB_EvolutionMonSprite;
+#ifdef PLATFORM_SDL2
+        FreeSpriteOamMatrix(&gSprites[postEvoSpriteId]);
+#endif
+        gSprites[postEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
+        SetSpriteMatrixHandle(&gSprites[postEvoSpriteId], MATRIX_POST_EVO);
+        gSprites[postEvoSpriteId].invisible = FALSE;
+        u8 palette = GetSpritePaletteHandle(&gSprites[postEvoSpriteId]);
+
+        if (ObjPaletteMask(palette) != 0)
+            CpuSet(monPalette, &gPlttBufferFaded[OBJ_PLTT_ID(palette)], 16);
+    }
+
     return taskId;
 }
 
@@ -666,28 +724,30 @@ static void Task_CycleEvolutionMonSprite_UpdateSize(u8 taskId)
     }
 }
 
+static void RestoreEvolutionPortrait(u8 spriteId, bool8 invisible)
+{
+    if (spriteId < MAX_SPRITES)
+    {
+#ifdef PLATFORM_SDL2
+        FreeSpriteOamMatrix(&gSprites[spriteId]);
+#else
+        gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
+        gSprites[spriteId].oam.matrixNum = 0;
+#endif
+        gSprites[spriteId].invisible = invisible;
+    }
+}
+
 static void EndOnPostEvoMon(u8 taskId)
 {
-    gSprites[gTasks[taskId].tPreEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
-    gSprites[gTasks[taskId].tPreEvoSpriteId].oam.matrixNum = 0;
-    gSprites[gTasks[taskId].tPreEvoSpriteId].invisible = TRUE;
-
-    gSprites[gTasks[taskId].tPostEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
-    gSprites[gTasks[taskId].tPostEvoSpriteId].oam.matrixNum = 0;
-    gSprites[gTasks[taskId].tPostEvoSpriteId].invisible = FALSE;
-
+    RestoreEvolutionPortrait(gTasks[taskId].tPreEvoSpriteId, TRUE);
+    RestoreEvolutionPortrait(gTasks[taskId].tPostEvoSpriteId, FALSE);
     DestroyTask(taskId);
 }
 
 static void EndOnPreEvoMon(u8 taskId)
 {
-    gSprites[gTasks[taskId].tPreEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
-    gSprites[gTasks[taskId].tPreEvoSpriteId].oam.matrixNum = 0;
-    gSprites[gTasks[taskId].tPreEvoSpriteId].invisible = FALSE;
-
-    gSprites[gTasks[taskId].tPostEvoSpriteId].oam.affineMode = ST_OAM_AFFINE_OFF;
-    gSprites[gTasks[taskId].tPostEvoSpriteId].oam.matrixNum = 0;
-    gSprites[gTasks[taskId].tPostEvoSpriteId].invisible = TRUE;
-
+    RestoreEvolutionPortrait(gTasks[taskId].tPreEvoSpriteId, FALSE);
+    RestoreEvolutionPortrait(gTasks[taskId].tPostEvoSpriteId, TRUE);
     DestroyTask(taskId);
 }

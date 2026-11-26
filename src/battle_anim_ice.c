@@ -533,7 +533,7 @@ static void AnimUnusedIceCrystalThrow(struct Sprite *sprite)
 {
     s16 targetX, targetY, attackerX, attackerY;
 
-    sprite->oam.tileNum += 7;
+    OffsetSpriteTile(sprite, 7);
     targetX = GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_X_2);
     targetY = GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_Y_PIC_OFFSET);
     attackerX = GetBattlerSpriteCoord(gBattleAnimAttacker, BATTLER_COORD_X_2);
@@ -1324,11 +1324,7 @@ static void MovePoisonGasCloud(struct Sprite *sprite)
     case 2:
         if (AnimTranslateLinear(sprite))
         {
-            if (sprite->oam.affineMode & 1)
-            {
-                FreeOamMatrix(sprite->oam.matrixNum);
-                sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
-            }
+            FreeSpriteOamMatrix(sprite);
 
             DestroySprite(sprite);
             gAnimVisualTaskCount--;
@@ -1495,13 +1491,13 @@ static void AnimHailBegin(struct Sprite *sprite)
             gSprites[sprite->data[0]].sOwnerTaskSpriteCountField = sprite->sOwnerTaskSpriteCountField;
         }
 
-        FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
         DestroySprite(sprite);
     }
     else
     {
         gTasks[sprite->sOwnerTaskId].data[sprite->sOwnerTaskSpriteCountField]--;
-        FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
         DestroySprite(sprite);
     }
 }
@@ -1519,7 +1515,7 @@ static void AnimHailContinue(struct Sprite *sprite)
     if (++sprite->sTimer == 20)
     {
         gTasks[sprite->sOwnerTaskId].data[sprite->sOwnerTaskSpriteCountField]--;
-        FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
         DestroySprite(sprite);
     }
 }
@@ -1575,7 +1571,7 @@ static void InitIceBallParticle(struct Sprite *sprite)
 {
     s16 randA, randB;
 
-    sprite->oam.tileNum += 8;
+    OffsetSpriteTile(sprite, 8);
     InitSpritePosToAnimTarget(sprite, TRUE);
 
     randA = (Random2() & 0xFF) + 256;

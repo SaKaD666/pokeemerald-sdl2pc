@@ -390,7 +390,12 @@ static void PrintTextInBerryTagScreen(u8 windowId, const u8 *text, u8 x, u8 y, s
 
 static void AddBerryTagTextToBg0(void)
 {
-    memcpy(GetBgTilemapBuffer(0), sBerryTag->tilemapBuffers[2], sizeof(sBerryTag->tilemapBuffers[2]));
+    void *tilemap = GetBgTilemapBuffer(0);
+
+    memcpy(tilemap, sBerryTag->tilemapBuffers[2], sizeof(sBerryTag->tilemapBuffers[2]));
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapRamRange(tilemap, sizeof(sBerryTag->tilemapBuffers[2]));
+#endif
     FillWindowPixelBuffer(WIN_BERRY_TAG, PIXEL_FILL(15));
     PrintTextInBerryTagScreen(WIN_BERRY_TAG, gText_BerryTag, GetStringCenterAlignXOffset(FONT_NORMAL, gText_BerryTag, 0x40), 1, 0, 1);
     PutWindowTilemap(WIN_BERRY_TAG);
@@ -469,7 +474,8 @@ static void CreateBerrySprite(void)
 
 static void DestroyBerrySprite(void)
 {
-    DestroySprite(&gSprites[sBerryTag->berrySpriteId]);
+    if (sBerryTag->berrySpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[sBerryTag->berrySpriteId]);
     FreeBerryTagSpritePalette();
 }
 
@@ -486,30 +492,22 @@ static void SetFlavorCirclesVisiblity(void)
 {
     const struct Berry *berry = GetBerryInfo(sBerryTag->berryId);
 
-    if (berry->spicy)
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_SPICY]].invisible = FALSE;
-    else
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_SPICY]].invisible = TRUE;
+    const bool8 visible[FLAVOR_COUNT] =
+    {
+        [FLAVOR_SPICY] = berry->spicy != 0,
+        [FLAVOR_DRY] = berry->dry != 0,
+        [FLAVOR_SWEET] = berry->sweet != 0,
+        [FLAVOR_BITTER] = berry->bitter != 0,
+        [FLAVOR_SOUR] = berry->sour != 0,
+    };
+    u8 i;
 
-    if (berry->dry)
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_DRY]].invisible = FALSE;
-    else
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_DRY]].invisible = TRUE;
-
-    if (berry->sweet)
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_SWEET]].invisible = FALSE;
-    else
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_SWEET]].invisible = TRUE;
-
-    if (berry->bitter)
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_BITTER]].invisible = FALSE;
-    else
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_BITTER]].invisible = TRUE;
-
-    if (berry->sour)
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_SOUR]].invisible = FALSE;
-    else
-        gSprites[sBerryTag->flavorCircleIds[FLAVOR_SOUR]].invisible = TRUE;
+    for (i = 0; i < FLAVOR_COUNT; i++)
+    {
+        u8 spriteId = sBerryTag->flavorCircleIds[i];
+        if (spriteId < MAX_SPRITES)
+            gSprites[spriteId].invisible = !visible[i];
+    }
 }
 
 static void DestroyFlavorCircleSprites(void)
@@ -517,7 +515,8 @@ static void DestroyFlavorCircleSprites(void)
     u16 i;
 
     for (i = 0; i < FLAVOR_COUNT; i++)
-        DestroySprite(&gSprites[sBerryTag->flavorCircleIds[i]]);
+        if (sBerryTag->flavorCircleIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sBerryTag->flavorCircleIds[i]]);
 }
 
 static void PrepareToCloseBerryTagScreen(u8 taskId)
@@ -695,9 +694,11 @@ static void Task_DisplayAnotherBerry(u8 taskId)
     else
         y = tBerryY;
 
-    gSprites[sBerryTag->berrySpriteId].y2 = y;
+    if (sBerryTag->berrySpriteId < MAX_SPRITES)
+        gSprites[sBerryTag->berrySpriteId].y2 = y;
     for (i = 0; i < FLAVOR_COUNT; i++)
-        gSprites[sBerryTag->flavorCircleIds[i]].y2 = y;
+        if (sBerryTag->flavorCircleIds[i] < MAX_SPRITES)
+            gSprites[sBerryTag->flavorCircleIds[i]].y2 = y;
 
     ChangeBgY(1, 0x1000, tBgOp);
     ChangeBgY(2, 0x1000, tBgOp);

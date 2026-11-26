@@ -12,6 +12,6 @@ struct PokedexAreaMapTemplate
 void LoadPokedexAreaMapGfx(const struct PokedexAreaMapTemplate *template);
 bool32 TryShowPokedexAreaMap(void);
 void PokedexAreaMapChangeBgY(u32 move);
-void FreePokedexAreaMapBgNum(void);
+void ResetPokedexAreaMapState(void);
 
 #endif // GUARD_POKEDEX_AREA_REGION_MAP_H

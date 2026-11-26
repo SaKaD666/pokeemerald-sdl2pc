@@ -633,6 +633,14 @@ static void ListMenuDrawCursor(struct ListMenu *list)
     u8 yMultiplier = GetFontAttribute(list->template.fontId, FONTATTR_MAX_LETTER_HEIGHT) + list->template.itemVerticalPadding;
     u8 x = list->template.cursor_X;
     u8 y = list->selectedRow * yMultiplier + list->template.upText_Y;
+    if (list->taskId == TASK_NONE
+     && (list->template.cursorKind == CURSOR_RED_OUTLINE || list->template.cursorKind == CURSOR_RED_ARROW))
+    {
+        list->taskId = ListMenuAddCursorObject(list, list->template.cursorKind - CURSOR_OBJECT_START);
+        if (list->taskId == TASK_NONE)
+            list->template.cursorKind = CURSOR_BLACK_ARROW;
+    }
+
     switch (list->template.cursorKind)
     {
     case CURSOR_BLACK_ARROW:
@@ -641,16 +649,12 @@ static void ListMenuDrawCursor(struct ListMenu *list)
     case CURSOR_INVISIBLE:
         break;
     case CURSOR_RED_OUTLINE:
-        if (list->taskId == TASK_NONE)
-            list->taskId = ListMenuAddCursorObject(list, CURSOR_RED_OUTLINE - CURSOR_OBJECT_START);
         ListMenuUpdateCursorObject(list->taskId,
                                    GetWindowAttribute(list->template.windowId, WINDOW_TILEMAP_LEFT) * 8 - 1,
                                    GetWindowAttribute(list->template.windowId, WINDOW_TILEMAP_TOP) * 8 + y - 1,
                                    CURSOR_RED_OUTLINE - CURSOR_OBJECT_START);
         break;
     case CURSOR_RED_ARROW:
-        if (list->taskId == TASK_NONE)
-            list->taskId = ListMenuAddCursorObject(list, CURSOR_RED_ARROW - CURSOR_OBJECT_START);
         ListMenuUpdateCursorObject(list->taskId,
                                    GetWindowAttribute(list->template.windowId, WINDOW_TILEMAP_LEFT) * 8 + x,
                                    GetWindowAttribute(list->template.windowId, WINDOW_TILEMAP_TOP) * 8 + y,
@@ -1037,6 +1041,9 @@ static u8 AddScrollIndicatorArrowObject(u8 arrowDir, u8 x, u8 y, u16 tileTag, u1
     spriteTemplate.paletteTag = palTag;
 
     spriteId = CreateSprite(&spriteTemplate, x, y, 0);
+    if (spriteId >= MAX_SPRITES)
+        return SPRITE_NONE;
+
     gSprites[spriteId].invisible = TRUE;
     gSprites[spriteId].tState = 0;
     gSprites[spriteId].tAnimNum = sScrollIndicatorTemplates[arrowDir].animNum;
@@ -1061,21 +1068,25 @@ u8 AddScrollIndicatorArrowPair(const struct ScrollArrowsTemplate *arrowInfo, u16
     struct SpritePalette spritePal;
     struct ScrollIndicatorPair *data;
     u8 taskId;
+    bool8 hasGraphics;
+
+    if (GetTaskCount() >= NUM_TASKS)
+        return TASK_NONE;
 
     spriteSheet.data = sScrollIndicator_Gfx;
     spriteSheet.size = 0x100;
     spriteSheet.tag = arrowInfo->tileTag;
-    LoadCompressedSpriteSheet(&spriteSheet);
+    hasGraphics = LoadCompressedSpriteSheet(&spriteSheet) != SPRITE_TILE_NONE;
 
-    if (arrowInfo->palTag == TAG_NONE)
+    if (hasGraphics && arrowInfo->palTag == TAG_NONE)
     {
         LoadPalette(sRedInterface_Pal, OBJ_PLTT_ID(arrowInfo->palNum), PLTT_SIZE_4BPP);
     }
-    else
+    else if (hasGraphics)
     {
         spritePal.data = sRedInterface_Pal;
         spritePal.tag = arrowInfo->palTag;
-        LoadSpritePalette(&spritePal);
+        hasGraphics = LoadSpritePalette(&spritePal) != 0xFF;
     }
 
     taskId = CreateTask(Task_ScrollIndicatorArrowPair, 0);
@@ -1087,13 +1098,20 @@ u8 AddScrollIndicatorArrowPair(const struct ScrollArrowsTemplate *arrowInfo, u16
     data->fullyDownThreshold = arrowInfo->fullyDownThreshold;
     data->tileTag = arrowInfo->tileTag;
     data->palTag = arrowInfo->palTag;
-    data->topSpriteId = AddScrollIndicatorArrowObject(arrowInfo->firstArrowType, arrowInfo->firstX, arrowInfo->firstY, arrowInfo->tileTag, arrowInfo->palTag);
-    data->bottomSpriteId = AddScrollIndicatorArrowObject(arrowInfo->secondArrowType, arrowInfo->secondX, arrowInfo->secondY, arrowInfo->tileTag, arrowInfo->palTag);
-
-    if (arrowInfo->palTag == TAG_NONE)
+    data->topSpriteId = SPRITE_NONE;
+    data->bottomSpriteId = SPRITE_NONE;
+    if (hasGraphics)
     {
-        gSprites[data->topSpriteId].oam.paletteNum = arrowInfo->palNum;
-        gSprites[data->bottomSpriteId].oam.paletteNum = arrowInfo->palNum;
+        data->topSpriteId = AddScrollIndicatorArrowObject(arrowInfo->firstArrowType, arrowInfo->firstX, arrowInfo->firstY, arrowInfo->tileTag, arrowInfo->palTag);
+        data->bottomSpriteId = AddScrollIndicatorArrowObject(arrowInfo->secondArrowType, arrowInfo->secondX, arrowInfo->secondY, arrowInfo->tileTag, arrowInfo->palTag);
+
+        if (arrowInfo->palTag == TAG_NONE)
+        {
+            if (data->topSpriteId < MAX_SPRITES)
+                SetSpritePaletteHandle(&gSprites[data->topSpriteId], arrowInfo->palNum);
+            if (data->bottomSpriteId < MAX_SPRITES)
+                SetSpritePaletteHandle(&gSprites[data->bottomSpriteId], arrowInfo->palNum);
+        }
     }
 
     return taskId;
@@ -1132,17 +1150,12 @@ u8 AddScrollIndicatorArrowPairParameterized(u32 arrowType, s32 commonPos, s32 fi
 static void Task_ScrollIndicatorArrowPair(u8 taskId)
 {
     struct ScrollIndicatorPair *data = (void *) gTasks[taskId].data;
-    u16 currItem = (*data->scrollOffset);
+    u16 currItem = *data->scrollOffset;
 
-    if (currItem == data->fullyUpThreshold && currItem != 0xFFFF)
-        gSprites[data->topSpriteId].invisible = TRUE;
-    else
-        gSprites[data->topSpriteId].invisible = FALSE;
-
-    if (currItem == data->fullyDownThreshold)
-        gSprites[data->bottomSpriteId].invisible = TRUE;
-    else
-        gSprites[data->bottomSpriteId].invisible = FALSE;
+    if (data->topSpriteId < MAX_SPRITES)
+        gSprites[data->topSpriteId].invisible = currItem == data->fullyUpThreshold && currItem != 0xFFFF;
+    if (data->bottomSpriteId < MAX_SPRITES)
+        gSprites[data->bottomSpriteId].invisible = currItem == data->fullyDownThreshold;
 }
 
 #define tIsScrolled data[15]
@@ -1152,31 +1165,31 @@ void Task_ScrollIndicatorArrowPairOnMainMenu(u8 taskId)
     s16 *data = gTasks[taskId].data;
     struct ScrollIndicatorPair *scrollData = (void *) data;
 
-    if (tIsScrolled)
-    {
-        gSprites[scrollData->topSpriteId].invisible = FALSE;
-        gSprites[scrollData->bottomSpriteId].invisible = TRUE;
-    }
-    else
-    {
-        gSprites[scrollData->topSpriteId].invisible = TRUE;
-        gSprites[scrollData->bottomSpriteId].invisible = FALSE;
-    }
+    if (scrollData->topSpriteId < MAX_SPRITES)
+        gSprites[scrollData->topSpriteId].invisible = !tIsScrolled;
+    if (scrollData->bottomSpriteId < MAX_SPRITES)
+        gSprites[scrollData->bottomSpriteId].invisible = tIsScrolled != 0;
 }
 
 #undef tIsScrolled
 
 void RemoveScrollIndicatorArrowPair(u8 taskId)
 {
-    struct ScrollIndicatorPair *data = (void *) gTasks[taskId].data;
+    struct ScrollIndicatorPair *data;
 
+    if (taskId >= NUM_TASKS)
+        return;
+
+    data = (void *) gTasks[taskId].data;
     if (data->tileTag != TAG_NONE)
         FreeSpriteTilesByTag(data->tileTag);
     if (data->palTag != TAG_NONE)
         FreeSpritePaletteByTag(data->palTag);
 
-    DestroySprite(&gSprites[data->topSpriteId]);
-    DestroySprite(&gSprites[data->bottomSpriteId]);
+    if (data->topSpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[data->topSpriteId]);
+    if (data->bottomSpriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[data->bottomSpriteId]);
 
     DestroyTask(taskId);
 }
@@ -1308,10 +1321,14 @@ static u8 ListMenuAddRedOutlineCursorObject(struct CursorStruct *cursor)
     struct SpriteTemplate spriteTemplate;
     u8 taskId;
 
+    if (GetTaskCount() >= NUM_TASKS)
+        return TASK_NONE;
+
     spriteSheet.data = sOutlineCursor_Gfx;
     spriteSheet.size = 0x100;
     spriteSheet.tag = cursor->tileTag;
-    LoadCompressedSpriteSheet(&spriteSheet);
+    if (LoadCompressedSpriteSheet(&spriteSheet) == SPRITE_TILE_NONE)
+        return TASK_NONE;
 
     if (cursor->palTag == TAG_NONE)
     {
@@ -1321,16 +1338,26 @@ static u8 ListMenuAddRedOutlineCursorObject(struct CursorStruct *cursor)
     {
         spritePal.data = sRedInterface_Pal;
         spritePal.tag = cursor->palTag;
-        LoadSpritePalette(&spritePal);
+        if (LoadSpritePalette(&spritePal) == 0xFF)
+        {
+            FreeSpriteTilesByTag(cursor->tileTag);
+            return TASK_NONE;
+        }
     }
 
     taskId = CreateTask(Task_RedOutlineCursor, 0);
     data = (void *) gTasks[taskId].data;
 
+    data->spriteId = SPRITE_NONE;
     data->tileTag = cursor->tileTag;
     data->palTag = cursor->palTag;
     data->subspriteTable.subspriteCount = ListMenuGetRedOutlineCursorSpriteCount(cursor->rowWidth, cursor->rowHeight);
-    data->subspriteTable.subsprites = data->subspritesPtr = Alloc(data->subspriteTable.subspriteCount * 4);
+    data->subspriteTable.subsprites = data->subspritesPtr = Alloc(data->subspriteTable.subspriteCount * sizeof(*data->subspritesPtr));
+    if (data->subspritesPtr == NULL)
+    {
+        ListMenuRemoveRedOutlineCursorObject(taskId);
+        return TASK_NONE;
+    }
     ListMenuSetUpRedOutlineCursorSpriteOamTable(cursor->rowWidth, cursor->rowHeight, data->subspritesPtr);
 
     spriteTemplate = gDummySpriteTemplate;
@@ -1338,6 +1365,12 @@ static u8 ListMenuAddRedOutlineCursorObject(struct CursorStruct *cursor)
     spriteTemplate.paletteTag = cursor->palTag;
 
     data->spriteId = CreateSprite(&spriteTemplate, cursor->left + 120, cursor->top + 120, 0);
+    if (data->spriteId >= MAX_SPRITES)
+    {
+        ListMenuRemoveRedOutlineCursorObject(taskId);
+        return TASK_NONE;
+    }
+
     SetSubspriteTables(&gSprites[data->spriteId], &data->subspriteTable);
     gSprites[data->spriteId].oam.priority = 0;
     gSprites[data->spriteId].subpriority = 0;
@@ -1345,7 +1378,7 @@ static u8 ListMenuAddRedOutlineCursorObject(struct CursorStruct *cursor)
 
     if (cursor->palTag == TAG_NONE)
     {
-        gSprites[data->spriteId].oam.paletteNum = cursor->palNum;
+        SetSpritePaletteHandle(&gSprites[data->spriteId], cursor->palNum);
     }
 
     return taskId;
@@ -1363,14 +1396,16 @@ static void ListMenuRemoveRedOutlineCursorObject(u8 taskId)
 {
     struct RedOutlineCursor *data = (void *) gTasks[taskId].data;
 
-    Free(data->subspritesPtr);
+    if (data->subspritesPtr != NULL)
+        Free(data->subspritesPtr);
 
     if (data->tileTag != TAG_NONE)
         FreeSpriteTilesByTag(data->tileTag);
     if (data->palTag != TAG_NONE)
         FreeSpritePaletteByTag(data->palTag);
 
-    DestroySprite(&gSprites[data->spriteId]);
+    if (data->spriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[data->spriteId]);
     DestroyTask(taskId);
 }
 
@@ -1393,10 +1428,14 @@ static u8 ListMenuAddRedArrowCursorObject(struct CursorStruct *cursor)
     struct SpriteTemplate spriteTemplate;
     u8 taskId;
 
+    if (GetTaskCount() >= NUM_TASKS)
+        return TASK_NONE;
+
     spriteSheet.data = sArrowCursor_Gfx;
     spriteSheet.size = 0x80;
     spriteSheet.tag = cursor->tileTag;
-    LoadCompressedSpriteSheet(&spriteSheet);
+    if (LoadCompressedSpriteSheet(&spriteSheet) == SPRITE_TILE_NONE)
+        return TASK_NONE;
 
     if (cursor->palTag == TAG_NONE)
     {
@@ -1406,12 +1445,17 @@ static u8 ListMenuAddRedArrowCursorObject(struct CursorStruct *cursor)
     {
         spritePal.data = sRedInterface_Pal;
         spritePal.tag = cursor->palTag;
-        LoadSpritePalette(&spritePal);
+        if (LoadSpritePalette(&spritePal) == 0xFF)
+        {
+            FreeSpriteTilesByTag(cursor->tileTag);
+            return TASK_NONE;
+        }
     }
 
     taskId = CreateTask(Task_RedArrowCursor, 0);
     data = (void *) gTasks[taskId].data;
 
+    data->spriteId = SPRITE_NONE;
     data->tileTag = cursor->tileTag;
     data->palTag = cursor->palTag;
 
@@ -1420,12 +1464,18 @@ static u8 ListMenuAddRedArrowCursorObject(struct CursorStruct *cursor)
     spriteTemplate.paletteTag = cursor->palTag;
 
     data->spriteId = CreateSprite(&spriteTemplate, cursor->left, cursor->top, 0);
+    if (data->spriteId >= MAX_SPRITES)
+    {
+        ListMenuRemoveRedArrowCursorObject(taskId);
+        return TASK_NONE;
+    }
+
     gSprites[data->spriteId].x2 = 8;
     gSprites[data->spriteId].y2 = 8;
 
     if (cursor->palTag == TAG_NONE)
     {
-        gSprites[data->spriteId].oam.paletteNum = cursor->palNum;
+        SetSpritePaletteHandle(&gSprites[data->spriteId], cursor->palNum);
     }
 
     return taskId;
@@ -1448,6 +1498,7 @@ static void ListMenuRemoveRedArrowCursorObject(u8 taskId)
     if (data->palTag != TAG_NONE)
         FreeSpritePaletteByTag(data->palTag);
 
-    DestroySprite(&gSprites[data->spriteId]);
+    if (data->spriteId < MAX_SPRITES)
+        DestroySprite(&gSprites[data->spriteId]);
     DestroyTask(taskId);
 }

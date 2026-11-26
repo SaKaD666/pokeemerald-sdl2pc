@@ -168,7 +168,7 @@ static void InitUnusedBlendTaskData(u8);
 static void UpdateBlendTaskContestantData(u8);
 static void SpriteCB_BlinkContestantBox(struct Sprite *);
 static void SpriteCB_EndBlinkContestantBox(struct Sprite *sprite);
-static u8 StartApplauseOverflowAnimation(void);
+static void StartApplauseOverflowAnimation(void);
 static void Task_ApplauseOverflowAnimation(u8);
 static void Task_SlideApplauseMeterIn(u8);
 static void Task_SlideApplauseMeterOut(u8);
@@ -882,7 +882,7 @@ static const struct SpritePalette sSpritePalettes_ContestantsTurnBlinkEffect[CON
 static const struct OamData sOam_ContestantsTurnBlinkEffect =
 {
     .y = 0,
-    .affineMode = ST_OAM_AFFINE_DOUBLE,
+    .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_BLEND,
     .bpp = ST_OAM_4BPP,
     .shape = SPRITE_SHAPE(64x64),
@@ -1797,8 +1797,11 @@ static void Task_DoAppeals(u8 taskId)
             gContestMons[eContest.currentContestant].otId,
             gContestMons[eContest.currentContestant].personality,
             eContest.currentContestant);
-        gSprites[spriteId].x2 = 120;
-        gSprites[spriteId].callback = SpriteCB_MonSlideIn;
+        if (spriteId < MAX_SPRITES)
+        {
+            gSprites[spriteId].x2 = 120;
+            gSprites[spriteId].callback = SpriteCB_MonSlideIn;
+        }
         gTasks[taskId].tMonSpriteId = spriteId;
         gBattlerSpriteIds[gBattlerAttacker] = spriteId;
         BlinkContestantBox(CreateContestantBoxBlinkSprites(eContest.currentContestant), FALSE);
@@ -1806,7 +1809,7 @@ static void Task_DoAppeals(u8 taskId)
         return;
     case APPEALSTATE_WAIT_SLIDE_MON:
         spriteId = gTasks[taskId].tMonSpriteId;
-        if (gSprites[spriteId].callback == SpriteCallbackDummy)
+        if (IsBattleSpriteIdle(spriteId))
         {
             // Once mon has slid in, also wait for box to finish blinking
             if (!eContestGfxState[contestant].boxBlinking)
@@ -2404,15 +2407,21 @@ static void Task_DoAppeals(u8 taskId)
         return;
     case APPEALSTATE_SLIDE_MON_OUT:
         spriteId = gTasks[taskId].tMonSpriteId;
-        gSprites[spriteId].callback = SpriteCB_MonSlideOut;
+        if (spriteId < MAX_SPRITES)
+            gSprites[spriteId].callback = SpriteCB_MonSlideOut;
         gTasks[taskId].tState = APPEALSTATE_FREE_MON_SPRITE;
         return;
     case APPEALSTATE_FREE_MON_SPRITE:
         spriteId = gTasks[taskId].tMonSpriteId;
-        if (gSprites[spriteId].invisible)
+        if (spriteId >= MAX_SPRITES || gSprites[spriteId].invisible)
         {
-            FreeSpriteOamMatrix(&gSprites[spriteId]);
-            DestroySprite(&gSprites[spriteId]);
+            if (spriteId < MAX_SPRITES)
+            {
+                FreeSpriteOamMatrix(&gSprites[spriteId]);
+                DestroySprite(&gSprites[spriteId]);
+            }
+            gTasks[taskId].tMonSpriteId = MAX_SPRITES;
+            gBattlerSpriteIds[gBattlerAttacker] = MAX_SPRITES;
             gTasks[taskId].tState = APPEALSTATE_START_TURN_END_DELAY;
         }
         return;
@@ -2443,7 +2452,7 @@ static void Task_DoAppeals(u8 taskId)
         {
             gTasks[taskId].tState = 0;
             gTasks[taskId].data[1] = 0;
-            gTasks[taskId].tMonSpriteId = 0;
+            gTasks[taskId].tMonSpriteId = MAX_SPRITES;
             gTasks[taskId].func = Task_FinishRoundOfAppeals;
         }
         else
@@ -3112,10 +3121,18 @@ static u8 CreateJudgeSprite(void)
 {
     u8 spriteId;
 
-    LoadCompressedSpriteSheet(&sSpriteSheet_Judge);
+    if (LoadCompressedSpriteSheet(&sSpriteSheet_Judge) == SPRITE_TILE_NONE)
+        return MAX_SPRITES;
+
     LoadCompressedPalette(gContest2Pal, OBJ_PLTT_ID(1), PLTT_SIZE_4BPP);
     spriteId = CreateSprite(&sSpriteTemplate_Judge, 112, 36, 30);
-    gSprites[spriteId].oam.paletteNum = 1;
+    if (spriteId >= MAX_SPRITES)
+    {
+        FreeSpriteTilesByTag(sSpriteSheet_Judge.tag);
+        return MAX_SPRITES;
+    }
+
+    SetSpritePaletteHandle(&gSprites[spriteId], 1);
     gSprites[spriteId].callback = SpriteCallbackDummy;
     return spriteId;
 }
@@ -3123,13 +3140,28 @@ static u8 CreateJudgeSprite(void)
 static u8 CreateJudgeSpeechBubbleSprite(void)
 {
     u8 spriteId;
+    u16 paletteTag = sSpritePalette_JudgeSymbols.tag;
+    bool8 loadPalette = IndexOfSpritePaletteTag(paletteTag) == 0xFF;
 
-    LoadCompressedSpriteSheet(&sSpriteSheet_JudgeSymbols);
+    if (LoadCompressedSpriteSheet(&sSpriteSheet_JudgeSymbols) == SPRITE_TILE_NONE)
+        return MAX_SPRITES;
+
     LoadCompressedSpritePalette(&sSpritePalette_JudgeSymbols);
+    if (IndexOfSpritePaletteTag(paletteTag) == 0xFF)
+        goto freeResources;
+
     spriteId = CreateSprite(&sSpriteTemplate_JudgeSpeechBubble, 96, 10, 29);
+    if (spriteId >= MAX_SPRITES)
+        goto freeResources;
+
     gSprites[spriteId].invisible = TRUE;
-    gSprites[spriteId].data[0] = gSprites[spriteId].oam.tileNum;
     return spriteId;
+
+freeResources:
+    FreeSpriteTilesByTag(sSpriteSheet_JudgeSymbols.tag);
+    if (loadPalette)
+        FreeSpritePaletteByTag(paletteTag);
+    return MAX_SPRITES;
 }
 
 static u8 CreateContestantSprite(u16 species, u32 otId, u32 personality, u32 index)
@@ -3146,11 +3178,14 @@ static u8 CreateContestantSprite(u16 species, u32 otId, u32 personality, u32 ind
     SetMultiuseSpriteTemplateToPokemon(species, B_POSITION_PLAYER_LEFT);
 
     spriteId = CreateSprite(&gMultiuseSpriteTemplate, 0x70, GetBattlerSpriteFinal_Y(2, species, FALSE), 30);
-    gSprites[spriteId].oam.paletteNum = 2;
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    SetSpritePaletteHandle(&gSprites[spriteId], 2);
     gSprites[spriteId].oam.priority = 2;
     gSprites[spriteId].subpriority = GetBattlerSpriteSubpriority(2);
     gSprites[spriteId].callback = SpriteCallbackDummy;
-    gSprites[spriteId].data[0] = gSprites[spriteId].oam.paletteNum;
+    gSprites[spriteId].data[0] = GetSpritePaletteHandle(&gSprites[spriteId]);
     gSprites[spriteId].data[2] = species;
     if (IsSpeciesNotUnown(species))
         gSprites[spriteId].affineAnims = gAffineAnims_BattleSpriteContest;
@@ -3854,12 +3889,14 @@ static void CreateSliderHeartSprites(void)
 {
     s32 i;
 
-    LoadSpriteSheet(&sSpriteSheet_SliderHeart);
+    u16 tiles = LoadSpriteSheet(&sSpriteSheet_SliderHeart);
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
         u8 y = sSliderHeartYPositions[gContestantTurnOrder[i]];
 
-        eContestGfxState[i].sliderHeartSpriteId = CreateSprite(&sSpriteTemplate_SliderHeart, 180, y, 1);
+        eContestGfxState[i].sliderHeartSpriteId = MAX_SPRITES;
+        if (tiles != SPRITE_TILE_NONE)
+            eContestGfxState[i].sliderHeartSpriteId = CreateSprite(&sSpriteTemplate_SliderHeart, 180, y, 1);
     }
 }
 
@@ -3872,8 +3909,11 @@ static void UpdateHeartSlider(u8 contestant)
     u8 spriteId;
     s16 slideTarget;
 
-    eContestGfxState[contestant].sliderUpdating = TRUE;
     spriteId = eContestGfxState[contestant].sliderHeartSpriteId;
+    eContestGfxState[contestant].sliderUpdating = spriteId < MAX_SPRITES;
+    if (!eContestGfxState[contestant].sliderUpdating)
+        return;
+
     slideTarget = eContestantStatus[contestant].pointTotal / 10 * 2;
     if (slideTarget > 56)
         slideTarget = 56;
@@ -3935,7 +3975,8 @@ static void UpdateSliderHeartSpriteYPositions(void)
     s32 i;
 
     for (i = 0; i < CONTESTANT_COUNT; i++)
-        gSprites[eContestGfxState[i].sliderHeartSpriteId].y = sSliderHeartYPositions[gContestantTurnOrder[i]];
+        if (eContestGfxState[i].sliderHeartSpriteId < MAX_SPRITES)
+            gSprites[eContestGfxState[i].sliderHeartSpriteId].y = sSliderHeartYPositions[gContestantTurnOrder[i]];
 }
 
 // Used to hide (or subsequently reshow) the bottom two slider hearts that get hidden by text windows by moving them offscreen
@@ -3946,7 +3987,7 @@ static void SetBottomSliderHeartsInvisibility(bool8 invisible)
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
         // Skip the top two contestants sliders
-        if (gContestantTurnOrder[i] > 1)
+        if (gContestantTurnOrder[i] > 1 && eContestGfxState[i].sliderHeartSpriteId < MAX_SPRITES)
         {
             if (!invisible)
                 gSprites[eContestGfxState[i].sliderHeartSpriteId].x = 180;
@@ -3959,29 +4000,53 @@ static void SetBottomSliderHeartsInvisibility(bool8 invisible)
 static void CreateNextTurnSprites(void)
 {
     s32 i;
+    u8 paletteNum = LoadSpritePalette(&sSpritePalette_NextTurn);
 
-    LoadSpritePalette(&sSpritePalette_NextTurn);
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
-        LoadCompressedSpriteSheet(&sSpriteSheet_NextTurn[i]);
-        eContestGfxState[i].nextTurnSpriteId = CreateSprite(&sSpriteTemplates_NextTurn[i],
-                                                           204,
-                                                           sNextTurnSpriteYPositions[gContestantTurnOrder[i]],
-                                                           0);
-        SetSubspriteTables(&gSprites[eContestGfxState[i].nextTurnSpriteId], sSubspriteTable_NextTurn);
-        gSprites[eContestGfxState[i].nextTurnSpriteId].invisible = TRUE;
+        u8 spriteId;
+
+        eContestGfxState[i].nextTurnSpriteId = MAX_SPRITES;
+        if (paletteNum == 0xFF || LoadCompressedSpriteSheet(&sSpriteSheet_NextTurn[i]) == SPRITE_TILE_NONE)
+            continue;
+
+        spriteId = CreateSprite(&sSpriteTemplates_NextTurn[i], 204,
+                                sNextTurnSpriteYPositions[gContestantTurnOrder[i]], 0);
+        if (spriteId >= MAX_SPRITES)
+        {
+            FreeSpriteTilesByTag(sSpriteSheet_NextTurn[i].tag);
+            continue;
+        }
+
+        eContestGfxState[i].nextTurnSpriteId = spriteId;
+        SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_NextTurn);
+        gSprites[spriteId].invisible = TRUE;
     }
 }
 
 static void CreateApplauseMeterSprite(void)
 {
     u8 spriteId;
+    bool8 loadPalette = IndexOfSpritePaletteTag(TAG_APPLAUSE_METER) == 0xFF;
 
-    LoadCompressedSpriteSheet(&sSpriteSheet_ApplauseMeter);
-    LoadSpritePalette(&sSpritePalette_ApplauseMeter);
-    spriteId = CreateSprite(&sSpriteTemplate_ApplauseMeter, 30, 44, 1);
-    gSprites[spriteId].invisible = TRUE;
-    eContest.applauseMeterSpriteId = spriteId;
+    eContest.applauseMeterSpriteId = MAX_SPRITES;
+    if (LoadCompressedSpriteSheet(&sSpriteSheet_ApplauseMeter) == SPRITE_TILE_NONE)
+        return;
+
+    if (LoadSpritePalette(&sSpritePalette_ApplauseMeter) != 0xFF)
+    {
+        spriteId = CreateSprite(&sSpriteTemplate_ApplauseMeter, 30, 44, 1);
+        if (spriteId < MAX_SPRITES)
+        {
+            gSprites[spriteId].invisible = TRUE;
+            eContest.applauseMeterSpriteId = spriteId;
+            return;
+        }
+    }
+
+    FreeSpriteTilesByTag(TAG_APPLAUSE_METER);
+    if (loadPalette)
+        FreeSpritePaletteByTag(TAG_APPLAUSE_METER);
 }
 
 static void CreateJudgeAttentionEyeTask(void)
@@ -4136,16 +4201,61 @@ static void StartStopFlashJudgeAttentionEye(u8 contestant)
         StopFlashJudgeAttentionEye(contestant);
 }
 
+static u8 CreateContestantBoxBlinkHalf(u8 contestant, s16 x, s16 y)
+{
+    u8 spriteId = CreateSprite(&sSpriteTemplates_ContestantsTurnBlinkEffect[contestant], x, y, 29);
+
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
+    if (!InitSpriteAffineAnim(&gSprites[spriteId]))
+    {
+        DestroySprite(&gSprites[spriteId]);
+        return MAX_SPRITES;
+    }
+
+    return spriteId;
+}
+
 static u8 CreateContestantBoxBlinkSprites(u8 contestant)
 {
     u8 spriteId1, spriteId2;
-    u8 x = gContestantTurnOrder[contestant] * 40 + 32;
+    u8 *leftTiles, *rightTiles;
+    u8 y = gContestantTurnOrder[contestant] * 40 + 32;
+    u16 tileTag = sSpriteSheets_ContestantsTurnBlinkEffect[contestant].tag;
+    u16 paletteTag = sSpritePalettes_ContestantsTurnBlinkEffect[contestant].tag;
+    bool8 loadPalette = IndexOfSpritePaletteTag(paletteTag) == 0xFF;
 
-    LoadCompressedSpriteSheet(&sSpriteSheets_ContestantsTurnBlinkEffect[contestant]);
-    LoadSpritePalette(&sSpritePalettes_ContestantsTurnBlinkEffect[contestant]);
-    spriteId1 = CreateSprite(&sSpriteTemplates_ContestantsTurnBlinkEffect[contestant], 184, x, 29);
-    spriteId2 = CreateSprite(&sSpriteTemplates_ContestantsTurnBlinkEffect[contestant], 248, x, 29);
-    gSprites[spriteId2].oam.tileNum += 64;
+    if (LoadCompressedSpriteSheet(&sSpriteSheets_ContestantsTurnBlinkEffect[contestant]) == SPRITE_TILE_NONE)
+        return MAX_SPRITES;
+
+    if (LoadSpritePalette(&sSpritePalettes_ContestantsTurnBlinkEffect[contestant]) == 0xFF)
+        goto freeResources;
+
+    spriteId1 = CreateContestantBoxBlinkHalf(contestant, 184, y);
+    if (spriteId1 >= MAX_SPRITES)
+        goto freeResources;
+
+    spriteId2 = CreateContestantBoxBlinkHalf(contestant, 248, y);
+    if (spriteId2 >= MAX_SPRITES)
+    {
+        FreeSpriteOamMatrix(&gSprites[spriteId1]);
+        DestroySprite(&gSprites[spriteId1]);
+        goto freeResources;
+    }
+
+    SetSpriteSheetTileOffset(&gSprites[spriteId2], 64);
+    leftTiles = GetSpriteTileVram(&gSprites[spriteId1], 0, 64);
+    rightTiles = GetSpriteTileVram(&gSprites[spriteId2], 0, 64);
+    if (leftTiles == NULL || rightTiles == NULL)
+    {
+        FreeSpriteOamMatrix(&gSprites[spriteId2]);
+        DestroySprite(&gSprites[spriteId2]);
+        FreeSpriteOamMatrix(&gSprites[spriteId1]);
+        DestroySprite(&gSprites[spriteId1]);
+        goto freeResources;
+    }
 
     CopySpriteTiles(0,
                     3,
@@ -4162,12 +4272,12 @@ static u8 CreateContestantBoxBlinkSprites(u8 contestant)
     CpuFill32(0, gContestResources->boxBlinkTiles2 + 0x500, 0x300);
 
     RequestDma3Copy(gContestResources->boxBlinkTiles1,
-                    (u8 *)(OBJ_VRAM0 + gSprites[spriteId1].oam.tileNum * 32),
+                    leftTiles,
                     0x800,
                     1);
 
     RequestDma3Copy(gContestResources->boxBlinkTiles2,
-                    (u8 *)(OBJ_VRAM0 + gSprites[spriteId2].oam.tileNum * 32),
+                    rightTiles,
                     0x800,
                     1);
 
@@ -4178,6 +4288,12 @@ static u8 CreateContestantBoxBlinkSprites(u8 contestant)
     gSprites[spriteId2].data[1] = contestant;
 
     return spriteId1;
+
+freeResources:
+    FreeSpriteTilesByTag(tileTag);
+    if (loadPalette)
+        FreeSpritePaletteByTag(paletteTag);
+    return MAX_SPRITES;
 }
 
 static void DestroyContestantBoxBlinkSprites(u8 spriteId)
@@ -4206,6 +4322,14 @@ static void BlinkContestantBox(u8 spriteId, bool8 b)
 {
     u8 spriteId2;
 
+    if (b == FALSE)
+        PlaySE(SE_CONTEST_MONS_TURN);
+    else
+        PlaySE(SE_PC_LOGIN);
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+
     SetBlendForContestantBoxBlink();
     eContestGfxState[gSprites[spriteId].data[1]].boxBlinking = TRUE;
     spriteId2 = gSprites[spriteId].data[0];
@@ -4213,10 +4337,6 @@ static void BlinkContestantBox(u8 spriteId, bool8 b)
     StartSpriteAffineAnim(&gSprites[spriteId2], 1);
     gSprites[spriteId].callback = SpriteCB_BlinkContestantBox;
     gSprites[spriteId2].callback = SpriteCallbackDummy;
-    if (b == FALSE)
-        PlaySE(SE_CONTEST_MONS_TURN);
-    else
-        PlaySE(SE_PC_LOGIN);
 }
 
 static void SpriteCB_BlinkContestantBox(struct Sprite *sprite)
@@ -4698,53 +4818,79 @@ static void SpriteCB_JudgeSpeechBubble(struct Sprite *sprite)
 static void DoJudgeSpeechBubble(u8 symbolId)
 {
     u8 spriteId = eContest.judgeSpeechBubbleSpriteId;
+    u8 tileOffset;
 
     switch (symbolId)
     {
     case JUDGE_SYMBOL_SWIRL:
     case JUDGE_SYMBOL_SWIRL_UNUSED:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0];
+        tileOffset = 0;
         PlaySE(SE_FAILURE);
         break;
     case JUDGE_SYMBOL_ONE_EXCLAMATION:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 4;
+        tileOffset = 4;
         PlaySE(SE_SUCCESS);
         break;
     case JUDGE_SYMBOL_TWO_EXCLAMATIONS:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 8;
+        tileOffset = 8;
         PlaySE(SE_SUCCESS);
         break;
     case JUDGE_SYMBOL_NUMBER_ONE_UNUSED: // Identical to JUDGE_SYMBOL_NUMBER_ONE
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 12;
+        tileOffset = 12;
         PlaySE(SE_WARP_IN);
         break;
     case JUDGE_SYMBOL_NUMBER_ONE:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 12;
+        tileOffset = 12;
         PlaySE(SE_WARP_IN);
         break;
     case JUDGE_SYMBOL_NUMBER_FOUR:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 16;
+        tileOffset = 16;
         PlaySE(SE_WARP_IN);
         break;
     case JUDGE_SYMBOL_STAR:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 24;
+        tileOffset = 24;
         PlaySE(SE_M_HEAL_BELL);
         break;
     case JUDGE_SYMBOL_QUESTION_MARK:
     default:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 20;
+        tileOffset = 20;
         PlaySE(SE_WARP_IN);
         break;
     }
+    if (spriteId >= MAX_SPRITES)
+    {
+        eContest.waitForJudgeSpeechBubble = FALSE;
+        return;
+    }
+
+    SetSpriteSheetTileOffset(&gSprites[spriteId], tileOffset);
     gSprites[spriteId].data[1] = 0;
     gSprites[spriteId].invisible = FALSE;
     gSprites[spriteId].callback = SpriteCB_JudgeSpeechBubble;
     eContest.waitForJudgeSpeechBubble = TRUE;
 }
 
+static struct Sprite *GetApplauseMeterSprite(void)
+{
+    u8 spriteId = eContest.applauseMeterSpriteId;
+
+    if (spriteId >= MAX_SPRITES || !gSprites[spriteId].inUse)
+        return NULL;
+    return &gSprites[spriteId];
+}
+
 static void UpdateApplauseMeter(void)
 {
+    struct Sprite *sprite = GetApplauseMeterSprite();
+    u8 *tiles;
     s32 i;
+
+    if (sprite == NULL)
+        return;
+
+    tiles = GetSpriteTileVram(sprite, 0, 25 + APPLAUSE_METER_SIZE);
+    if (tiles == NULL)
+        return;
 
     for (i = 0; i < APPLAUSE_METER_SIZE; i++)
     {
@@ -4754,12 +4900,12 @@ static void UpdateApplauseMeter(void)
             src = &gContestApplauseMeterGfx[64];
         else
             src = gContestApplauseMeterGfx;
-        CpuCopy32(src, (void *)(OBJ_VRAM0 + (gSprites[eContest.applauseMeterSpriteId].oam.tileNum + 17 + i) * 32), 32);
-        CpuCopy32(src + 32, (void *)(OBJ_VRAM0 + (gSprites[eContest.applauseMeterSpriteId].oam.tileNum + 25 + i) * 32), 32);
-
-        if (eContest.applauseLevel > 4)
-            StartApplauseOverflowAnimation();
+        CpuCopy32(src, tiles + (17 + i) * TILE_SIZE_4BPP, TILE_SIZE_4BPP);
+        CpuCopy32(src + TILE_SIZE_4BPP, tiles + (25 + i) * TILE_SIZE_4BPP, TILE_SIZE_4BPP);
     }
+
+    if (eContest.applauseLevel > 4)
+        StartApplauseOverflowAnimation();
 }
 
 s8 Contest_GetMoveExcitement(u16 move)
@@ -4767,17 +4913,27 @@ s8 Contest_GetMoveExcitement(u16 move)
     return sContestExcitementTable[gSpecialVar_ContestCategory][gContestMoves[move].contestCategory];
 }
 
-static u8 StartApplauseOverflowAnimation(void)
+static void StartApplauseOverflowAnimation(void)
 {
-    u8 taskId = CreateTask(Task_ApplauseOverflowAnimation, 10);
+    u8 paletteNum = IndexOfSpritePaletteTag(TAG_APPLAUSE_METER);
+    u8 taskId;
 
+    if (paletteNum == 0xFF || GetTaskCount() == NUM_TASKS || FuncIsActiveTask(Task_ApplauseOverflowAnimation))
+        return;
+
+    taskId = CreateTask(Task_ApplauseOverflowAnimation, 10);
     gTasks[taskId].data[1] = 1;
-    gTasks[taskId].data[2] = IndexOfSpritePaletteTag(TAG_APPLAUSE_METER);
-    return taskId;
+    gTasks[taskId].data[2] = paletteNum;
 }
 
 static void Task_ApplauseOverflowAnimation(u8 taskId)
 {
+    if (GetApplauseMeterSprite() == NULL || IndexOfSpritePaletteTag(TAG_APPLAUSE_METER) != gTasks[taskId].data[2])
+    {
+        DestroyTask(taskId);
+        return;
+    }
+
     // Skip every other frame.
     if (++gTasks[taskId].data[0] == 1)
     {
@@ -4808,15 +4964,35 @@ static void Task_ApplauseOverflowAnimation(u8 taskId)
 
 static void SlideApplauseMeterIn(void)
 {
+    struct Sprite *sprite = GetApplauseMeterSprite();
+
+    eContest.applauseMeterIsMoving = FALSE;
+    if (sprite == NULL)
+        return;
+
+    if (GetTaskCount() == NUM_TASKS)
+    {
+        sprite->x2 = 0;
+        sprite->invisible = FALSE;
+        return;
+    }
+
     CreateTask(Task_SlideApplauseMeterIn, 10);
-    gSprites[eContest.applauseMeterSpriteId].x2 = -70;
-    gSprites[eContest.applauseMeterSpriteId].invisible = FALSE;
+    sprite->x2 = -70;
+    sprite->invisible = FALSE;
     eContest.applauseMeterIsMoving = TRUE;
 }
 
 static void Task_SlideApplauseMeterIn(u8 taskId)
 {
-    struct Sprite *sprite = &gSprites[eContest.applauseMeterSpriteId];
+    struct Sprite *sprite = GetApplauseMeterSprite();
+
+    if (sprite == NULL)
+    {
+        eContest.applauseMeterIsMoving = FALSE;
+        DestroyTask(taskId);
+        return;
+    }
 
     gTasks[taskId].data[10] += 1664;
     sprite->x2 += gTasks[taskId].data[10] >> 8;
@@ -4832,21 +5008,34 @@ static void Task_SlideApplauseMeterIn(u8 taskId)
 
 static void SlideApplauseMeterOut(void)
 {
-    if (gSprites[eContest.applauseMeterSpriteId].invisible == TRUE)
+    struct Sprite *sprite = GetApplauseMeterSprite();
+
+    eContest.applauseMeterIsMoving = FALSE;
+    if (sprite == NULL || sprite->invisible)
+        return;
+
+    if (GetTaskCount() == NUM_TASKS)
     {
-        eContest.applauseMeterIsMoving = FALSE;
+        sprite->x2 = 0;
+        sprite->invisible = TRUE;
+        return;
     }
-    else
-    {
-        CreateTask(Task_SlideApplauseMeterOut, 10);
-        gSprites[eContest.applauseMeterSpriteId].x2 = 0;
-        eContest.applauseMeterIsMoving = TRUE;
-    }
+
+    CreateTask(Task_SlideApplauseMeterOut, 10);
+    sprite->x2 = 0;
+    eContest.applauseMeterIsMoving = TRUE;
 }
 
 static void Task_SlideApplauseMeterOut(u8 taskId)
 {
-    struct Sprite *sprite = &gSprites[eContest.applauseMeterSpriteId];
+    struct Sprite *sprite = GetApplauseMeterSprite();
+
+    if (sprite == NULL)
+    {
+        eContest.applauseMeterIsMoving = FALSE;
+        DestroyTask(taskId);
+        return;
+    }
 
     gTasks[taskId].data[10] += 1664;
     sprite->x2 -= gTasks[taskId].data[10] >> 8;
@@ -4863,8 +5052,20 @@ static void Task_SlideApplauseMeterOut(u8 taskId)
 
 static void ShowAndUpdateApplauseMeter(s8 unused)
 {
-    u8 taskId = CreateTask(Task_ShowAndUpdateApplauseMeter, 5);
+    u8 taskId;
 
+    eContest.isShowingApplauseMeter = FALSE;
+    if (GetApplauseMeterSprite() == NULL)
+        return;
+
+    if (GetTaskCount() == NUM_TASKS)
+    {
+        SlideApplauseMeterIn();
+        UpdateApplauseMeter();
+        return;
+    }
+
+    taskId = CreateTask(Task_ShowAndUpdateApplauseMeter, 5);
     gTasks[taskId].data[0] = unused;
     eContest.isShowingApplauseMeter = TRUE;
 }
@@ -4897,13 +5098,23 @@ static void Task_ShowAndUpdateApplauseMeter(u8 taskId)
 
 static void UNUSED HideApplauseMeterNoAnim(void)
 {
-    gSprites[eContest.applauseMeterSpriteId].x2 = 0;
-    gSprites[eContest.applauseMeterSpriteId].invisible = FALSE;
+    struct Sprite *sprite = GetApplauseMeterSprite();
+
+    if (sprite == NULL)
+        return;
+
+    sprite->x2 = 0;
+    sprite->invisible = FALSE;
 }
 
 static void UNUSED ShowApplauseMeterNoAnim(void)
 {
-    gSprites[eContest.applauseMeterSpriteId].invisible = TRUE;
+    struct Sprite *sprite = GetApplauseMeterSprite();
+
+    if (sprite == NULL)
+        return;
+
+    sprite->invisible = TRUE;
 }
 
 #define tDelay  data[10]
@@ -5032,15 +5243,26 @@ static void ShowHideNextTurnGfx(bool8 show)
 
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
+        u8 spriteId = eContestGfxState[i].nextTurnSpriteId;
+
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
         if (eContestantStatus[i].turnOrderMod != 0 && show)
         {
-            CpuCopy32(GetTurnOrderNumberGfx(i), (void *)(OBJ_VRAM0 + (gSprites[eContestGfxState[i].nextTurnSpriteId].oam.tileNum + 6) * 32), 32);
-            gSprites[eContestGfxState[i].nextTurnSpriteId].y = sNextTurnSpriteYPositions[gContestantTurnOrder[i]];
-            gSprites[eContestGfxState[i].nextTurnSpriteId].invisible = FALSE;
+            u8 *tiles = GetSpriteTileVram(&gSprites[spriteId], 6, 1);
+            if (tiles == NULL)
+            {
+                gSprites[spriteId].invisible = TRUE;
+                continue;
+            }
+            CpuCopy32(GetTurnOrderNumberGfx(i), tiles, TILE_SIZE_4BPP);
+            gSprites[spriteId].y = sNextTurnSpriteYPositions[gContestantTurnOrder[i]];
+            gSprites[spriteId].invisible = FALSE;
         }
         else
         {
-            gSprites[eContestGfxState[i].nextTurnSpriteId].invisible = TRUE;
+            gSprites[spriteId].invisible = TRUE;
         }
     }
 }
@@ -5112,8 +5334,10 @@ static void SetBgForCurtainDrop(void)
 
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
-        gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.priority = 1;
-        gSprites[eContestGfxState[i].nextTurnSpriteId].oam.priority = 1;
+        if (eContestGfxState[i].sliderHeartSpriteId < MAX_SPRITES)
+            gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.priority = 1;
+        if (eContestGfxState[i].nextTurnSpriteId < MAX_SPRITES)
+            gSprites[eContestGfxState[i].nextTurnSpriteId].oam.priority = 1;
     }
 }
 
@@ -5138,8 +5362,10 @@ static void UpdateContestantBoxOrder(void)
 
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
-        gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.priority = 0;
-        gSprites[eContestGfxState[i].nextTurnSpriteId].oam.priority = 0;
+        if (eContestGfxState[i].sliderHeartSpriteId < MAX_SPRITES)
+            gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.priority = 0;
+        if (eContestGfxState[i].nextTurnSpriteId < MAX_SPRITES)
+            gSprites[eContestGfxState[i].nextTurnSpriteId].oam.priority = 0;
     }
 }
 
@@ -5269,40 +5495,75 @@ static void Task_StartRaiseCurtainAtRoundEnd(u8 taskId)
 static void AnimateSliderHearts(u8 animId)
 {
     s32 i;
-    u8 taskId;
+    bool8 canAnimate = GetTaskCount() < NUM_TASKS;
+    bool8 anyAnimating = FALSE;
 
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
-        gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.matrixNum = AllocOamMatrix();
-        gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        StartSpriteAffineAnim(&gSprites[eContestGfxState[i].sliderHeartSpriteId], animId);
+        u8 spriteId = eContestGfxState[i].sliderHeartSpriteId;
+        struct Sprite *sprite;
+        u8 matrixNum;
+
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
+        sprite = &gSprites[spriteId];
+        matrixNum = canAnimate ? AllocOamMatrix() : 0xFF;
+        if (matrixNum == 0xFF)
+        {
+            sprite->invisible = animId == SLIDER_HEART_ANIM_DISAPPEAR;
+            continue;
+        }
+
+        AdoptSpriteMatrixHandle(sprite, matrixNum);
+        sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
+        StartSpriteAffineAnim(sprite, animId);
+        anyAnimating = TRUE;
         if (animId == SLIDER_HEART_ANIM_APPEAR)
         {
-            AnimateSprite(&gSprites[eContestGfxState[i].sliderHeartSpriteId]);
-            gSprites[eContestGfxState[i].sliderHeartSpriteId].invisible = FALSE;
+            AnimateSprite(sprite);
+            sprite->invisible = FALSE;
         }
     }
-    taskId = CreateTask(Task_WaitForSliderHeartAnim, 5);
-    gTasks[taskId].tAnimId = animId;
-    eContest.sliderHeartsAnimating = TRUE;
+
+    if (anyAnimating)
+    {
+        u8 taskId = CreateTask(Task_WaitForSliderHeartAnim, 5);
+        gTasks[taskId].tAnimId = animId;
+    }
+    eContest.sliderHeartsAnimating = anyAnimating;
 }
 
 static void Task_WaitForSliderHeartAnim(u8 taskId)
 {
     s32 i;
 
-    if (gSprites[eContestGfxState[0].sliderHeartSpriteId].affineAnimEnded)
+    for (i = 0; i < CONTESTANT_COUNT; i++)
     {
-        if ((u8)gTasks[taskId].tAnimId == SLIDER_HEART_ANIM_DISAPPEAR)
-        {
-            for (i = 0; i < CONTESTANT_COUNT; i++)
-                gSprites[eContestGfxState[i].sliderHeartSpriteId].invisible = TRUE;
-        }
-        for (i = 0; i < CONTESTANT_COUNT; i++)
-            FreeSpriteOamMatrix(&gSprites[eContestGfxState[i].sliderHeartSpriteId]);
-        eContest.sliderHeartsAnimating = FALSE;
-        DestroyTask(taskId);
+        u8 spriteId = eContestGfxState[i].sliderHeartSpriteId;
+        struct Sprite *sprite;
+
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
+        sprite = &gSprites[spriteId];
+        if (sprite->oam.affineMode != ST_OAM_AFFINE_OFF && !sprite->affineAnimEnded)
+            return;
     }
+
+    for (i = 0; i < CONTESTANT_COUNT; i++)
+    {
+        u8 spriteId = eContestGfxState[i].sliderHeartSpriteId;
+
+        if (spriteId < MAX_SPRITES && gSprites[spriteId].oam.affineMode != ST_OAM_AFFINE_OFF)
+        {
+            if (gTasks[taskId].tAnimId == SLIDER_HEART_ANIM_DISAPPEAR)
+                gSprites[spriteId].invisible = TRUE;
+            FreeSpriteOamMatrix(&gSprites[spriteId]);
+        }
+    }
+    eContest.sliderHeartsAnimating = FALSE;
+    DestroyTask(taskId);
 }
 
 #undef tAnimId
@@ -5388,15 +5649,26 @@ static void SetMoveAnimAttackerData(u8 contestant)
 
 static void CreateInvisibleBattleTargetSprite(void)
 {
-    gBattlerSpriteIds[B_POSITION_OPPONENT_RIGHT] = CreateInvisibleSpriteWithCallback(SpriteCallbackDummy);
-    InitSpriteAffineAnim(&gSprites[gBattlerSpriteIds[gBattlerTarget]]);
+    u8 spriteId = CreateInvisibleSpriteWithCallback(SpriteCallbackDummy);
+
+    if (spriteId < MAX_SPRITES && !InitSpriteAffineAnim(&gSprites[spriteId]))
+    {
+        DestroySprite(&gSprites[spriteId]);
+        spriteId = SPRITE_NONE;
+    }
+    gBattlerSpriteIds[B_POSITION_OPPONENT_RIGHT] = spriteId;
     SetBattleTargetSpritePosition();
 }
 
 static void SetBattleTargetSpritePosition(void)
 {
-    struct Sprite *sprite = &gSprites[gBattlerSpriteIds[B_POSITION_OPPONENT_RIGHT]];
+    u8 spriteId = gBattlerSpriteIds[B_POSITION_OPPONENT_RIGHT];
+    struct Sprite *sprite;
 
+    if (spriteId >= MAX_SPRITES)
+        return;
+
+    sprite = &gSprites[spriteId];
     sprite->x2 = 0;
     sprite->y2 = 0;
     sprite->x = GetBattlerSpriteCoord(B_POSITION_OPPONENT_RIGHT, BATTLER_COORD_X);

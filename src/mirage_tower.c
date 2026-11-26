@@ -492,7 +492,7 @@ static void CreateCeilingCrumbleSprites(void)
         // These sprites use color index 11 from the player's sprite palette. This probably wasn't intentional.
         // The palettes for Brendan and May have different shades of green at this index, so the color of these sprites changes
         // depending on the player's gender (and neither shade of green particularly fits a crumbling yellow/brown ceiling).
-        gSprites[spriteId].oam.paletteNum = PALSLOT_PLAYER;
+        SetSpritePaletteHandle(&gSprites[spriteId], PALSLOT_PLAYER);
         gSprites[spriteId].sIndex = i;
     }
     for (i = 0; i < ARRAY_COUNT(sCeilingCrumblePositions); i++)
@@ -504,7 +504,7 @@ static void CreateCeilingCrumbleSprites(void)
             continue;
         }
         gSprites[spriteId].oam.priority = 0;
-        gSprites[spriteId].oam.paletteNum = PALSLOT_PLAYER;
+        SetSpritePaletteHandle(&gSprites[spriteId], PALSLOT_PLAYER);
         gSprites[spriteId].sIndex = i;
     }
 }
@@ -739,6 +739,11 @@ static void Task_FossilFallAndSink(u8 taskId)
             struct SpriteTemplate fossilTemplate = sSpriteTemplate_FallingFossil;
             fossilTemplate.images = sFallingFossil->frameImage;
             sFallingFossil->spriteId = CreateSprite(&fossilTemplate, 128 + GetMirageViewOffsetX(), -16 + GetMirageViewOffsetY(), 1);
+            if (sFallingFossil->spriteId >= MAX_SPRITES)
+            {
+                gTasks[taskId].tState = 7;
+                return;
+            }
             gSprites[sFallingFossil->spriteId].centerToCornerVecX = 0;
             gSprites[sFallingFossil->spriteId].data[0] = gSprites[sFallingFossil->spriteId].x;
             gSprites[sFallingFossil->spriteId].data[1] = 1;
@@ -760,11 +765,14 @@ static void Task_FossilFallAndSink(u8 taskId)
         gSprites[sFallingFossil->spriteId].callback = SpriteCB_FallingFossil;
         break;
     case 7:
-        // Wait for fossil to finish falling / disintegrating
-        if (gSprites[sFallingFossil->spriteId].callback != SpriteCallbackDummy)
-            return;
-        DestroySprite(&gSprites[sFallingFossil->spriteId]);
-        FREE_AND_SET_NULL(sFallingFossil->disintegrateRand);;
+        if (sFallingFossil->spriteId < MAX_SPRITES)
+        {
+            // Wait for fossil to finish falling / disintegrating
+            if (gSprites[sFallingFossil->spriteId].callback != SpriteCallbackDummy)
+                return;
+            DestroySprite(&gSprites[sFallingFossil->spriteId]);
+        }
+        FREE_AND_SET_NULL(sFallingFossil->disintegrateRand);
         FREE_AND_SET_NULL(sFallingFossil->frameImage);
         FREE_AND_SET_NULL(sFallingFossil->frameImageTiles);
         FREE_AND_SET_NULL(sFallingFossil);

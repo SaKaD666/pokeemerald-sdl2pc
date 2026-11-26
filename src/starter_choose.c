@@ -372,10 +372,37 @@ static void VblankCB_StarterChoose(void)
 #define sTaskId data[0]
 #define sBallId data[1]
 
+static u8 CreateStarterSelectionSprite(const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
+{
+    if (GetSpriteTileStartByTag(template->tileTag) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(template->paletteTag) == 0xFF)
+        return SPRITE_NONE;
+
+    return CreateSprite(template, x, y, subpriority);
+}
+
+static void CreateStarterSelectionSprites(u8 taskId)
+{
+    u8 i;
+    u8 spriteId = CreateStarterSelectionSprite(&sSpriteTemplate_Hand, 120, 56, 2);
+
+    if (spriteId < MAX_SPRITES)
+        gSprites[spriteId].data[0] = taskId;
+
+    for (i = 0; i < STARTER_MON_COUNT; i++)
+    {
+        spriteId = CreateStarterSelectionSprite(&sSpriteTemplate_Pokeball, sPokeballCoords[i][0], sPokeballCoords[i][1], 2);
+        if (spriteId < MAX_SPRITES)
+        {
+            gSprites[spriteId].sTaskId = taskId;
+            gSprites[spriteId].sBallId = i;
+        }
+    }
+}
+
 void CB2_ChooseStarter(void)
 {
     u8 taskId;
-    u8 spriteId;
 
 #ifdef PLATFORM_SDL2
     SetFrameViewToGbaSize(TRUE);
@@ -446,22 +473,7 @@ void CB2_ChooseStarter(void)
     taskId = CreateTask(Task_StarterChoose, 0);
     gTasks[taskId].tStarterSelection = 1;
 
-    // Create hand sprite
-    spriteId = CreateSprite(&sSpriteTemplate_Hand, 120, 56, 2);
-    gSprites[spriteId].data[0] = taskId;
-
-    // Create three Poké Ball sprites
-    spriteId = CreateSprite(&sSpriteTemplate_Pokeball, sPokeballCoords[0][0], sPokeballCoords[0][1], 2);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].sBallId = 0;
-
-    spriteId = CreateSprite(&sSpriteTemplate_Pokeball, sPokeballCoords[1][0], sPokeballCoords[1][1], 2);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].sBallId = 1;
-
-    spriteId = CreateSprite(&sSpriteTemplate_Pokeball, sPokeballCoords[2][0], sPokeballCoords[2][1], 2);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].sBallId = 2;
+    CreateStarterSelectionSprites(taskId);
 
     sStarterLabelWindowId = WINDOW_NONE;
 }
@@ -498,13 +510,16 @@ static void Task_HandleStarterChooseInput(u8 taskId)
         ClearStarterLabel();
 
         // Create white circle background
-        spriteId = CreateSprite(&sSpriteTemplate_StarterCircle, sPokeballCoords[selection][0], sPokeballCoords[selection][1], 1);
+        spriteId = CreateStarterSelectionSprite(&sSpriteTemplate_StarterCircle, sPokeballCoords[selection][0], sPokeballCoords[selection][1], 1);
         gTasks[taskId].tCircleSpriteId = spriteId;
 
         // Create Pokémon sprite
         spriteId = CreatePokemonFrontSprite(GetStarterPokemon(gTasks[taskId].tStarterSelection), sPokeballCoords[selection][0], sPokeballCoords[selection][1]);
-        gSprites[spriteId].affineAnims = &sAffineAnims_StarterPokemon;
-        gSprites[spriteId].callback = SpriteCB_StarterPokemon;
+        if (spriteId < MAX_SPRITES)
+        {
+            gSprites[spriteId].affineAnims = &sAffineAnims_StarterPokemon;
+            gSprites[spriteId].callback = SpriteCB_StarterPokemon;
+        }
 
         gTasks[taskId].tPkmnSpriteId = spriteId;
         gTasks[taskId].func = Task_WaitForStarterSprite;
@@ -523,9 +538,11 @@ static void Task_HandleStarterChooseInput(u8 taskId)
 
 static void Task_WaitForStarterSprite(u8 taskId)
 {
-    if (gSprites[gTasks[taskId].tCircleSpriteId].affineAnimEnded &&
-        gSprites[gTasks[taskId].tCircleSpriteId].x == STARTER_PKMN_POS_X &&
-        gSprites[gTasks[taskId].tCircleSpriteId].y == STARTER_PKMN_POS_Y)
+    u16 spriteId = gTasks[taskId].tCircleSpriteId;
+
+    if (spriteId >= MAX_SPRITES || (gSprites[spriteId].affineAnimEnded
+        && gSprites[spriteId].x == STARTER_PKMN_POS_X
+        && gSprites[spriteId].y == STARTER_PKMN_POS_Y))
     {
         gTasks[taskId].func = Task_AskConfirmStarter;
     }
@@ -562,12 +579,18 @@ static void Task_HandleConfirmStarterInput(u8 taskId)
         EraseYesNoWindow();
         PlaySE(SE_SELECT);
         spriteId = gTasks[taskId].tPkmnSpriteId;
-        FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
-        FreeAndDestroyMonPicSprite(spriteId);
+        if (spriteId < MAX_SPRITES)
+        {
+            FreeSpriteOamMatrix(&gSprites[spriteId]);
+            FreeAndDestroyMonPicSprite(spriteId);
+        }
 
         spriteId = gTasks[taskId].tCircleSpriteId;
-        FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
-        DestroySprite(&gSprites[spriteId]);
+        if (spriteId < MAX_SPRITES)
+        {
+            FreeSpriteOamMatrix(&gSprites[spriteId]);
+            DestroySprite(&gSprites[spriteId]);
+        }
         gTasks[taskId].func = Task_DeclineStarter;
         break;
     }
@@ -639,9 +662,10 @@ static void Task_CreateStarterLabel(u8 taskId)
 
 static u8 CreatePokemonFrontSprite(u16 species, u8 x, u8 y)
 {
-    u8 spriteId;
+    u16 spriteId = CreateMonPicSprite_Affine(species, SHINY_ODDS, 0, MON_PIC_AFFINE_FRONT, x, y, 14, TAG_NONE);
 
-    spriteId = CreateMonPicSprite_Affine(species, SHINY_ODDS, 0, MON_PIC_AFFINE_FRONT, x, y, 14, TAG_NONE);
+    if (spriteId >= MAX_SPRITES)
+        return MAX_SPRITES;
     gSprites[spriteId].oam.priority = 0;
     return spriteId;
 }

@@ -7,6 +7,10 @@
 #include "new_game.h"
 #include "overworld.h"
 #include "malloc.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#include "menu.h"
+#endif
 
 // Reloads the game, continuing from the point of the last save
 // Used to gracefully exit after a link connection error
@@ -14,6 +18,12 @@ void ReloadSave(void)
 {
     u16 imeBackup = REG_IME;
     REG_IME = 0;
+#ifdef PLATFORM_SDL2
+    SetVBlankCallback(NULL);
+    ClearDma3Requests();
+    ClearScheduledBgCopiesToVram();
+    ResetTempTileDataBuffers();
+#endif
     RegisterRamReset(RESET_EWRAM);
     ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_FORCED_BLANK);
     REG_IME = imeBackup;

@@ -61,9 +61,12 @@ static void None_Main(void);
 static u8 None_Finish(void);
 
 EWRAM_DATA struct Weather gWeather = {0};
-EWRAM_DATA static u8 ALIGNED(2) sFieldEffectPaletteColorMapTypes[32] = {0};
 
-static const u8 *sPaletteColorMapTypes;
+static u8 sPreservedWeatherPaletteBank = 0xFF;
+
+#define WEATHER_BG_PALETTE_COUNT (BG_PLTT_CAPACITY / PLTT_SIZE_4BPP)
+#define WEATHER_OBJ_PALETTE_COUNT (OBJ_PLTT_CAPACITY / PLTT_SIZE_4BPP)
+#define WEATHER_PALETTE_COUNT (WEATHER_BG_PALETTE_COUNT + WEATHER_OBJ_PALETTE_COUNT)
 
 // The drought weather effect uses a precalculated color lookup table. Presumably this
 // is because the underlying color shift calculation is slow.
@@ -287,7 +290,7 @@ static void BuildColorMaps(void)
     u16 baseBrightness;
     s16 diff;
 
-    sPaletteColorMapTypes = sBasePaletteColorMapTypes;
+    sPreservedWeatherPaletteBank = 0xFF;
     for (i = 0; i < 2; i++)
     {
         if (i == 0)
@@ -367,7 +370,7 @@ static void UpdateWeatherColorMap(void)
                 else
                     gWeatherPtr->colorMapIndex--;
 
-                ApplyColorMap(0, 32, gWeatherPtr->colorMapIndex);
+                ApplyColorMap(0, WEATHER_PALETTE_COUNT, gWeatherPtr->colorMapIndex);
             }
         }
     }
@@ -426,12 +429,12 @@ static bool8 FadeInScreen_RainShowShade(void)
 
     if (++gWeatherPtr->fadeScreenCounter >= 16)
     {
-        ApplyColorMap(0, 32, 3);
+        ApplyColorMap(0, WEATHER_PALETTE_COUNT, 3);
         gWeatherPtr->fadeScreenCounter = 16;
         return FALSE;
     }
 
-    ApplyColorMapWithBlend(0, 32, 3, 16 - gWeatherPtr->fadeScreenCounter, gWeatherPtr->fadeDestColor);
+    ApplyColorMapWithBlend(0, WEATHER_PALETTE_COUNT, 3, 16 - gWeatherPtr->fadeScreenCounter, gWeatherPtr->fadeDestColor);
     return TRUE;
 }
 
@@ -442,7 +445,7 @@ static bool8 FadeInScreen_Drought(void)
 
     if (++gWeatherPtr->fadeScreenCounter >= 16)
     {
-        ApplyColorMap(0, 32, -6);
+        ApplyColorMap(0, WEATHER_PALETTE_COUNT, -6);
         gWeatherPtr->fadeScreenCounter = 16;
         return FALSE;
     }
@@ -475,9 +478,9 @@ struct FieldPaletteWeatherMap
     s8 fastCeilingDelta;
 };
 
-static struct FieldPaletteWeatherMap sUnfadedFieldPaletteWeather[16];
-static struct FieldPaletteWeatherMap sPendingFieldPaletteWeather[16];
-static struct FieldPaletteWeatherMap sDisplayedFieldPaletteWeather[16];
+static struct FieldPaletteWeatherMap sUnfadedFieldPaletteWeather[WEATHER_BG_PALETTE_COUNT];
+static struct FieldPaletteWeatherMap sPendingFieldPaletteWeather[WEATHER_BG_PALETTE_COUNT];
+static struct FieldPaletteWeatherMap sDisplayedFieldPaletteWeather[WEATHER_BG_PALETTE_COUNT];
 
 static u16 MapWeatherPaletteColor(u16 color, s8 index, u8 type)
 {
@@ -504,7 +507,7 @@ void ClearFieldPaletteWeather(u16 offset, u16 size)
     if (size == 0)
         return;
 
-    for (; offset < end && offset < 16 * 16; offset = (offset / 16 + 1) * 16)
+    for (; offset < end && offset < OBJ_PLTT_OFFSET; offset = (offset / 16 + 1) * 16)
     {
         memset(&sUnfadedFieldPaletteWeather[offset / 16], 0, sizeof(sUnfadedFieldPaletteWeather[0]));
         sPendingFieldPaletteWeather[offset / 16] = sUnfadedFieldPaletteWeather[offset / 16];
@@ -520,7 +523,7 @@ void RecordFieldPaletteBlend(u16 offset, u16 count, u8 coeff, u16 color)
 {
     u32 end = offset + count;
 
-    for (; offset < end && offset < 16 * 16; offset = (offset / 16 + 1) * 16)
+    for (; offset < end && offset < OBJ_PLTT_OFFSET; offset = (offset / 16 + 1) * 16)
     {
         u16 bank = offset / 16;
         sPendingFieldPaletteWeather[bank] = sUnfadedFieldPaletteWeather[bank];
@@ -593,12 +596,29 @@ static u8 ApplyFieldFastFadeChannel(u8 channel, const struct FieldPaletteWeather
 
 u16 GetDisplayedFieldPaletteWeatherColor(u8 palette, u16 color)
 {
-    const struct FieldPaletteWeatherMap *map = &sDisplayedFieldPaletteWeather[palette];
+    const struct FieldPaletteWeatherMap *map;
+
+    if (palette >= ARRAY_COUNT(sDisplayedFieldPaletteWeather))
+        return color;
+    map = &sDisplayedFieldPaletteWeather[palette];
 
     color = BlendRgbColor(MapWeatherPaletteColor(color, map->index, map->type), map->blendCoeff, map->blendColor);
     return RGB2(ApplyFieldFastFadeChannel(GET_R(color), map),
                 ApplyFieldFastFadeChannel(GET_G(color), map),
                 ApplyFieldFastFadeChannel(GET_B(color), map));
+}
+
+static u8 GetWeatherPaletteType(u8 bank, s8 colorMapIndex)
+{
+    u8 type;
+
+    if (bank == sPreservedWeatherPaletteBank)
+        return COLOR_MAP_NONE;
+    type = sBasePaletteColorMapTypes[bank & 31];
+    if (colorMapIndex > 0 && type != COLOR_MAP_NONE && (bank & 16)
+     && ((bank & 15) + ((bank & 32) >> 1)) == gWeatherPtr->contrastColorMapSpritePalIndex)
+        return COLOR_MAP_CONTRAST;
+    return type;
 }
 
 static void ApplyColorMap(u8 startPalIndex, u8 numPalettes, s8 colorMapIndex)
@@ -607,20 +627,17 @@ static void ApplyColorMap(u8 startPalIndex, u8 numPalettes, s8 colorMapIndex)
 
     for (curPalIndex = startPalIndex; curPalIndex < startPalIndex + numPalettes; curPalIndex++)
     {
-        u16 offset = PLTT_ID(curPalIndex);
-        u8 type = colorMapIndex == 0 ? COLOR_MAP_NONE : sPaletteColorMapTypes[curPalIndex];
+        u16 offset = PaletteBankOffset(curPalIndex);
+        u8 type = colorMapIndex == 0 ? COLOR_MAP_NONE : GetWeatherPaletteType(curPalIndex, colorMapIndex);
         u16 i;
 
-        if (colorMapIndex > 0 && type != COLOR_MAP_NONE
-         && curPalIndex - 16 == gWeatherPtr->contrastColorMapSpritePalIndex)
-            type = COLOR_MAP_CONTRAST;
-
-        if (curPalIndex < ARRAY_COUNT(sPendingFieldPaletteWeather))
+        if (!(curPalIndex & 16))
         {
-            sPendingFieldPaletteWeather[curPalIndex] = (struct FieldPaletteWeatherMap){0};
-            sPendingFieldPaletteWeather[curPalIndex].index = colorMapIndex;
-            sPendingFieldPaletteWeather[curPalIndex].type = type;
-            sPendingFieldPaletteWeather[curPalIndex].blendCoeff = 0;
+            u8 bgBank = offset / 16;
+            sPendingFieldPaletteWeather[bgBank] = (struct FieldPaletteWeatherMap){
+                .index = colorMapIndex,
+                .type = type,
+            };
         }
 
         if (type == COLOR_MAP_NONE)
@@ -641,8 +658,8 @@ static void ApplyColorMapWithBlend(u8 startPalIndex, u8 numPalettes, s8 colorMap
 
     for (palette = startPalIndex; palette < startPalIndex + numPalettes; palette++)
     {
-        u8 type = sPaletteColorMapTypes[palette];
-        u16 offset = PLTT_ID(palette);
+        u8 type = GetWeatherPaletteType(palette, 0);
+        u16 offset = PaletteBankOffset(palette);
         u16 i;
 
         if (type == COLOR_MAP_NONE)
@@ -651,13 +668,15 @@ static void ApplyColorMapWithBlend(u8 startPalIndex, u8 numPalettes, s8 colorMap
             continue;
         }
 
-        if (palette < ARRAY_COUNT(sPendingFieldPaletteWeather))
+        if (!(palette & 16))
         {
-            sPendingFieldPaletteWeather[palette] = (struct FieldPaletteWeatherMap){0};
-            sPendingFieldPaletteWeather[palette].index = colorMapIndex;
-            sPendingFieldPaletteWeather[palette].type = type;
-            sPendingFieldPaletteWeather[palette].blendCoeff = blendCoeff;
-            sPendingFieldPaletteWeather[palette].blendColor = blendColor;
+            u8 bgBank = offset / 16;
+            sPendingFieldPaletteWeather[bgBank] = (struct FieldPaletteWeatherMap){
+                .index = colorMapIndex,
+                .type = type,
+                .blendCoeff = blendCoeff,
+                .blendColor = blendColor,
+            };
         }
 
         for (i = 0; i < 16; i++)
@@ -670,7 +689,7 @@ static void ApplyColorMapWithBlend(u8 startPalIndex, u8 numPalettes, s8 colorMap
 
 static void ApplyDroughtColorMapWithBlend(s8 colorMapIndex, u8 blendCoeff, u16 blendColor)
 {
-    ApplyColorMapWithBlend(0, 32, colorMapIndex, blendCoeff, blendColor);
+    ApplyColorMapWithBlend(0, WEATHER_PALETTE_COUNT, colorMapIndex, blendCoeff, blendColor);
 }
 
 static void ApplyFogBlend(u8 blendCoeff, u16 blendColor)
@@ -679,20 +698,22 @@ static void ApplyFogBlend(u8 blendCoeff, u16 blendColor)
     u8 rBlend;
     u8 gBlend;
     u8 bBlend;
-    u16 curPalIndex;
+    u8 objPalette;
 
-    BlendPalette(BG_PLTT_ID(0), 16 * 16, blendCoeff, blendColor);
+    BlendPalette(BG_PLTT_ID(0), OBJ_PLTT_OFFSET, blendCoeff, blendColor);
     color = *(struct RGBColor *)&blendColor;
     rBlend = color.r;
     gBlend = color.g;
     bBlend = color.b;
 
-    for (curPalIndex = 16; curPalIndex < 32; curPalIndex++)
+    for (objPalette = 0; objPalette < WEATHER_OBJ_PALETTE_COUNT; objPalette++)
     {
-        if (LightenSpritePaletteInFog(curPalIndex))
+        u16 offset = OBJ_PLTT_ID(objPalette);
+
+        if (LightenSpritePaletteInFog(objPalette))
         {
-            u16 palEnd = PLTT_ID(curPalIndex + 1);
-            u16 palOffset = PLTT_ID(curPalIndex);
+            u16 palOffset = offset;
+            u16 palEnd = palOffset + 16;
 
             while (palOffset < palEnd)
             {
@@ -715,7 +736,7 @@ static void ApplyFogBlend(u8 blendCoeff, u16 blendColor)
         }
         else
         {
-            BlendPalette(PLTT_ID(curPalIndex), 16, blendCoeff, blendColor);
+            BlendPalette(offset, 16, blendCoeff, blendColor);
         }
     }
 }
@@ -746,7 +767,7 @@ void ApplyWeatherColorMapIfIdle(s8 colorMapIndex)
 {
     if (gWeatherPtr->palProcessingState == WEATHER_PAL_STATE_IDLE)
     {
-        ApplyColorMap(0, 32, colorMapIndex);
+        ApplyColorMap(0, WEATHER_PALETTE_COUNT, colorMapIndex);
         gWeatherPtr->colorMapIndex = colorMapIndex;
     }
 }
@@ -813,7 +834,7 @@ void FadeScreen(u8 mode, s8 delay)
         if (useWeatherPal)
             CopyFadedPaletteToUnfaded();
 
-        BeginNormalPaletteFade(PALETTES_ALL, delay, 0, 16, fadeColor);
+        BeginNormalPaletteFade(PALETTES_ALL_FULL, delay, 0, 16, fadeColor);
         gWeatherPtr->palProcessingState = WEATHER_PAL_STATE_SCREEN_FADING_OUT;
     }
     else
@@ -822,7 +843,7 @@ void FadeScreen(u8 mode, s8 delay)
         if (useWeatherPal)
             gWeatherPtr->fadeScreenCounter = 0;
         else
-            BeginNormalPaletteFade(PALETTES_ALL, delay, 16, 0, fadeColor);
+            BeginNormalPaletteFade(PALETTES_ALL_FULL, delay, 16, 0, fadeColor);
 
         gWeatherPtr->palProcessingState = WEATHER_PAL_STATE_SCREEN_FADING_IN;
         gWeatherPtr->fadeInFirstFrame = TRUE;
@@ -839,8 +860,12 @@ bool8 IsWeatherNotFadingIn(void)
 
 void UpdateSpritePaletteWithWeather(u8 spritePaletteIndex)
 {
-    u16 paletteIndex = 16 + spritePaletteIndex;
+    u16 paletteOffset;
     u16 i;
+
+    if (spritePaletteIndex >= WEATHER_OBJ_PALETTE_COUNT)
+        return;
+    paletteOffset = OBJ_PLTT_ID(spritePaletteIndex);
 
     switch (gWeatherPtr->palProcessingState)
     {
@@ -848,28 +873,25 @@ void UpdateSpritePaletteWithWeather(u8 spritePaletteIndex)
         if (gWeatherPtr->fadeInFirstFrame)
         {
             if (gWeatherPtr->currWeather == WEATHER_FOG_HORIZONTAL)
-                MarkFogSpritePalToLighten(paletteIndex);
-            paletteIndex = PLTT_ID(paletteIndex);
+                MarkFogSpritePalToLighten(spritePaletteIndex);
             for (i = 0; i < 16; i++)
-                gPlttBufferFaded[paletteIndex + i] = gWeatherPtr->fadeDestColor;
+                gPlttBufferFaded[paletteOffset + i] = gWeatherPtr->fadeDestColor;
         }
         break;
     case WEATHER_PAL_STATE_SCREEN_FADING_OUT:
-        paletteIndex = PLTT_ID(paletteIndex);
-        CpuFastCopy(&gPlttBufferFaded[paletteIndex], &gPlttBufferUnfaded[paletteIndex], PLTT_SIZE_4BPP);
-        BlendPalette(paletteIndex, 16, gPaletteFade.y, gPaletteFade.blendColor);
+        CpuFastCopy(&gPlttBufferFaded[paletteOffset], &gPlttBufferUnfaded[paletteOffset], PLTT_SIZE_4BPP);
+        BlendPalette(paletteOffset, 16, gPaletteFade.y, gPaletteFade.blendColor);
         break;
     // WEATHER_PAL_STATE_CHANGING_WEATHER
     // WEATHER_PAL_STATE_CHANGING_IDLE
     default:
         if (gWeatherPtr->currWeather != WEATHER_FOG_HORIZONTAL)
         {
-            ApplyColorMap(paletteIndex, 1, gWeatherPtr->colorMapIndex);
+            ApplyColorMap(ObjPaletteBank(spritePaletteIndex), 1, gWeatherPtr->colorMapIndex);
         }
         else
         {
-            paletteIndex = PLTT_ID(paletteIndex);
-            BlendPalette(paletteIndex, 16, 12, RGB(28, 31, 28));
+            BlendPalette(paletteOffset, 16, 12, RGB(28, 31, 28));
         }
         break;
     }
@@ -877,7 +899,8 @@ void UpdateSpritePaletteWithWeather(u8 spritePaletteIndex)
 
 void ApplyWeatherColorMapToPal(u8 paletteIndex)
 {
-    ApplyColorMap(paletteIndex, 1, gWeatherPtr->colorMapIndex);
+    if (paletteIndex < WEATHER_PALETTE_COUNT)
+        ApplyColorMap(paletteIndex, 1, gWeatherPtr->colorMapIndex);
 }
 
 static bool8 UNUSED IsFirstFrameOfWeatherFadeIn(void)
@@ -1129,12 +1152,10 @@ void SetWeatherPalStateIdle(void)
 
 void PreservePaletteInWeather(u8 preservedPalIndex)
 {
-    CpuCopy16(sBasePaletteColorMapTypes, sFieldEffectPaletteColorMapTypes, 32);
-    sFieldEffectPaletteColorMapTypes[preservedPalIndex] = COLOR_MAP_NONE;
-    sPaletteColorMapTypes = sFieldEffectPaletteColorMapTypes;
+    sPreservedWeatherPaletteBank = preservedPalIndex;
 }
 
 void ResetPreservedPalettesInWeather(void)
 {
-    sPaletteColorMapTypes = sBasePaletteColorMapTypes;
+    sPreservedWeatherPaletteBank = 0xFF;
 }

@@ -120,6 +120,10 @@ const u8 gMiscBlank_Gfx[] = INCGFX_U8("graphics/interface/blank.png", ".4bpp");
 u8 CreateInvisibleSpriteWithCallback(void (*callback)(struct Sprite *))
 {
     u8 sprite = CreateSprite(&sInvisibleSpriteTemplate, DISPLAY_WIDTH + 8, DISPLAY_HEIGHT + 8, 14);
+
+    if (sprite >= MAX_SPRITES)
+        return MAX_SPRITES;
+
     gSprites[sprite].invisible = TRUE;
     gSprites[sprite].callback = callback;
     return sprite;

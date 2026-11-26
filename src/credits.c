@@ -15,6 +15,9 @@
 #include "trainer_pokemon_sprites.h"
 #include "starter_choose.h"
 #include "decompress.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#endif
 #include "intro_credits_graphics.h"
 #include "sound.h"
 #include "trig.h"
@@ -381,7 +384,9 @@ static void FreeCreditsBgsAndWindows(void)
     void *tilemap = GetBgTilemapBuffer(0);
 
 #ifdef PORTABLE
+#ifndef PLATFORM_SDL2
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeAllWindowBuffers();
@@ -422,6 +427,9 @@ void CB2_StartCreditsSequence(void)
 
     SetVBlankCallback(NULL);
 #ifdef PLATFORM_SDL2
+    ClearDma3Requests();
+    ClearScheduledBgCopiesToVram();
+    ResetTempTileDataBuffers();
     SetFrameViewToGbaSize(TRUE);
 #endif
     ResetGpuAndVram();
@@ -827,6 +835,10 @@ static void Task_UpdatePage(u8 taskId)
         }
         return;
     case 10:
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#endif
         gTasks[gTasks[taskId].tMainTaskId].tEndCredits = TRUE;
         DestroyTask(taskId);
         FreeCreditsBgsAndWindows();
@@ -929,12 +941,14 @@ static void Task_ShowMons(u8 taskId)
         if (sCreditsData->currShownMon < sCreditsData->numMonToShow - 1)
         {
             sCreditsData->currShownMon++;
-            gSprites[spriteId].data[3] = 50;
+            if (spriteId < MAX_SPRITES)
+                gSprites[spriteId].data[3] = 50;
         }
         else
         {
             sCreditsData->currShownMon = 0;
-            gSprites[spriteId].data[3] = 512;
+            if (spriteId < MAX_SPRITES)
+                gSprites[spriteId].data[3] = 512;
         }
         sCreditsData->imgCounter++;
 
@@ -979,7 +993,8 @@ static void Task_BikeScene(u8 taskId)
         }
         else
         {
-            gSprites[gTasks[taskId].tPlayer].data[0] = 2;
+            if (gTasks[taskId].tPlayer < MAX_SPRITES)
+                gSprites[gTasks[taskId].tPlayer].data[0] = 2;
             gTasks[taskId].tSinIdx = 0;
             gTasks[taskId].tState++;
         }
@@ -996,8 +1011,10 @@ static void Task_BikeScene(u8 taskId)
         }
         break;
     case 3:
-        gSprites[gTasks[taskId].tPlayer].data[0] = 3;
-        gSprites[gTasks[taskId].tRival].data[0] = 1;
+        if (gTasks[taskId].tPlayer < MAX_SPRITES)
+            gSprites[gTasks[taskId].tPlayer].data[0] = 3;
+        if (gTasks[taskId].tRival < MAX_SPRITES)
+            gSprites[gTasks[taskId].tRival].data[0] = 1;
         gTasks[taskId].tDelay = 120;
         gTasks[taskId].tState++;
         break;
@@ -1020,7 +1037,8 @@ static void Task_BikeScene(u8 taskId)
         }
         else
         {
-            gSprites[gTasks[taskId].tPlayer].data[0] = 1;
+            if (gTasks[taskId].tPlayer < MAX_SPRITES)
+                gSprites[gTasks[taskId].tPlayer].data[0] = 1;
             gTasks[taskId].tState++;
         }
         break;
@@ -1028,16 +1046,20 @@ static void Task_BikeScene(u8 taskId)
         gTasks[taskId].tState = 50;
         break;
     case 10:
-        gSprites[gTasks[taskId].tRival].data[0] = 2;
+        if (gTasks[taskId].tRival < MAX_SPRITES)
+            gSprites[gTasks[taskId].tRival].data[0] = 2;
         gTasks[taskId].tState = 50;
         break;
     case 20:
-        gSprites[gTasks[taskId].tPlayer].data[0] = 4;
+        if (gTasks[taskId].tPlayer < MAX_SPRITES)
+            gSprites[gTasks[taskId].tPlayer].data[0] = 4;
         gTasks[taskId].tState = 50;
         break;
     case 30:
-        gSprites[gTasks[taskId].tPlayer].data[0] = 5;
-        gSprites[gTasks[taskId].tRival].data[0] = 3;
+        if (gTasks[taskId].tPlayer < MAX_SPRITES)
+            gSprites[gTasks[taskId].tPlayer].data[0] = 5;
+        if (gTasks[taskId].tRival < MAX_SPRITES)
+            gSprites[gTasks[taskId].tRival].data[0] = 3;
         gTasks[taskId].tState = 50;
         break;
     case 50:
@@ -1107,63 +1129,44 @@ static void Task_CycleSceneryPalette(u8 taskId)
     }
 }
 
+static void PositionCreditsCyclist(u16 spriteId, s16 x)
+{
+    if (spriteId < MAX_SPRITES)
+    {
+        gSprites[spriteId].invisible = FALSE;
+        gSprites[spriteId].x = x;
+        gSprites[spriteId].y = 46;
+        gSprites[spriteId].data[0] = 0;
+    }
+}
+
 static void SetBikeScene(u8 scene, u8 taskId)
 {
     switch (scene)
     {
     case SCENE_OCEAN_MORNING:
-        gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tPlayerSpriteId].x = GBA_DISPLAY_WIDTH + 32;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = GBA_DISPLAY_WIDTH + 32;
-        gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
-        gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
-        gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
-        gSprites[gTasks[taskId].tRivalSpriteId].data[0] = 0;
+        PositionCreditsCyclist(gTasks[taskId].tPlayerSpriteId, GBA_DISPLAY_WIDTH + 32);
+        PositionCreditsCyclist(gTasks[taskId].tRivalSpriteId, GBA_DISPLAY_WIDTH + 32);
         gTasks[taskId].tTaskId_BgScenery = CreateBicycleBgAnimationTask(0, 0x2000, 0x20, 8);
         break;
     case SCENE_OCEAN_SUNSET:
-        gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tPlayerSpriteId].x = 120;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = GBA_DISPLAY_WIDTH + 32;
-        gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
-        gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
-        gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
-        gSprites[gTasks[taskId].tRivalSpriteId].data[0] = 0;
+        PositionCreditsCyclist(gTasks[taskId].tPlayerSpriteId, 120);
+        PositionCreditsCyclist(gTasks[taskId].tRivalSpriteId, GBA_DISPLAY_WIDTH + 32);
         gTasks[taskId].tTaskId_BgScenery = CreateBicycleBgAnimationTask(0, 0x2000, 0x20, 8);
         break;
     case SCENE_FOREST_RIVAL_ARRIVE:
-        gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tPlayerSpriteId].x = 120;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = GBA_DISPLAY_WIDTH + 32;
-        gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
-        gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
-        gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
-        gSprites[gTasks[taskId].tRivalSpriteId].data[0] = 0;
+        PositionCreditsCyclist(gTasks[taskId].tPlayerSpriteId, 120);
+        PositionCreditsCyclist(gTasks[taskId].tRivalSpriteId, GBA_DISPLAY_WIDTH + 32);
         gTasks[taskId].tTaskId_BgScenery = CreateBicycleBgAnimationTask(1, 0x2000, 0x200, 8);
         break;
     case SCENE_FOREST_CATCH_RIVAL:
-        gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tPlayerSpriteId].x = 120;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = -32;
-        gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
-        gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
-        gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
-        gSprites[gTasks[taskId].tRivalSpriteId].data[0] = 0;
+        PositionCreditsCyclist(gTasks[taskId].tPlayerSpriteId, 120);
+        PositionCreditsCyclist(gTasks[taskId].tRivalSpriteId, -32);
         gTasks[taskId].tTaskId_BgScenery = CreateBicycleBgAnimationTask(1, 0x2000, 0x200, 8);
         break;
     case SCENE_CITY_NIGHT:
-        gSprites[gTasks[taskId].tPlayerSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tRivalSpriteId].invisible = FALSE;
-        gSprites[gTasks[taskId].tPlayerSpriteId].x = 88;
-        gSprites[gTasks[taskId].tRivalSpriteId].x = 152;
-        gSprites[gTasks[taskId].tPlayerSpriteId].y = 46;
-        gSprites[gTasks[taskId].tRivalSpriteId].y = 46;
-        gSprites[gTasks[taskId].tPlayerSpriteId].data[0] = 0;
-        gSprites[gTasks[taskId].tRivalSpriteId].data[0] = 0;
+        PositionCreditsCyclist(gTasks[taskId].tPlayerSpriteId, 88);
+        PositionCreditsCyclist(gTasks[taskId].tRivalSpriteId, 152);
         gTasks[taskId].tTaskId_BgScenery = CreateBicycleBgAnimationTask(2, 0x2000, 0x200, 8);
         break;
     }
@@ -1227,13 +1230,19 @@ static bool8 LoadBikeScene(u8 scene, u8 taskId)
 
             spriteId = CreateIntroBrendanSprite(120, 46);
             gTasks[taskId].tPlayerSpriteId = spriteId;
-            gSprites[spriteId].callback = SpriteCB_Player;
-            gSprites[spriteId].anims = sAnims_Player;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].callback = SpriteCB_Player;
+                gSprites[spriteId].anims = sAnims_Player;
+            }
 
             spriteId = CreateIntroMaySprite(GBA_DISPLAY_WIDTH + 32, 46);
             gTasks[taskId].tRivalSpriteId = spriteId;
-            gSprites[spriteId].callback = SpriteCB_Rival;
-            gSprites[spriteId].anims = sAnims_Rival;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].callback = SpriteCB_Rival;
+                gSprites[spriteId].anims = sAnims_Rival;
+            }
         }
         else
         {
@@ -1244,13 +1253,19 @@ static bool8 LoadBikeScene(u8 scene, u8 taskId)
 
             spriteId = CreateIntroMaySprite(120, 46);
             gTasks[taskId].tPlayerSpriteId = spriteId;
-            gSprites[spriteId].callback = SpriteCB_Player;
-            gSprites[spriteId].anims = sAnims_Player;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].callback = SpriteCB_Player;
+                gSprites[spriteId].anims = sAnims_Player;
+            }
 
             spriteId = CreateIntroBrendanSprite(GBA_DISPLAY_WIDTH + 32, 46);
             gTasks[taskId].tRivalSpriteId = spriteId;
-            gSprites[spriteId].callback = SpriteCB_Rival;
-            gSprites[spriteId].anims = sAnims_Rival;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].callback = SpriteCB_Rival;
+                gSprites[spriteId].anims = sAnims_Rival;
+            }
         };
         gMain.state++;
         break;
@@ -1308,6 +1323,9 @@ static void LoadTheEndScreen(u16 tileOffsetLoad, u16 tileOffsetWrite, u16 palOff
 
     for (i = 0; i < 32 * 32; i++)
         ((u16 *) (VRAM + tileOffsetWrite))[i] = baseTile + 1;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange((void *)(VRAM + tileOffsetWrite), BG_SCREEN_SIZE);
+#endif
 }
 
 static u16 GetLetterMapTile(u8 baseTiles)
@@ -1332,8 +1350,13 @@ static void DrawLetterMapTiles(const u8 baseTiles[], u8 baseX, u8 baseY, u16 off
 
     for (y = 0; y < 5; y++)
     {
+        u16 *row = (u16 *)(VRAM + offset + (baseY + y) * 64);
+
         for (x = 0; x < 3; x++)
-            ((u16 *) (VRAM + offset + (baseY + y) * 64))[baseX + x] = tileOffset + GetLetterMapTile(baseTiles[y * 3 + x]);
+            row[baseX + x] = tileOffset + GetLetterMapTile(baseTiles[y * 3 + x]);
+#ifdef PLATFORM_SDL2
+        InvalidateBgTilemapVramRange(&row[baseX], 3 * sizeof(*row));
+#endif
     }
 }
 
@@ -1344,6 +1367,9 @@ static void DrawTheEnd(u16 offset, u16 palette)
 
     for (pos = 0; pos < 32 * 32; pos++)
         ((u16 *) (VRAM + offset))[pos] = baseTile + 1;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange((void *)(VRAM + offset), BG_SCREEN_SIZE);
+#endif
 
     DrawLetterMapTiles(sTheEnd_LetterMap_T, 3, 7, offset, palette);
     DrawLetterMapTiles(sTheEnd_LetterMap_H, 7, 7, offset, palette);
@@ -1430,13 +1456,30 @@ static void SpriteCB_Rival(struct Sprite *sprite)
 }
 
 #define sPosition data[1]
+#define sBgSpriteId data[5]
 #define sSpriteId data[6]
+#define sMonSpriteId data[0]
+
+static void DestroyCreditsMonSprite(struct Sprite *sprite)
+{
+#ifdef PLATFORM_SDL2
+    u16 matrix = sprite->sPosition;
+#endif
+    struct Sprite *bg = &gSprites[sprite->sBgSpriteId];
+
+    if (bg->inUse && bg->callback == SpriteCB_CreditsMonBg && bg->sMonSpriteId == sprite->sSpriteId)
+        DestroySprite(bg);
+    FreeAndDestroyMonPicSprite(sprite->sSpriteId);
+#ifdef PLATFORM_SDL2
+    ReleaseOamMatrices(matrix, 1);
+#endif
+}
 
 static void SpriteCB_CreditsMon(struct Sprite *sprite)
 {
     if (gIntroCredits_MovingSceneryState != INTROCRED_SCENERY_NORMAL)
     {
-        FreeAndDestroyMonPicSprite(sprite->sSpriteId);
+        DestroyCreditsMonSprite(sprite);
         return;
     }
 
@@ -1446,9 +1489,9 @@ static void SpriteCB_CreditsMon(struct Sprite *sprite)
     case 0:
     default:
         sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        sprite->oam.matrixNum = sprite->sPosition;
+        SetSpriteMatrixHandle(sprite, sprite->sPosition);
         sprite->data[2] = 16;
-        SetOamMatrix(sprite->sPosition, 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
+        SetOamMatrix(GetSpriteMatrixHandle(sprite), 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
         sprite->invisible = FALSE;
         sprite->sState = 1;
         break;
@@ -1456,7 +1499,7 @@ static void SpriteCB_CreditsMon(struct Sprite *sprite)
         if (sprite->data[2] < 256)
         {
             sprite->data[2] += 8;
-            SetOamMatrix(sprite->sPosition, 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
+            SetOamMatrix(GetSpriteMatrixHandle(sprite), 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
         }
         else
         {
@@ -1514,36 +1557,58 @@ static void SpriteCB_CreditsMon(struct Sprite *sprite)
     case 10:
         SetGpuReg(REG_OFFSET_BLDCNT, 0);
         SetGpuReg(REG_OFFSET_BLDALPHA, 0);
-        FreeAndDestroyMonPicSprite(sprite->data[6]);
+        DestroyCreditsMonSprite(sprite);
         break;
     }
 }
 
-#define sMonSpriteId data[0]
-
 static u8 CreateCreditsMonSprite(u16 nationalDexNum, s16 x, s16 y, u16 position)
 {
-    u8 monSpriteId;
+    u16 monSpriteId;
     u8 bgSpriteId;
 
+#ifdef PLATFORM_SDL2
+    if (!ReserveOamMatrices(position + 1, 1))
+        return MAX_SPRITES;
+#endif
     monSpriteId = CreateMonSpriteFromNationalDexNumber(nationalDexNum, x, y, position);
+    if (monSpriteId >= MAX_SPRITES)
+        goto releaseMatrix;
+
+    bgSpriteId = CreateSprite(&sSpriteTemplate_CreditsMonBg, gSprites[monSpriteId].x, gSprites[monSpriteId].y, 1);
+    if (bgSpriteId >= MAX_SPRITES)
+    {
+        FreeAndDestroyMonPicSprite(monSpriteId);
+        goto releaseMatrix;
+    }
+
     gSprites[monSpriteId].oam.priority = 1;
     gSprites[monSpriteId].sPosition = position + 1;
     gSprites[monSpriteId].invisible = TRUE;
     gSprites[monSpriteId].callback = SpriteCB_CreditsMon;
     gSprites[monSpriteId].sSpriteId = monSpriteId;
+    gSprites[monSpriteId].sBgSpriteId = bgSpriteId;
 
-    bgSpriteId = CreateSprite(&sSpriteTemplate_CreditsMonBg, gSprites[monSpriteId].x, gSprites[monSpriteId].y, 1);
     gSprites[bgSpriteId].sMonSpriteId = monSpriteId;
 
     StartSpriteAnimIfDifferent(&gSprites[bgSpriteId], position);
 
     return monSpriteId;
+
+releaseMatrix:
+#ifdef PLATFORM_SDL2
+    ReleaseOamMatrices(position + 1, 1);
+#endif
+    return MAX_SPRITES;
 }
 
 static void SpriteCB_CreditsMonBg(struct Sprite *sprite)
 {
-    if (gSprites[sprite->sMonSpriteId].data[0] == 10
+    u16 monSpriteId = sprite->sMonSpriteId;
+
+    if (monSpriteId >= MAX_SPRITES || !gSprites[monSpriteId].inUse
+     || gSprites[monSpriteId].callback != SpriteCB_CreditsMon
+     || gSprites[monSpriteId].data[0] == 10
      || gIntroCredits_MovingSceneryState != INTROCRED_SCENERY_NORMAL)
     {
         DestroySprite(sprite);
@@ -1551,12 +1616,13 @@ static void SpriteCB_CreditsMonBg(struct Sprite *sprite)
     }
 
     // Copy sprite data from the associated Pokémon
-    sprite->invisible = gSprites[sprite->sMonSpriteId].invisible;
-    sprite->oam.objMode = gSprites[sprite->sMonSpriteId].oam.objMode;
-    sprite->oam.affineMode = gSprites[sprite->sMonSpriteId].oam.affineMode;
-    sprite->oam.matrixNum = gSprites[sprite->sMonSpriteId].oam.matrixNum;
-    sprite->x = gSprites[sprite->sMonSpriteId].x;
-    sprite->y = gSprites[sprite->sMonSpriteId].y;
+    sprite->invisible = gSprites[monSpriteId].invisible;
+    sprite->oam.objMode = gSprites[monSpriteId].oam.objMode;
+    sprite->oam.affineMode = gSprites[monSpriteId].oam.affineMode;
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+        SetSpriteMatrixHandle(sprite, GetSpriteMatrixHandle(&gSprites[monSpriteId]));
+    sprite->x = gSprites[monSpriteId].x;
+    sprite->y = gSprites[monSpriteId].y;
 }
 
 static void DeterminePokemonToShow(void)

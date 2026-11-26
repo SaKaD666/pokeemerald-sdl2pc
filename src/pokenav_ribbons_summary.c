@@ -1238,8 +1238,8 @@ static void UpdateAndZoomInSelectedRibbon(struct Pokenav_RibbonsSummaryMenu *men
 
     // Set new selected ribbon's gfx data
     ribbonId = GetRibbonId();
-    menu->bigRibbonSprite->oam.tileNum = (sRibbonGfxData[ribbonId].tileNumOffset * 16) + GetSpriteTileStartByTag(GFXTAG_RIBBON_ICONS_BIG);
-    menu->bigRibbonSprite->oam.paletteNum = IndexOfSpritePaletteTag(sRibbonGfxData[ribbonId].palNumOffset + PALTAG_RIBBON_ICONS_1);
+    SetSpriteSheetTileOffset(menu->bigRibbonSprite, sRibbonGfxData[ribbonId].tileNumOffset * 16);
+    SetSpritePaletteFromTag(menu->bigRibbonSprite, sRibbonGfxData[ribbonId].palNumOffset + PALTAG_RIBBON_ICONS_1);
 
     // Start zoom in animation
     StartSpriteAffineAnim(menu->bigRibbonSprite, RIBBONANIM_ZOOM_IN);

@@ -206,6 +206,20 @@ void BeginEvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, bool8 canStopE
     SetMainCallback2(CB2_BeginEvolutionScene);
 }
 
+static u8 CreateEvolutionPortrait(u8 paletteNum, bool8 invisible)
+{
+    u8 spriteId = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
+
+    if (spriteId < MAX_SPRITES)
+    {
+        gSprites[spriteId].callback = SpriteCallbackDummy_2;
+        SetSpritePaletteHandle(&gSprites[spriteId], paletteNum);
+        gSprites[spriteId].invisible = invisible;
+    }
+
+    return spriteId;
+}
+
 void EvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, bool8 canStopEvo, u8 partyId)
 {
     u8 name[POKEMON_NAME_BUFFER_SIZE];
@@ -267,11 +281,7 @@ void EvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, bool8 canStopEvo, u
 
     SetMultiuseSpriteTemplateToPokemon(currSpecies, B_POSITION_OPPONENT_LEFT);
     gMultiuseSpriteTemplate.affineAnims = gDummySpriteAffineAnimTable;
-    sEvoStructPtr->preEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
-
-    gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 1;
-    gSprites[id].invisible = TRUE;
+    sEvoStructPtr->preEvoSpriteId = CreateEvolutionPortrait(1, TRUE);
 
     // postEvo sprite
     DecompressPicFromTable_2(&gMonFrontPicTable[postEvoSpecies],
@@ -282,10 +292,7 @@ void EvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, bool8 canStopEvo, u
 
     SetMultiuseSpriteTemplateToPokemon(postEvoSpecies, B_POSITION_OPPONENT_RIGHT);
     gMultiuseSpriteTemplate.affineAnims = gDummySpriteAffineAnimTable;
-    sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
-    gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 2;
-    gSprites[id].invisible = TRUE;
+    sEvoStructPtr->postEvoSpriteId = CreateEvolutionPortrait(2, TRUE);
 
     LoadEvoSparkleSpriteAndPal();
 
@@ -310,7 +317,6 @@ void EvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, bool8 canStopEvo, u
 
 static void CB2_EvolutionSceneLoadGraphics(void)
 {
-    u8 id;
     const struct CompressedSpritePalette *pokePal;
     u16 postEvoSpecies;
     u32 trainerId, personality;
@@ -360,10 +366,7 @@ static void CB2_EvolutionSceneLoadGraphics(void)
 
     SetMultiuseSpriteTemplateToPokemon(postEvoSpecies, B_POSITION_OPPONENT_RIGHT);
     gMultiuseSpriteTemplate.affineAnims = gDummySpriteAffineAnimTable;
-    sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
-
-    gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 2;
+    sEvoStructPtr->postEvoSpriteId = CreateEvolutionPortrait(2, FALSE);
 
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_BG_ALL_ON | DISPCNT_OBJ_1D_MAP);
 
@@ -433,14 +436,9 @@ static void CB2_TradeEvolutionSceneLoadGraphics(void)
         break;
     case 5:
         {
-            u8 id;
-
             SetMultiuseSpriteTemplateToPokemon(postEvoSpecies, B_POSITION_OPPONENT_LEFT);
             gMultiuseSpriteTemplate.affineAnims = gDummySpriteAffineAnimTable;
-            sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
-
-            gSprites[id].callback = SpriteCallbackDummy_2;
-            gSprites[id].oam.paletteNum = 2;
+            sEvoStructPtr->postEvoSpriteId = CreateEvolutionPortrait(2, FALSE);
             gMain.state++;
             LinkTradeDrawWindow();
         }
@@ -496,11 +494,7 @@ void TradeEvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, u8 preEvoSprit
 
     SetMultiuseSpriteTemplateToPokemon(postEvoSpecies, B_POSITION_OPPONENT_LEFT);
     gMultiuseSpriteTemplate.affineAnims = gDummySpriteAffineAnimTable;
-    sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
-
-    gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 2;
-    gSprites[id].invisible = TRUE;
+    sEvoStructPtr->postEvoSpriteId = CreateEvolutionPortrait(2, TRUE);
 
     LoadEvoSparkleSpriteAndPal();
 
@@ -650,7 +644,8 @@ static void Task_EvolutionScene(u8 taskId)
     {
     case EVOSTATE_FADE_IN:
         BeginNormalPaletteFade(PALETTES_ALL, 0, 0x10, 0, RGB_BLACK);
-        gSprites[sEvoStructPtr->preEvoSpriteId].invisible = FALSE;
+        if (sEvoStructPtr->preEvoSpriteId < MAX_SPRITES)
+            gSprites[sEvoStructPtr->preEvoSpriteId].invisible = FALSE;
         gTasks[taskId].tState++;
         ShowBg(0);
         ShowBg(1);
@@ -692,7 +687,7 @@ static void Task_EvolutionScene(u8 taskId)
         if (!gPaletteFade.active)
         {
             StartBgAnimation(FALSE);
-            sEvoGraphicsTaskId = EvolutionSparkles_SpiralUpward(17);
+            sEvoGraphicsTaskId = EvolutionSparkles_SpiralUpward(1);
             gTasks[taskId].tState++;
         }
         break;
@@ -733,6 +728,9 @@ static void Task_EvolutionScene(u8 taskId)
     case EVOSTATE_EVO_SOUND:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             PlaySE(SE_EXP);
             gTasks[taskId].tState++;
         }
@@ -831,6 +829,9 @@ static void Task_EvolutionScene(u8 taskId)
     case EVOSTATE_CANCEL:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             m4aMPlayAllStop();
             BeginNormalPaletteFade(0x6001C, 0, 0x10, 0, RGB_WHITE);
             gTasks[taskId].tState++;
@@ -1124,7 +1125,9 @@ static void Task_TradeEvolutionScene(u8 taskId)
         if (!gPaletteFade.active)
         {
             StartBgAnimation(TRUE);
-            var = gSprites[sEvoStructPtr->preEvoSpriteId].oam.paletteNum + 16;
+            var = 1;
+            if (sEvoStructPtr->preEvoSpriteId < MAX_SPRITES)
+                var = GetSpritePaletteHandle(&gSprites[sEvoStructPtr->preEvoSpriteId]);
             sEvoGraphicsTaskId = EvolutionSparkles_SpiralUpward(var);
             gTasks[taskId].tState++;
             SetGpuReg(REG_OFFSET_BG3CNT, BGCNT_PRIORITY(3) | BGCNT_SCREENBASE(6));
@@ -1167,6 +1170,9 @@ static void Task_TradeEvolutionScene(u8 taskId)
     case T_EVOSTATE_EVO_SOUND:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             PlaySE(SE_EXP);
             gTasks[taskId].tState++;
         }
@@ -1236,8 +1242,14 @@ static void Task_TradeEvolutionScene(u8 taskId)
     case T_EVOSTATE_CANCEL:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             m4aMPlayAllStop();
-            BeginNormalPaletteFade((1 << (gSprites[sEvoStructPtr->preEvoSpriteId].oam.paletteNum + 16)) | (0x4001C), 0, 0x10, 0, RGB_WHITE);
+            PaletteMask mask = 0x4001C;
+            if (sEvoStructPtr->preEvoSpriteId < MAX_SPRITES)
+                mask |= ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sEvoStructPtr->preEvoSpriteId]));
+            BeginNormalPaletteFade(mask, 0, 0x10, 0, RGB_WHITE);
             gTasks[taskId].tState++;
         }
         break;
@@ -1337,12 +1349,25 @@ static void Task_TradeEvolutionScene(u8 taskId)
         case T_MVSTATE_SHOW_MOVE_SELECT:
             if (!gPaletteFade.active)
             {
+                const u8 backgrounds[] = {3, 1, 0};
+                u8 i;
+
+#ifdef PLATFORM_SDL2
+                if (IsDma3ManagerBusyWithBgCopy())
+                    return;
+                ClearScheduledBgCopiesToVram();
+#endif
                 if (gWirelessCommType)
                     DestroyWirelessStatusIndicatorSprite();
 
-                Free(GetBgTilemapBuffer(3));
-                Free(GetBgTilemapBuffer(1));
-                Free(GetBgTilemapBuffer(0));
+                for (i = 0; i < ARRAY_COUNT(backgrounds); i++)
+                {
+                    u8 bg = backgrounds[i];
+                    void *tilemap = GetBgTilemapBuffer(bg);
+
+                    UnsetBgTilemapBuffer(bg);
+                    Free(tilemap);
+                }
                 FreeAllWindowBuffers();
 
                 ShowSelectMovePokemonSummaryScreen(gPlayerParty, gTasks[taskId].tPartyId,
@@ -1681,11 +1706,16 @@ static void RestoreBgAfterAnim(void)
 
 static void EvoScene_DoMonAnimAndCry(u8 monSpriteId, u16 speciesId)
 {
-    DoMonFrontSpriteAnimation(&gSprites[monSpriteId], speciesId, FALSE, 0);
+    if (monSpriteId < MAX_SPRITES)
+        DoMonFrontSpriteAnimation(&gSprites[monSpriteId], speciesId, FALSE, 0);
+    else
+        PlayCry_Normal(speciesId, 0);
 }
 
 static bool32 EvoScene_IsMonAnimFinished(u8 monSpriteId)
 {
+    if (monSpriteId >= MAX_SPRITES)
+        return IsCryFinished();
     if (gSprites[monSpriteId].callback == SpriteCallbackDummy)
         return TRUE;
 

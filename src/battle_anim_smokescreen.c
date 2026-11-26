@@ -164,56 +164,80 @@ const struct SpriteTemplate gSpriteTemplate_EnemyShadow =
 
 u8 SmokescreenImpact(s16 x, s16 y, bool8 persist)
 {
+    u8 i;
     u8 mainSpriteId;
-    u8 spriteId1, spriteId2, spriteId3, spriteId4;
     struct Sprite *mainSprite;
+    bool8 loadedSheet = FALSE;
+    bool8 hadPalette = IndexOfSpritePaletteTag(sSmokescreenImpactSpritePalette.tag) != 0xFF;
 
-    if (GetSpriteTileStartByTag(sSmokescreenImpactSpriteSheet.tag) == 0xFFFF)
+    if (GetSpriteTileStartByTag(sSmokescreenImpactSpriteSheet.tag) == SPRITE_TILE_NONE)
     {
-        LoadCompressedSpriteSheetUsingHeap(&sSmokescreenImpactSpriteSheet);
+        if (LoadCompressedSpriteSheetUsingHeap(&sSmokescreenImpactSpriteSheet) == SPRITE_TILE_NONE)
+            return MAX_SPRITES;
+        loadedSheet = TRUE;
+    }
+
+    if (!hadPalette)
         LoadCompressedSpritePaletteUsingHeap(&sSmokescreenImpactSpritePalette);
+
+    if (IndexOfSpritePaletteTag(sSmokescreenImpactSpritePalette.tag) == 0xFF)
+    {
+        if (loadedSheet)
+            FreeSpriteTilesByTag(sSmokescreenImpactSpriteSheet.tag);
+        return MAX_SPRITES;
     }
 
     mainSpriteId = CreateInvisibleSpriteWithCallback(SpriteCB_SmokescreenImpactMain);
+    if (mainSpriteId >= MAX_SPRITES)
+    {
+        if (loadedSheet)
+            FreeSpriteTilesByTag(sSmokescreenImpactSpriteSheet.tag);
+        if (!hadPalette)
+            FreeSpritePaletteByTag(sSmokescreenImpactSpritePalette.tag);
+        return MAX_SPRITES;
+    }
+
     mainSprite = &gSprites[mainSpriteId];
     mainSprite->sPersist = persist;
 
-    // Top left sprite
-    spriteId1 = CreateSprite(&sSmokescreenImpactSpriteTemplate, x - 16, y - 16, 2);
-    gSprites[spriteId1].sMainSpriteId = mainSpriteId;
-    mainSprite->sActiveSprites++;
-    AnimateSprite(&gSprites[spriteId1]);
+    for (i = 0; i < 4; i++)
+    {
+        s16 cornerX = x - ((i & 1) ? 0 : 16);
+        s16 cornerY = y - ((i & 2) ? 0 : 16);
+        u8 spriteId = CreateSprite(&sSmokescreenImpactSpriteTemplate, cornerX, cornerY, 2);
 
-    // Top right sprite
-    spriteId2 = CreateSprite(&sSmokescreenImpactSpriteTemplate, x, y - 16, 2);
-    gSprites[spriteId2].sMainSpriteId = mainSpriteId;
-    mainSprite->sActiveSprites++;
-    StartSpriteAnim(&gSprites[spriteId2], 1);
-    AnimateSprite(&gSprites[spriteId2]);
+        if (spriteId >= MAX_SPRITES)
+            continue;
 
-    // Bottom left sprite
-    spriteId3 = CreateSprite(&sSmokescreenImpactSpriteTemplate, x - 16, y, 2);
-    gSprites[spriteId3].sMainSpriteId = mainSpriteId;
-    mainSprite->sActiveSprites++;
-    StartSpriteAnim(&gSprites[spriteId3], 2);
-    AnimateSprite(&gSprites[spriteId3]);
-
-    // Bottom right sprite
-    spriteId4 = CreateSprite(&sSmokescreenImpactSpriteTemplate, x, y, 2);
-    gSprites[spriteId4].sMainSpriteId = mainSpriteId;
-    mainSprite->sActiveSprites++;
-    StartSpriteAnim(&gSprites[spriteId4], 3);
-    AnimateSprite(&gSprites[spriteId4]);
+        gSprites[spriteId].sMainSpriteId = mainSpriteId;
+        mainSprite->sActiveSprites++;
+        if (i != 0)
+            StartSpriteAnim(&gSprites[spriteId], i);
+        AnimateSprite(&gSprites[spriteId]);
+    }
 
     return mainSpriteId;
+}
+
+static void FreeUnusedSmokescreenImpactGfx(void)
+{
+    u16 i;
+
+    for (i = 0; i < MAX_SPRITES; i++)
+    {
+        if (gSprites[i].inUse && gSprites[i].template == &sSmokescreenImpactSpriteTemplate)
+            return;
+    }
+
+    FreeSpriteTilesByTag(sSmokescreenImpactSpriteSheet.tag);
+    FreeSpritePaletteByTag(sSmokescreenImpactSpritePalette.tag);
 }
 
 static void SpriteCB_SmokescreenImpactMain(struct Sprite *sprite)
 {
     if (sprite->sActiveSprites == 0)
     {
-        FreeSpriteTilesByTag(sSmokescreenImpactSpriteSheet.tag);
-        FreeSpritePaletteByTag(sSmokescreenImpactSpritePalette.tag);
+        FreeUnusedSmokescreenImpactGfx();
         if (!sprite->sPersist)
             DestroySprite(sprite);
         else
@@ -225,7 +249,13 @@ static void SpriteCB_SmokescreenImpact(struct Sprite *sprite)
 {
     if (sprite->animEnded)
     {
-        gSprites[sprite->sMainSpriteId].sActiveSprites--;
+        u16 mainSpriteId = sprite->sMainSpriteId;
+
+        if (mainSpriteId < MAX_SPRITES && gSprites[mainSpriteId].inUse
+         && gSprites[mainSpriteId].callback == SpriteCB_SmokescreenImpactMain
+         && gSprites[mainSpriteId].sActiveSprites > 0)
+            gSprites[mainSpriteId].sActiveSprites--;
         DestroySprite(sprite);
+        FreeUnusedSmokescreenImpactGfx();
     }
 }

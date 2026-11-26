@@ -399,10 +399,14 @@ void LoadListMenuSwapLineGfx(void)
 void CreateSwapLineSprites(u8 *spriteIds, u8 count)
 {
     u8 i;
+    bool8 hasGraphics = GetSpriteTileStartByTag(TAG_SWAP_LINE) != SPRITE_TILE_NONE
+                     && IndexOfSpritePaletteTag(TAG_SWAP_LINE) != 0xFF;
 
     for (i = 0; i < count; i++)
     {
-        spriteIds[i] = CreateSprite(&sSpriteTemplate_SwapLine, i * 16, 0, 0);
+        spriteIds[i] = hasGraphics ? CreateSprite(&sSpriteTemplate_SwapLine, i * 16, 0, 0) : MAX_SPRITES;
+        if (spriteIds[i] >= MAX_SPRITES)
+            continue;
         if (i != 0)
             StartSpriteAnim(&gSprites[spriteIds[i]], 1);
 
@@ -416,11 +420,13 @@ void DestroySwapLineSprites(u8 *spriteIds, u8 count)
 
     for (i = 0; i < count; i++)
     {
-        if (i == count - 1)
-            DestroySpriteAndFreeResources(&gSprites[spriteIds[i]]);
-        else
+        if (spriteIds[i] < MAX_SPRITES)
             DestroySprite(&gSprites[spriteIds[i]]);
+        spriteIds[i] = MAX_SPRITES;
     }
+
+    FreeSpriteTilesByTag(TAG_SWAP_LINE);
+    FreeSpritePaletteByTag(TAG_SWAP_LINE);
 }
 
 void SetSwapLineSpritesInvisibility(u8 *spriteIds, u8 count, bool8 invisible)
@@ -428,7 +434,8 @@ void SetSwapLineSpritesInvisibility(u8 *spriteIds, u8 count, bool8 invisible)
     u8 i;
 
     for (i = 0; i < count; i++)
-        gSprites[spriteIds[i]].invisible = invisible;
+        if (spriteIds[i] < MAX_SPRITES)
+            gSprites[spriteIds[i]].invisible = invisible;
 }
 
 void UpdateSwapLineSpritesPos(u8 *spriteIds, u8 count, s16 x, u16 y)
@@ -439,6 +446,9 @@ void UpdateSwapLineSpritesPos(u8 *spriteIds, u8 count, s16 x, u16 y)
 
     for (i = 0; i < count; i++)
     {
+        if (spriteIds[i] >= MAX_SPRITES)
+            continue;
+
         // If the list menu has a right margin, the swap line
         // shouldn't extend all the way to the edge of the screen.
         // If this is the last sprite in the line, move it a bit

@@ -23,6 +23,19 @@ static void CreateBattlerSprite(u8 battler);
 static void CreateHealthboxSprite(u8 battler);
 static void ClearBattleBgCntBaseBlocks(void);
 
+static void RestoreEnemyShadow(u8 position)
+{
+    u8 battler = GetBattlerAtPosition(position);
+
+    if (battler >= gBattlersCount)
+        return;
+
+    if (gBattlerSpriteIds[battler] < MAX_SPRITES && gSprites[gBattlerSpriteIds[battler]].inUse)
+        SetBattlerShadowSpriteCallback(battler, GetMonData(&gEnemyParty[gBattlerPartyIndexes[battler]], MON_DATA_SPECIES));
+    else
+        HideBattlerShadowSprite(battler);
+}
+
 void ReshowBattleScreenDummy(void)
 {
 
@@ -70,6 +83,8 @@ static void CB2_ReshowBattleScreenAfterMenu(void)
         break;
     case 3:
         ResetSpriteData();
+        memset(gBattlerSpriteIds, MAX_SPRITES, sizeof(gBattlerSpriteIds));
+        memset(gHealthboxSpriteIds, MAX_SPRITES, sizeof(gHealthboxSpriteIds));
         break;
     case 4:
         FreeAllSpritePalettes();
@@ -131,21 +146,10 @@ static void CB2_ReshowBattleScreenAfterMenu(void)
         break;
     case 19:
         {
-            u8 opponentBattler;
-            u16 species;
-
             LoadAndCreateEnemyShadowSprites();
-
-            opponentBattler = GetBattlerAtPosition(B_POSITION_OPPONENT_LEFT);
-            species = GetMonData(&gEnemyParty[gBattlerPartyIndexes[opponentBattler]], MON_DATA_SPECIES);
-            SetBattlerShadowSpriteCallback(opponentBattler, species);
-
+            RestoreEnemyShadow(B_POSITION_OPPONENT_LEFT);
             if (IsDoubleBattle())
-            {
-                opponentBattler = GetBattlerAtPosition(B_POSITION_OPPONENT_RIGHT);
-                species = GetMonData(&gEnemyParty[gBattlerPartyIndexes[opponentBattler]], MON_DATA_SPECIES);
-                SetBattlerShadowSpriteCallback(opponentBattler, species);
-            }
+                RestoreEnemyShadow(B_POSITION_OPPONENT_RIGHT);
 
             ActionSelectionCreateCursorAt(gActionSelectionCursor[gBattlerInMenuId], 0);
 
@@ -223,7 +227,10 @@ static void CreateBattlerSprite(u8 battler)
 
             SetMultiuseSpriteTemplateToPokemon(GetMonData(&gEnemyParty[gBattlerPartyIndexes[battler]], MON_DATA_SPECIES), GetBattlerPosition(battler));
             gBattlerSpriteIds[battler] = CreateSprite(&gMultiuseSpriteTemplate, GetBattlerSpriteCoord(battler, BATTLER_COORD_X_2), posY, GetBattlerSpriteSubpriority(battler));
-            gSprites[gBattlerSpriteIds[battler]].oam.paletteNum = battler;
+            if (gBattlerSpriteIds[battler] >= MAX_SPRITES)
+                return;
+
+            SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[battler]], battler);
             gSprites[gBattlerSpriteIds[battler]].callback = SpriteCallbackDummy;
             gSprites[gBattlerSpriteIds[battler]].data[0] = battler;
             gSprites[gBattlerSpriteIds[battler]].data[2] = GetMonData(&gEnemyParty[gBattlerPartyIndexes[battler]], MON_DATA_SPECIES);
@@ -238,7 +245,10 @@ static void CreateBattlerSprite(u8 battler)
             gBattlerSpriteIds[battler] = CreateSprite(&gMultiuseSpriteTemplate, 0x50,
                                                 (8 - gTrainerBackPicCoords[gSaveBlock2Ptr->playerGender].size) * 4 + 80,
                                                  GetBattlerSpriteSubpriority(0));
-            gSprites[gBattlerSpriteIds[battler]].oam.paletteNum = battler;
+            if (gBattlerSpriteIds[battler] >= MAX_SPRITES)
+                return;
+
+            SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[battler]], battler);
             gSprites[gBattlerSpriteIds[battler]].callback = SpriteCallbackDummy;
             gSprites[gBattlerSpriteIds[battler]].data[0] = battler;
         }
@@ -248,7 +258,10 @@ static void CreateBattlerSprite(u8 battler)
             gBattlerSpriteIds[battler] = CreateSprite(&gMultiuseSpriteTemplate, 0x50,
                                                 (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size) * 4 + 80,
                                                  GetBattlerSpriteSubpriority(0));
-            gSprites[gBattlerSpriteIds[battler]].oam.paletteNum = battler;
+            if (gBattlerSpriteIds[battler] >= MAX_SPRITES)
+                return;
+
+            SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[battler]], battler);
             gSprites[gBattlerSpriteIds[battler]].callback = SpriteCallbackDummy;
             gSprites[gBattlerSpriteIds[battler]].data[0] = battler;
         }
@@ -259,7 +272,10 @@ static void CreateBattlerSprite(u8 battler)
 
             SetMultiuseSpriteTemplateToPokemon(GetMonData(&gPlayerParty[gBattlerPartyIndexes[battler]], MON_DATA_SPECIES), GetBattlerPosition(battler));
             gBattlerSpriteIds[battler] = CreateSprite(&gMultiuseSpriteTemplate, GetBattlerSpriteCoord(battler, BATTLER_COORD_X_2), posY, GetBattlerSpriteSubpriority(battler));
-            gSprites[gBattlerSpriteIds[battler]].oam.paletteNum = battler;
+            if (gBattlerSpriteIds[battler] >= MAX_SPRITES)
+                return;
+
+            SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[battler]], battler);
             gSprites[gBattlerSpriteIds[battler]].callback = SpriteCallbackDummy;
             gSprites[gBattlerSpriteIds[battler]].data[0] = battler;
             gSprites[gBattlerSpriteIds[battler]].data[2] = GetMonData(&gPlayerParty[gBattlerPartyIndexes[battler]], MON_DATA_SPECIES);
@@ -287,6 +303,9 @@ static void CreateHealthboxSprite(u8 battler)
             healthboxSpriteId = CreateBattlerHealthboxSprites(battler);
 
         gHealthboxSpriteIds[battler] = healthboxSpriteId;
+        if (healthboxSpriteId >= MAX_SPRITES)
+            return;
+
         InitBattlerHealthboxCoords(battler);
         SetHealthboxSpriteVisible(healthboxSpriteId);
 

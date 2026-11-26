@@ -219,16 +219,14 @@ static const struct SpriteTemplate sCryMeterNeedleSpriteTemplate =
     .callback = SpriteCB_CryMeterNeedle
 };
 
-static const struct SpriteSheet sCryMeterNeedleSpriteSheets[] =
+static const struct SpriteSheet sCryMeterNeedleSpriteSheet =
 {
-    {sCryMeterNeedle_Gfx, sizeof(sCryMeterNeedle_Gfx), TAG_NEEDLE},
-    {}
+    sCryMeterNeedle_Gfx, sizeof(sCryMeterNeedle_Gfx), TAG_NEEDLE
 };
 
-static const struct SpritePalette sCryMeterNeedleSpritePalettes[] =
+static const struct SpritePalette sCryMeterNeedleSpritePalette =
 {
-    {sCryMeterNeedle_Pal, TAG_NEEDLE},
-    {}
+    sCryMeterNeedle_Pal, TAG_NEEDLE
 };
 
 bool8 LoadCryWaveformWindow(struct CryScreenWindow *window, u8 windowId)
@@ -462,17 +460,19 @@ bool8 LoadCryMeter(struct CryScreenWindow *window, u8 windowId)
     switch (gDexCryScreenState)
     {
     case 0:
-        if (!sCryMeterNeedle)
-            sCryMeterNeedle = AllocZeroed(sizeof(*sCryMeterNeedle));
-
         CopyToWindowPixelBuffer(windowId, sCryMeter_Gfx, 0, 0);
         LoadPalette(sCryMeter_Pal, BG_PLTT_ID(window->paletteNo), PLTT_SIZE_4BPP);
         gDexCryScreenState++;
         break;
     case 1:
-        LoadSpriteSheets(sCryMeterNeedleSpriteSheets);
-        LoadSpritePalettes(sCryMeterNeedleSpritePalettes);
-        sCryMeterNeedle->spriteId = CreateSprite(&sCryMeterNeedleSpriteTemplate, 40 + window->xPos * 8, 56 + window->yPos * 8, 1);
+        sCryMeterNeedle = AllocZeroed(sizeof(*sCryMeterNeedle));
+        if (!sCryMeterNeedle)
+            return TRUE;
+
+        sCryMeterNeedle->spriteId = MAX_SPRITES;
+        if (LoadSpriteSheet(&sCryMeterNeedleSpriteSheet) != SPRITE_TILE_NONE
+         && LoadSpritePalette(&sCryMeterNeedleSpritePalette) != 0xFF)
+            sCryMeterNeedle->spriteId = CreateSprite(&sCryMeterNeedleSpriteTemplate, 40 + window->xPos * 8, 56 + window->yPos * 8, 1);
         sCryMeterNeedle->rotation = MIN_NEEDLE_POS;
         sCryMeterNeedle->targetRotation = MIN_NEEDLE_POS;
         sCryMeterNeedle->moveIncrement = 0;
@@ -485,8 +485,13 @@ bool8 LoadCryMeter(struct CryScreenWindow *window, u8 windowId)
 
 void FreeCryScreen(void)
 {
-    FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(gSprites[sCryMeterNeedle->spriteId].oam.paletteNum));
-    DestroySprite(gSprites + sCryMeterNeedle->spriteId);
+    if (sCryMeterNeedle && sCryMeterNeedle->spriteId < MAX_SPRITES)
+    {
+        FreeSpriteOamMatrix(&gSprites[sCryMeterNeedle->spriteId]);
+        DestroySprite(&gSprites[sCryMeterNeedle->spriteId]);
+    }
+    FreeSpriteTilesByTag(TAG_NEEDLE);
+    FreeSpritePaletteByTag(TAG_NEEDLE);
     FREE_AND_SET_NULL(sDexCryScreen);
     FREE_AND_SET_NULL(sCryMeterNeedle);
 }
@@ -501,8 +506,8 @@ static void SpriteCB_CryMeterNeedle(struct Sprite *sprite)
     struct OamMatrix matrix;
     u8 amplitude;
 
-    gSprites[sCryMeterNeedle->spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[sCryMeterNeedle->spriteId].oam.affineParam = 0;
+    sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
+    sprite->oam.affineParam = 0;
 
     // While no cry is playing, cryState is 0
     // While cry is playing, cryState loops 1-8
@@ -565,7 +570,7 @@ static void SpriteCB_CryMeterNeedle(struct Sprite *sprite)
     affine.yScale = 256;
     affine.rotation = sCryMeterNeedle->rotation * 256;
     ObjAffineSet(&affine, &matrix, 1, 2);
-    SetOamMatrix(0, matrix.a, matrix.b, matrix.c, matrix.d);
+    SetOamMatrix(GetSpriteMatrixHandle(sprite), matrix.a, matrix.b, matrix.c, matrix.d);
     x = gSineTable[((sCryMeterNeedle->rotation + 0x7F) & 0xFF)];
     y = gSineTable[((sCryMeterNeedle->rotation + 0x7F) & 0xFF) + 64];
     sprite->x2 = x * 24 / 256;

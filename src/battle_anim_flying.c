@@ -540,11 +540,7 @@ void DestroyAnimSpriteAfterTimer(struct Sprite *sprite)
 {
     if (sprite->data[0]-- <= 0)
     {
-        if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
-        {
-            FreeOamMatrix(sprite->oam.matrixNum);
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
-        }
+        FreeSpriteOamMatrix(sprite);
 
         DestroySprite(sprite);
         gAnimVisualTaskCount--;
@@ -632,14 +628,12 @@ static void AnimFallingFeather(struct Sprite *sprite)
 
     data->unk0_1 = data->unk2 >> 6;
     sprite->x2 = (gSineTable[data->unk2] * data->unkC[0]) >> 8;
-    matrixNum = sprite->oam.matrixNum;
+    matrixNum = GetSpriteMatrixHandle(sprite);
 
     sinIndex = (-sprite->x2 >> 1) + data->unkA;
     spriteCoord = gSineTable[sinIndex];
 
-    gOamMatrices[matrixNum].a = gOamMatrices[matrixNum].d = gSineTable[sinIndex + 64];
-    gOamMatrices[matrixNum].b = spriteCoord;
-    gOamMatrices[matrixNum].c = -spriteCoord;
+    SetOamMatrix(matrixNum, gSineTable[sinIndex + 64], spriteCoord, -spriteCoord, gSineTable[sinIndex + 64]);
 
     sprite->callback = AnimFallingFeather_Step;
 }
@@ -868,14 +862,12 @@ static void AnimFallingFeather_Step(struct Sprite *sprite)
         }
 
         sprite->x2 = ((s32)data->unkC[data->unk0_0b] * gSineTable[data->unk2]) >> 8;
-        matrixNum = sprite->oam.matrixNum;
+        matrixNum = GetSpriteMatrixHandle(sprite);
 
         sinIndex = (-sprite->x2 >> 1) + data->unkA;
         sinVal = gSineTable[sinIndex];
 
-        gOamMatrices[matrixNum].a = gOamMatrices[matrixNum].d = gSineTable[sinIndex + 64];
-        gOamMatrices[matrixNum].b = sinVal;
-        gOamMatrices[matrixNum].c = -sinVal;
+        SetOamMatrix(matrixNum, gSineTable[sinIndex + 64], sinVal, -sinVal, gSineTable[sinIndex + 64]);
 
         data->unk8 += data->unk6;
         sprite->y = data->unk8 >> 8;
@@ -947,17 +939,15 @@ void AnimTask_DrillPeckHitSplats(u8 task)
 {
     if (!(gTasks[task].data[0] % 32))
     {
-        gAnimVisualTaskCount++;
-
         gBattleAnimArgs[0] = Sin(gTasks[task].data[0], -13);
         gBattleAnimArgs[1] = Cos(gTasks[task].data[0], -13);
         gBattleAnimArgs[2] = 1;
         gBattleAnimArgs[3] = 3;
 
-        CreateSpriteAndAnimate(&gFlashingHitSplatSpriteTemplate,
+        CreateCountedAnimSprite(&gFlashingHitSplatSpriteTemplate,
                                GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_X_2),
                                GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_Y_PIC_OFFSET),
-                               3);
+                               3, TRUE);
     }
 
     gTasks[task].data[0] += 8;
@@ -1080,7 +1070,7 @@ static void AnimDiveWaterSplash(struct Sprite *sprite)
 
         TrySetSpriteRotScale(sprite, FALSE, 0x100, sprite->data[1], 0);
 
-        matrixNum = sprite->oam.matrixNum;
+        matrixNum = GetSpriteMatrixHandle(sprite);
 
         t1 = 0x3D00;
         t2 = t1 / gOamMatrices[matrixNum].d + 1;

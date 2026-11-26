@@ -3,6 +3,9 @@
 #include "malloc.h"
 #include "bg.h"
 #include "blit.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#endif
 
 // This global is set to 0 and never changed.
 COMMON_DATA u8 gTransparentTileNumber = 0;
@@ -21,6 +24,27 @@ static const struct WindowTemplate sDummyWindowTemplate = DUMMY_WIN_TEMPLATE;
 static void DummyWindowBgTilemap(void)
 {
 
+}
+
+static void FreeWindowBuffer(void *buffer)
+{
+#ifdef PLATFORM_SDL2
+    if (buffer != NULL)
+        PreserveDma3CopySources(buffer, GetAllocatedBlockSize(buffer));
+#endif
+    Free(buffer);
+}
+
+static void FreeWindowBgTilemapBuffer(u8 bg)
+{
+    void *tilemap = gWindowBgTilemapBuffers[bg];
+
+#ifdef PLATFORM_SDL2
+    if (tilemap != NULL && GetBgTilemapBuffer(bg) == tilemap)
+        UnsetBgTilemapBuffer(bg);
+#endif
+    FreeWindowBuffer(tilemap);
+    gWindowBgTilemapBuffers[bg] = NULL;
 }
 
 bool16 InitWindows(const struct WindowTemplate *templates)
@@ -85,8 +109,7 @@ bool16 InitWindows(const struct WindowTemplate *templates)
         {
             if ((GetNumActiveWindowsOnBg(bgLayer) == 0) && (gWindowBgTilemapBuffers[bgLayer] != DummyWindowBgTilemap))
             {
-                Free(gWindowBgTilemapBuffers[bgLayer]);
-                gWindowBgTilemapBuffers[bgLayer] = allocatedTilemapBuffer;
+                FreeWindowBgTilemapBuffer(bgLayer);
             }
 
             return FALSE;
@@ -160,8 +183,7 @@ u16 AddWindow(const struct WindowTemplate *template)
     {
         if ((GetNumActiveWindowsOnBg(bgLayer) == 0) && (gWindowBgTilemapBuffers[bgLayer] != DummyWindowBgTilemap))
         {
-            Free(gWindowBgTilemapBuffers[bgLayer]);
-            gWindowBgTilemapBuffers[bgLayer] = allocatedTilemapBuffer;
+            FreeWindowBgTilemapBuffer(bgLayer);
         }
         return WINDOW_NONE;
     }
@@ -228,14 +250,13 @@ void RemoveWindow(u8 windowId)
     {
         if (gWindowBgTilemapBuffers[bgLayer] != DummyWindowBgTilemap)
         {
-            Free(gWindowBgTilemapBuffers[bgLayer]);
-            gWindowBgTilemapBuffers[bgLayer] = NULL;
+            FreeWindowBgTilemapBuffer(bgLayer);
         }
     }
 
     if (gWindows[windowId].tileData != NULL)
     {
-        Free(gWindows[windowId].tileData);
+        FreeWindowBuffer(gWindows[windowId].tileData);
         gWindows[windowId].tileData = NULL;
     }
 }
@@ -248,8 +269,7 @@ void FreeAllWindowBuffers(void)
     {
         if (gWindowBgTilemapBuffers[i] != NULL && gWindowBgTilemapBuffers[i] != DummyWindowBgTilemap)
         {
-            Free(gWindowBgTilemapBuffers[i]);
-            gWindowBgTilemapBuffers[i] = NULL;
+            FreeWindowBgTilemapBuffer(i);
         }
     }
 
@@ -257,7 +277,7 @@ void FreeAllWindowBuffers(void)
     {
         if (gWindows[i].tileData != NULL)
         {
-            Free(gWindows[i].tileData);
+            FreeWindowBuffer(gWindows[i].tileData);
             gWindows[i].tileData = NULL;
         }
     }
@@ -642,8 +662,7 @@ u16 AddWindow8Bit(const struct WindowTemplate *template)
     {
         if (GetNumActiveWindowsOnBg8Bit(bgLayer) == 0 && gWindowBgTilemapBuffers[bgLayer] != DummyWindowBgTilemap8Bit)
         {
-            Free(gWindowBgTilemapBuffers[bgLayer]);
-            gWindowBgTilemapBuffers[bgLayer] = NULL;
+            FreeWindowBgTilemapBuffer(bgLayer);
         }
         return WINDOW_NONE;
     }

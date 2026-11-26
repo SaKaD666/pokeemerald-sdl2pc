@@ -2909,6 +2909,7 @@ void SpriteCB_FaintSlideAnim(struct Sprite *sprite)
 #define sAmplitude          data[2]
 #define sBouncerSpriteId    data[3]
 #define sWhich              data[4]
+#define sBounceBattler      data[5]
 
 void DoBounceEffect(u8 battler, u8 which, s8 delta, s8 amplitude)
 {
@@ -2928,17 +2929,22 @@ void DoBounceEffect(u8 battler, u8 which, s8 delta, s8 amplitude)
         break;
     }
 
+    bouncerSpriteId = which == BOUNCE_HEALTHBOX ? gHealthboxSpriteIds[battler] : gBattlerSpriteIds[battler];
+    if (bouncerSpriteId >= MAX_SPRITES || !gSprites[bouncerSpriteId].inUse)
+        return;
+
     invisibleSpriteId = CreateInvisibleSpriteWithCallback(SpriteCB_BounceEffect);
+    if (invisibleSpriteId >= MAX_SPRITES)
+        return;
+
     if (which == BOUNCE_HEALTHBOX)
     {
-        bouncerSpriteId = gHealthboxSpriteIds[battler];
         gBattleSpritesDataPtr->healthBoxesData[battler].healthboxBounceSpriteId = invisibleSpriteId;
         gBattleSpritesDataPtr->healthBoxesData[battler].healthboxIsBouncing = 1;
         gSprites[invisibleSpriteId].sSinIndex = 128; // 0
     }
     else
     {
-        bouncerSpriteId = gBattlerSpriteIds[battler];
         gBattleSpritesDataPtr->healthBoxesData[battler].battlerBounceSpriteId = invisibleSpriteId;
         gBattleSpritesDataPtr->healthBoxesData[battler].battlerIsBouncing = 1;
         gSprites[invisibleSpriteId].sSinIndex = 192; // -1
@@ -2947,48 +2953,75 @@ void DoBounceEffect(u8 battler, u8 which, s8 delta, s8 amplitude)
     gSprites[invisibleSpriteId].sAmplitude = amplitude;
     gSprites[invisibleSpriteId].sBouncerSpriteId = bouncerSpriteId;
     gSprites[invisibleSpriteId].sWhich = which;
+    gSprites[invisibleSpriteId].sBounceBattler = battler;
     gSprites[bouncerSpriteId].x2 = 0;
     gSprites[bouncerSpriteId].y2 = 0;
+}
+
+static bool8 IsBounceTargetActive(u8 battler, u8 which, u16 spriteId)
+{
+    u8 currentId = which == BOUNCE_HEALTHBOX ? gHealthboxSpriteIds[battler] : gBattlerSpriteIds[battler];
+
+    return spriteId < MAX_SPRITES && spriteId == currentId && gSprites[spriteId].inUse;
 }
 
 void EndBounceEffect(u8 battler, u8 which)
 {
-    u8 bouncerSpriteId;
+    struct BattleHealthboxInfo *healthbox = &gBattleSpritesDataPtr->healthBoxesData[battler];
+    u8 effectId;
+    u16 targetId;
 
     if (which == BOUNCE_HEALTHBOX)
     {
-        if (!gBattleSpritesDataPtr->healthBoxesData[battler].healthboxIsBouncing)
+        if (!healthbox->healthboxIsBouncing)
             return;
-
-        bouncerSpriteId = gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].healthboxBounceSpriteId].sBouncerSpriteId;
-        DestroySprite(&gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].healthboxBounceSpriteId]);
-        gBattleSpritesDataPtr->healthBoxesData[battler].healthboxIsBouncing = 0;
+        effectId = healthbox->healthboxBounceSpriteId;
+        healthbox->healthboxIsBouncing = FALSE;
+        healthbox->healthboxBounceSpriteId = MAX_SPRITES;
     }
     else
     {
-        if (!gBattleSpritesDataPtr->healthBoxesData[battler].battlerIsBouncing)
+        if (!healthbox->battlerIsBouncing)
             return;
-
-        bouncerSpriteId = gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].battlerBounceSpriteId].sBouncerSpriteId;
-        DestroySprite(&gSprites[gBattleSpritesDataPtr->healthBoxesData[battler].battlerBounceSpriteId]);
-        gBattleSpritesDataPtr->healthBoxesData[battler].battlerIsBouncing = 0;
+        effectId = healthbox->battlerBounceSpriteId;
+        healthbox->battlerIsBouncing = FALSE;
+        healthbox->battlerBounceSpriteId = MAX_SPRITES;
     }
 
-    gSprites[bouncerSpriteId].x2 = 0;
-    gSprites[bouncerSpriteId].y2 = 0;
+    if (effectId >= MAX_SPRITES || !gSprites[effectId].inUse
+     || gSprites[effectId].callback != SpriteCB_BounceEffect
+     || gSprites[effectId].sBounceBattler != battler || gSprites[effectId].sWhich != which)
+        return;
+
+    targetId = gSprites[effectId].sBouncerSpriteId;
+    DestroySprite(&gSprites[effectId]);
+    if (IsBounceTargetActive(battler, which, targetId))
+    {
+        gSprites[targetId].x2 = 0;
+        gSprites[targetId].y2 = 0;
+    }
 }
 
 static void SpriteCB_BounceEffect(struct Sprite *sprite)
 {
-    u8 bouncerSpriteId = sprite->sBouncerSpriteId;
-    s32 index;
+    u8 battler = sprite->sBounceBattler;
+    u8 which = sprite->sWhich;
+    u16 targetId = sprite->sBouncerSpriteId;
+    struct BattleHealthboxInfo *healthbox = &gBattleSpritesDataPtr->healthBoxesData[battler];
+    u8 effectId = which == BOUNCE_HEALTHBOX ? healthbox->healthboxBounceSpriteId : healthbox->battlerBounceSpriteId;
 
-    if (sprite->sWhich == BOUNCE_HEALTHBOX)
-        index = sprite->sSinIndex;
-    else
-        index = sprite->sSinIndex;
+    if (effectId != sprite - gSprites)
+    {
+        DestroySprite(sprite);
+        return;
+    }
+    if (!IsBounceTargetActive(battler, which, targetId))
+    {
+        EndBounceEffect(battler, which);
+        return;
+    }
 
-    gSprites[bouncerSpriteId].y2 = Sin(index, sprite->sAmplitude) + sprite->sAmplitude;
+    gSprites[targetId].y2 = Sin(sprite->sSinIndex, sprite->sAmplitude) + sprite->sAmplitude;
     sprite->sSinIndex = (sprite->sSinIndex + sprite->sDelta) & 0xFF;
 }
 
@@ -2997,6 +3030,7 @@ static void SpriteCB_BounceEffect(struct Sprite *sprite)
 #undef sAmplitude
 #undef sBouncerSpriteId
 #undef sWhich
+#undef sBounceBattler
 
 void SpriteCB_PlayerMonFromBall(struct Sprite *sprite)
 {

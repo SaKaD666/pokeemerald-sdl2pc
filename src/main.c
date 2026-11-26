@@ -70,6 +70,13 @@ u8 gHeap[HEAP_SIZE];
 u16 gKeyRepeatStartDelay;
 bool8 gLinkTransferringData;
 struct Main gMain;
+
+#ifdef PLATFORM_SDL2
+STATIC_ASSERT(sizeof(struct OamData) == 8, OamEntrySize)
+STATIC_ASSERT(sizeof(gMain.oamBuffer) == OAM_SIZE, OamBuffersMatch)
+STATIC_ASSERT(OAM_SIZE == 255 * sizeof(struct OamData), Sdl2OamCapacity)
+STATIC_ASSERT(offsetof(struct Main, state) == offsetof(struct Main, oamBuffer) + OAM_SIZE, MainStateFollowsOam)
+#endif
 u16 gKeyRepeatContinueDelay;
 bool8 gSoftResetDisabled;
 IntrFunc gIntrTable[INTR_COUNT];
@@ -382,6 +389,9 @@ static void VBlankIntr(void)
 
     CopyBufferedValuesToGpuRegs();
     ProcessDma3Requests();
+#ifdef PLATFORM_SDL2
+    ProcessPendingBgTilemapPublications();
+#endif
 #ifdef PORTABLE
     TransferFieldTilemaps();
 #endif

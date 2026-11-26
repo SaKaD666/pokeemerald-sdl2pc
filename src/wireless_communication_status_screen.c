@@ -208,13 +208,13 @@ static void CB2_InitWirelessCommunicationScreen(void)
     InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
     SetBgTilemapBuffer(1, Alloc(BG_SCREEN_SIZE));
     SetBgTilemapBuffer(0, Alloc(BG_SCREEN_SIZE));
-    DecompressAndLoadBgGfxUsingHeap(1, sBgTiles_Gfx, 0, 0, 0);
     CopyToBgTilemapBuffer(1, sBgTiles_Tilemap, 0, 0);
     InitWindows(sWindowTemplates);
     DeactivateAllTextPrinters();
     ResetPaletteFade();
     ResetSpriteData();
     ResetTasks();
+    DecompressAndLoadBgGfxUsingHeap(1, sBgTiles_Gfx, 0, 0, 0);
     ScanlineEffect_Stop();
     m4aSoundVSyncOn();
     SetVBlankCallback(VBlankCB_WirelessCommunicationScreen);
@@ -243,10 +243,18 @@ static void CB2_ExitWirelessCommunicationStatusScreen(void)
     s32 i;
 
     SetVBlankCallback(NULL);
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+    ClearScheduledBgCopiesToVram();
+#endif
     FreeAllWindowBuffers();
     for (i = 0; i < (int)ARRAY_COUNT(sBgTemplates); i++)
     {
-        Free(GetBgTilemapBuffer(i));
+        void *tilemap = GetBgTilemapBuffer(i);
+
+        UnsetBgTilemapBuffer(i);
+        Free(tilemap);
     }
     Free(sStatusScreen);
 #ifdef PLATFORM_SDL2

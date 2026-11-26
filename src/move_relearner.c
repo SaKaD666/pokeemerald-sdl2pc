@@ -762,10 +762,11 @@ static void FreeMoveRelearnerResources(void)
 // which is called whenever the cursor in either list changes.
 static void HideHeartSpritesAndShowTeachMoveText(bool8 onlyHideSprites)
 {
-    s32 i;
+    u16 i;
 
-    for (i = 0; i < 16; i++)
-        gSprites[sMoveRelearnerStruct->heartSpriteIds[i]].invisible = TRUE;
+    for (i = 0; i < ARRAY_COUNT(sMoveRelearnerStruct->heartSpriteIds); i++)
+        if (sMoveRelearnerStruct->heartSpriteIds[i] < MAX_SPRITES)
+            gSprites[sMoveRelearnerStruct->heartSpriteIds[i]].invisible = TRUE;
 
     if (!onlyHideSprites)
     {
@@ -851,20 +852,22 @@ static void CreateUISprites(void)
     sMoveRelearnerStruct->moveListScrollArrowTask = TASK_NONE;
     AddScrollArrows();
 
-    // These are the appeal hearts.
-    for (i = 0; i < 8; i++)
-        sMoveRelearnerStruct->heartSpriteIds[i] = CreateSprite(&sConstestMoveHeartSprite, (i - (i / 4) * 4) * 8 + 104, (i / 4) * 8 + 36, 0);
+    memset(sMoveRelearnerStruct->heartSpriteIds, SPRITE_NONE, sizeof(sMoveRelearnerStruct->heartSpriteIds));
+    if (GetSpriteTileStartByTag(GFXTAG_UI) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(PALTAG_UI) == 0xFF)
+        return;
 
-    // These are the jam harts.
-    // The animation is used to toggle between full/empty heart sprites.
-    for (i = 0; i < 8; i++)
+    for (i = 0; i < ARRAY_COUNT(sMoveRelearnerStruct->heartSpriteIds); i++)
     {
-        sMoveRelearnerStruct->heartSpriteIds[i + 8] = CreateSprite(&sConstestMoveHeartSprite, (i - (i / 4) * 4) * 8 + 104, (i / 4) * 8 + 52, 0);
-        StartSpriteAnim(&gSprites[sMoveRelearnerStruct->heartSpriteIds[i + 8]], 2);
-    }
+        u8 spriteId = CreateSprite(&sConstestMoveHeartSprite, (i % 4) * 8 + 104, (i / 4) * 8 + 36, 0);
+        sMoveRelearnerStruct->heartSpriteIds[i] = spriteId;
+        if (spriteId >= MAX_SPRITES)
+            continue;
 
-    for (i = 0; i < 16; i++)
-        gSprites[sMoveRelearnerStruct->heartSpriteIds[i]].invisible = TRUE;
+        if (i >= 8)
+            StartSpriteAnim(&gSprites[spriteId], JAM_HEART_EMPTY);
+        gSprites[spriteId].invisible = TRUE;
+    }
 }
 
 static void AddScrollArrows(void)
@@ -923,8 +926,7 @@ void MoveRelearnerShowHideHearts(s32 move)
 
     if (!sMoveRelearnerMenuState.showContestInfo || move == LIST_CANCEL)
     {
-        for (i = 0; i < 16; i++)
-            gSprites[sMoveRelearnerStruct->heartSpriteIds[i]].invisible = TRUE;
+        HideHeartSpritesAndShowTeachMoveText(TRUE);
     }
     else
     {
@@ -935,11 +937,12 @@ void MoveRelearnerShowHideHearts(s32 move)
 
         for (i = 0; i < 8; i++)
         {
-            if (i < numHearts)
-                StartSpriteAnim(&gSprites[sMoveRelearnerStruct->heartSpriteIds[i]], 1);
-            else
-                StartSpriteAnim(&gSprites[sMoveRelearnerStruct->heartSpriteIds[i]], 0);
-            gSprites[sMoveRelearnerStruct->heartSpriteIds[i]].invisible = FALSE;
+            u8 spriteId = sMoveRelearnerStruct->heartSpriteIds[i];
+            if (spriteId >= MAX_SPRITES)
+                continue;
+
+            StartSpriteAnim(&gSprites[spriteId], i < numHearts ? APPEAL_HEART_FULL : APPEAL_HEART_EMPTY);
+            gSprites[spriteId].invisible = FALSE;
         }
 
         numHearts = (u8)(gContestEffects[gContestMoves[move].effect].jam / 10);
@@ -949,11 +952,12 @@ void MoveRelearnerShowHideHearts(s32 move)
 
         for (i = 0; i < 8; i++)
         {
-            if (i < numHearts)
-                StartSpriteAnim(&gSprites[sMoveRelearnerStruct->heartSpriteIds[i + 8]], 3);
-            else
-                StartSpriteAnim(&gSprites[sMoveRelearnerStruct->heartSpriteIds[i + 8]], 2);
-            gSprites[sMoveRelearnerStruct->heartSpriteIds[i + 8]].invisible = FALSE;
+            u8 spriteId = sMoveRelearnerStruct->heartSpriteIds[i + 8];
+            if (spriteId >= MAX_SPRITES)
+                continue;
+
+            StartSpriteAnim(&gSprites[spriteId], i < numHearts ? JAM_HEART_FULL : JAM_HEART_EMPTY);
+            gSprites[spriteId].invisible = FALSE;
         }
     }
 }

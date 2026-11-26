@@ -564,7 +564,12 @@ static void CB2_ExitPokemonJump(void)
 
     SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+#else
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeWindowsAndDigitObj();
@@ -2771,12 +2776,13 @@ static void CreateJumpMonSprite(struct PokemonJumpGfx *jumpGfx, struct PokemonJu
 
 #define sState data[0]
 #define sTimer data[1]
-#define sOffset data[7] // Never read
 
 static void DoStarAnim(struct PokemonJumpGfx *jumpGfx, int multiplayerId)
 {
+    if (jumpGfx->starSprites[multiplayerId] == NULL)
+        return;
+
     ResetPokeJumpSpriteData(jumpGfx->starSprites[multiplayerId]);
-    jumpGfx->starSprites[multiplayerId]->sOffset = jumpGfx->monSprites[multiplayerId] - gSprites;
     jumpGfx->starSprites[multiplayerId]->invisible = FALSE;
     jumpGfx->starSprites[multiplayerId]->y = 96;
     jumpGfx->starSprites[multiplayerId]->callback = SpriteCB_Star;
@@ -2815,10 +2821,12 @@ static void SpriteCB_Star(struct Sprite *sprite)
 
 #undef sState
 #undef sTimer
-#undef sOffset
 
 static void Gfx_StartMonHitShake(struct PokemonJumpGfx *jumpGfx, int multiplayerId)
 {
+    if (jumpGfx->monSprites[multiplayerId] == NULL)
+        return;
+
     jumpGfx->monSprites[multiplayerId]->callback = SpriteCB_MonHitShake;
     jumpGfx->monSprites[multiplayerId]->y2 = 0;
     ResetPokeJumpSpriteData(jumpGfx->monSprites[multiplayerId]);
@@ -2826,7 +2834,8 @@ static void Gfx_StartMonHitShake(struct PokemonJumpGfx *jumpGfx, int multiplayer
 
 static bool32 Gfx_IsMonHitShakeActive(struct PokemonJumpGfx *jumpGfx, int multiplayerId)
 {
-    return jumpGfx->monSprites[multiplayerId]->callback == SpriteCB_MonHitShake;
+    return jumpGfx->monSprites[multiplayerId] != NULL
+        && jumpGfx->monSprites[multiplayerId]->callback == SpriteCB_MonHitShake;
 }
 
 #define sTimer     data[1]
@@ -2856,6 +2865,9 @@ static void SpriteCB_MonHitShake(struct Sprite *sprite)
 
 static void Gfx_StartMonHitFlash(struct PokemonJumpGfx *jumpGfx, int multiplayerId)
 {
+    if (jumpGfx->monSprites[multiplayerId] == NULL)
+        return;
+
     ResetPokeJumpSpriteData(jumpGfx->monSprites[multiplayerId]);
     jumpGfx->monSprites[multiplayerId]->callback = SpriteCB_MonHitFlash;
 }
@@ -2866,7 +2878,7 @@ static void Gfx_StopMonHitFlash(struct PokemonJumpGfx *jumpGfx)
     u16 numPlayers = GetNumPokeJumpPlayers();
     for (i = 0; i < numPlayers; i++)
     {
-        if (jumpGfx->monSprites[i]->callback == SpriteCB_MonHitFlash)
+        if (jumpGfx->monSprites[i] != NULL && jumpGfx->monSprites[i]->callback == SpriteCB_MonHitFlash)
         {
             jumpGfx->monSprites[i]->invisible = FALSE;
             jumpGfx->monSprites[i]->callback = SpriteCallbackDummy;
@@ -2893,11 +2905,15 @@ static void Gfx_ResetMonSpriteSubpriorities(struct PokemonJumpGfx *jumpGfx)
     int i;
     u16 numPlayers = GetNumPokeJumpPlayers();
     for (i = 0; i < numPlayers; i++)
-        jumpGfx->monSprites[i]->subpriority = jumpGfx->monSpriteSubpriorities[i];
+        if (jumpGfx->monSprites[i] != NULL)
+            jumpGfx->monSprites[i]->subpriority = jumpGfx->monSpriteSubpriorities[i];
 }
 
 static void Gfx_StartMonIntroBounce(struct PokemonJumpGfx *jumpGfx, int multiplayerId)
 {
+    if (jumpGfx->monSprites[multiplayerId] == NULL)
+        return;
+
     ResetPokeJumpSpriteData(jumpGfx->monSprites[multiplayerId]);
     jumpGfx->monSprites[multiplayerId]->callback = SpriteCB_MonIntroBounce;
 }
@@ -2908,7 +2924,7 @@ static bool32 Gfx_IsMonIntroBounceActive(struct PokemonJumpGfx *jumpGfx)
     u16 numPlayers = GetNumPokeJumpPlayers();
     for (i = 0; i < numPlayers; i++)
     {
-        if (jumpGfx->monSprites[i]->callback == SpriteCB_MonIntroBounce)
+        if (jumpGfx->monSprites[i] != NULL && jumpGfx->monSprites[i]->callback == SpriteCB_MonIntroBounce)
             return TRUE;
     }
 
@@ -2951,8 +2967,15 @@ static void SpriteCB_MonIntroBounce(struct Sprite *sprite)
 
 static void CreateStarSprite(struct PokemonJumpGfx *jumpGfx, s16 x, s16 y, u8 multiplayerId)
 {
-    u8 spriteId = CreateSprite(&sSpriteTemplate_Star, x, y, 1);
-    if (spriteId != MAX_SPRITES)
+    u8 spriteId;
+
+    jumpGfx->starSprites[multiplayerId] = NULL;
+    if (GetSpriteTileStartByTag(sSpriteTemplate_Star.tileTag) == SPRITE_TILE_NONE
+     || IndexOfSpritePaletteTag(sSpriteTemplate_Star.paletteTag) == 0xFF)
+        return;
+
+    spriteId = CreateSprite(&sSpriteTemplate_Star, x, y, 1);
+    if (spriteId < MAX_SPRITES)
     {
         gSprites[spriteId].invisible = TRUE;
         jumpGfx->starSprites[multiplayerId] = &gSprites[spriteId];
@@ -2962,29 +2985,31 @@ static void CreateStarSprite(struct PokemonJumpGfx *jumpGfx, s16 x, s16 y, u8 mu
 static void CreateVineSprites(struct PokemonJumpGfx *jumpGfx)
 {
     int i;
-    int count;
-    u8 spriteId;
 
-    count = 0;
-    for (i = 0; i < VINE_SPRITES_PER_SIDE; i++)
+    for (i = 0; i < ARRAY_COUNT(jumpGfx->vineSprites); i++)
     {
-        spriteId = CreateSprite(sSpriteTemplates_Vine[i], sVineXCoords[count], sVineYCoords[i][0], 2);
-        jumpGfx->vineSprites[count] = &gSprites[spriteId];
-        count++;
-    }
+        bool8 rightSide = i >= VINE_SPRITES_PER_SIDE;
+        int segment = rightSide ? ARRAY_COUNT(jumpGfx->vineSprites) - 1 - i : i;
+        const struct SpriteTemplate *template = sSpriteTemplates_Vine[segment];
+        u8 spriteId;
 
-    for (i = VINE_SPRITES_PER_SIDE - 1; i >= 0; i--)
-    {
-        spriteId = CreateSprite(sSpriteTemplates_Vine[i], sVineXCoords[count], sVineYCoords[i][0], 2);
-        jumpGfx->vineSprites[count] = &gSprites[spriteId];
-        jumpGfx->vineSprites[count]->hFlip = TRUE;
-        count++;
+        jumpGfx->vineSprites[i] = NULL;
+        if (GetSpriteTileStartByTag(template->tileTag) == SPRITE_TILE_NONE
+         || (jumpGfx->vinePalNumDownswing == 0xFF && jumpGfx->vinePalNumUpswing == 0xFF))
+            continue;
+
+        spriteId = CreateSprite(template, sVineXCoords[i], sVineYCoords[segment][0], 2);
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
+        jumpGfx->vineSprites[i] = &gSprites[spriteId];
+        gSprites[spriteId].hFlip = rightSide;
     }
 }
 
 static void UpdateVineAnim(struct PokemonJumpGfx *jumpGfx, int vineState)
 {
-    int i, count, palNum;
+    int i, palNum, fallbackPalNum;
     int priority;
 
     if (vineState > VINE_LOWEST)
@@ -2994,30 +3019,32 @@ static void UpdateVineAnim(struct PokemonJumpGfx *jumpGfx, int vineState)
         vineState = NUM_VINESTATES - vineState;
         priority = 3; // Set vine behind Pokémon
         palNum = jumpGfx->vinePalNumUpswing;
+        fallbackPalNum = jumpGfx->vinePalNumDownswing;
     }
     else
     {
         priority = 2; // Set vine in front of Pokémon
         palNum = jumpGfx->vinePalNumDownswing;
+        fallbackPalNum = jumpGfx->vinePalNumUpswing;
     }
 
-    count = 0;
-    for (i = 0; i < VINE_SPRITES_PER_SIDE; i++)
-    {
-        jumpGfx->vineSprites[count]->y = sVineYCoords[i][vineState];
-        jumpGfx->vineSprites[count]->oam.priority = priority;
-        jumpGfx->vineSprites[count]->oam.paletteNum = palNum;
-        StartSpriteAnim(jumpGfx->vineSprites[count], vineState);
-        count++;
-    }
+    if (palNum == 0xFF)
+        palNum = fallbackPalNum;
+    if (palNum == 0xFF)
+        return;
 
-    for (i = VINE_SPRITES_PER_SIDE - 1; i >= 0; i--)
+    for (i = 0; i < ARRAY_COUNT(jumpGfx->vineSprites); i++)
     {
-        jumpGfx->vineSprites[count]->y = sVineYCoords[i][vineState];
-        jumpGfx->vineSprites[count]->oam.priority = priority;
-        jumpGfx->vineSprites[count]->oam.paletteNum = palNum;
-        StartSpriteAnim(jumpGfx->vineSprites[count], vineState);
-        count++;
+        struct Sprite *sprite = jumpGfx->vineSprites[i];
+        int segment = i < VINE_SPRITES_PER_SIDE ? i : ARRAY_COUNT(jumpGfx->vineSprites) - 1 - i;
+
+        if (sprite == NULL)
+            continue;
+
+        sprite->y = sVineYCoords[segment][vineState];
+        sprite->oam.priority = priority;
+        SetSpritePaletteHandle(sprite, palNum);
+        StartSpriteAnim(sprite, vineState);
     }
 }
 
@@ -3742,7 +3769,8 @@ static void CreateJumpMonSprites(void)
 
 static void SetMonSpriteY(u32 id, s16 y)
 {
-    sPokemonJumpGfx->monSprites[id]->y2 = y;
+    if (sPokemonJumpGfx->monSprites[id] != NULL)
+        sPokemonJumpGfx->monSprites[id]->y2 = y;
 }
 
 static void UpdateVineSwing(int vineState)

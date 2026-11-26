@@ -339,16 +339,23 @@ static void SpriteCB_Cursor_Down(struct Sprite *sprite)
 
 static void CreateCursor(u8 taskId)
 {
-    u32 spriteId;
+    u8 spriteId;
 
-    LoadSpritePalette(&sSpritePalette_Arrow);
+    if (LoadSpritePalette(&sSpritePalette_Arrow) == 0xFF)
+        return;
 
     spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Arrow, 53, 68, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
+
     gSprites[spriteId].callback = SpriteCB_Cursor_UpOrRight;
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sState = -1;
 
     spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Arrow, 53, 68, 0);
+    if (spriteId >= MAX_SPRITES)
+        return;
+
     gSprites[spriteId].callback = SpriteCB_Cursor_Down;
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sState = -1;
@@ -529,7 +536,7 @@ void CB2_InitResetRtcScreen(void)
 #endif
     DmaClear16(3, PLTT, PLTT_SIZE);
     DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
-    ResetOamRange(0, 128);
+    ResetOamRange(0, OAM_ENTRY_COUNT);
     LoadOam();
     ScanlineEffect_Stop();
     ScanlineEffect_Clear();

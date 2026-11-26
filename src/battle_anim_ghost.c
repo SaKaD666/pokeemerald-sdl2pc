@@ -602,9 +602,18 @@ static void AnimTask_SpiteTargetShadow_Step1(u8 taskId)
     struct Task *task = &gTasks[taskId];
     u8 position = GetBattlerSpriteBGPriorityRank(gBattleAnimTarget);
 
+    u8 targetPalette;
+
     switch (task->data[15])
     {
     case 0:
+        task->data[13] = GetAnimBattlerSpriteId(ANIM_TARGET);
+        targetPalette = (u16)task->data[13] < MAX_SPRITES ? GetSpritePaletteHandle(&gSprites[task->data[13]]) : 0xFF;
+        if (ObjPaletteMask(targetPalette) == 0)
+        {
+            DestroyAnimVisualTask(taskId);
+            return;
+        }
         task->data[14] = AllocSpritePalette(ANIM_TAG_BENT_SPOON);
         if (task->data[14] == 0xFF || task->data[14] == 0xF)
         {
@@ -621,15 +630,14 @@ static void AnimTask_SpiteTargetShadow_Step1(u8 taskId)
             else
             {
                 s16 mask2;
-                gSprites[task->data[0]].oam.paletteNum = task->data[14];
+                SetSpritePaletteHandle(&gSprites[task->data[0]], task->data[14]);
                 gSprites[task->data[0]].oam.objMode = ST_OAM_OBJ_NORMAL;
                 gSprites[task->data[0]].oam.priority = 3;
                 gSprites[task->data[0]].invisible = (gBattleSpritesDataPtr->battlerData[gBattleAnimTarget].invisible);
                 task->data[1] = 0;
                 task->data[2] = 0;
                 task->data[3] = 16;
-                task->data[13] = GetAnimBattlerSpriteId(ANIM_TARGET);
-                task->data[4] = OBJ_PLTT_ID2(gSprites[task->data[13]].oam.paletteNum);
+                task->data[4] = OBJ_PLTT_ID(targetPalette);
                 if (position == 1)
                 {
                     u16 mask = DISPCNT_BG1_ON;
@@ -1073,7 +1081,7 @@ static void AnimCurseNail_Step1(struct Sprite *sprite)
         {
             sprite->x += sprite->x2;
             sprite->x2 = 0;
-            sprite->oam.tileNum += 8;
+            OffsetSpriteTile(sprite, 8);
             if (++sprite->data[2] == 3)
             {
                 sprite->data[0] = 30;

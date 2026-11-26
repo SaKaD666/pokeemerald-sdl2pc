@@ -191,9 +191,9 @@ struct PartyMenuInternal
     MainCallback exitCallback;
     u32 chooseHalf:1;
     u32 lastSelectedSlot:3;  // Used to return to same slot when going left/right bewtween columns
-    u32 spriteIdConfirmPokeball:7;
-    u32 spriteIdCancelPokeball:7;
     u32 messageId:14;
+    u8 spriteIdConfirmPokeball;
+    u8 spriteIdCancelPokeball;
     u8 windowId[3];
     u8 actions[8];
     u8 numActions;
@@ -347,7 +347,7 @@ static void UpdatePartyToBattleOrder(void);
 static void CB2_ReturnToPartyMenuFromSummaryScreen(void);
 static void SlidePartyMenuBoxOneStep(u8);
 static void Task_SlideSelectedSlotsOffscreen(u8);
-static void SwitchPartyMon(void);
+static void SwitchPartyMon(s16 firstOffset, s16 secondOffset);
 static void Task_SlideSelectedSlotsOnscreen(u8);
 static void CB2_SelectBagItemToGive(void);
 static void CB2_GiveHoldItem(void);
@@ -509,8 +509,8 @@ static void InitPartyMenu(u8 menuType, u8 layout, u8 partyAction, bool8 keepCurs
         sPartyMenuInternal->task = task;
         sPartyMenuInternal->exitCallback = NULL;
         sPartyMenuInternal->lastSelectedSlot = 0;
-        sPartyMenuInternal->spriteIdConfirmPokeball = 0x7F;
-        sPartyMenuInternal->spriteIdCancelPokeball = 0x7F;
+        sPartyMenuInternal->spriteIdConfirmPokeball = SPRITE_NONE;
+        sPartyMenuInternal->spriteIdCancelPokeball = SPRITE_NONE;
 
         if (menuType == PARTY_MENU_TYPE_CHOOSE_HALF)
             sPartyMenuInternal->chooseHalf = TRUE;
@@ -2949,10 +2949,14 @@ static void MoveAndBufferPartySlot(const void *rectSrc, s16 x, s16 y, s16 width,
 
 static void MovePartyMenuBoxSprites(struct PartyMenuBox *menuBox, s16 offset)
 {
-    gSprites[menuBox->pokeballSpriteId].x2 += offset * 8;
-    gSprites[menuBox->itemSpriteId].x2 += offset * 8;
-    gSprites[menuBox->monSpriteId].x2 += offset * 8;
-    gSprites[menuBox->statusSpriteId].x2 += offset * 8;
+    if (menuBox->pokeballSpriteId < MAX_SPRITES)
+        gSprites[menuBox->pokeballSpriteId].x2 += offset * 8;
+    if (menuBox->itemSpriteId < MAX_SPRITES)
+        gSprites[menuBox->itemSpriteId].x2 += offset * 8;
+    if (menuBox->monSpriteId < MAX_SPRITES)
+        gSprites[menuBox->monSpriteId].x2 += offset * 8;
+    if (menuBox->statusSpriteId < MAX_SPRITES)
+        gSprites[menuBox->statusSpriteId].x2 += offset * 8;
 }
 
 static void SlidePartyMenuBoxSpritesOneStep(u8 taskId)
@@ -2993,7 +2997,7 @@ static void Task_SlideSelectedSlotsOffscreen(u8 taskId)
     {
         tSlot1SlideDir *= -1;
         tSlot2SlideDir *= -1;
-        SwitchPartyMon();
+        SwitchPartyMon(tSlot1Offset * 8, tSlot2Offset * 8);
         DisplayPartyPokemonData(gPartyMenu.slotId);
         DisplayPartyPokemonData(gPartyMenu.slotId2);
         PutWindowTilemap(sPartyMenuBoxes[gPartyMenu.slotId].windowId);
@@ -3035,13 +3039,29 @@ static void Task_SlideSelectedSlotsOnscreen(u8 taskId)
     }
 }
 
-static void SwitchMenuBoxSprites(u8 *spriteIdPtr1, u8 *spriteIdPtr2)
+static void PositionSwitchedSprite(u8 spriteId, const u8 *coords, s16 offset)
+{
+    if (spriteId >= MAX_SPRITES)
+        return;
+    gSprites[spriteId].x = coords[0];
+    gSprites[spriteId].y = coords[1];
+    gSprites[spriteId].x2 = offset;
+}
+
+static void SwitchMenuBoxSprites(u8 *spriteIdPtr1, u8 *spriteIdPtr2, const u8 *coords1, const u8 *coords2, s16 offset1, s16 offset2)
 {
     u8 spriteIdBuffer = *spriteIdPtr1;
     u16 xBuffer1, yBuffer1, xBuffer2, yBuffer2;
 
     *spriteIdPtr1 = *spriteIdPtr2;
     *spriteIdPtr2 = spriteIdBuffer;
+    if (*spriteIdPtr1 >= MAX_SPRITES || *spriteIdPtr2 >= MAX_SPRITES)
+    {
+        PositionSwitchedSprite(*spriteIdPtr1, coords1, offset1);
+        PositionSwitchedSprite(*spriteIdPtr2, coords2, offset2);
+        return;
+    }
+
     xBuffer1 = gSprites[*spriteIdPtr1].x;
     yBuffer1 = gSprites[*spriteIdPtr1].y;
     xBuffer2 = gSprites[*spriteIdPtr1].x2;
@@ -3056,7 +3076,7 @@ static void SwitchMenuBoxSprites(u8 *spriteIdPtr1, u8 *spriteIdPtr2)
     gSprites[*spriteIdPtr2].y2 = yBuffer2;
 }
 
-static void SwitchPartyMon(void)
+static void SwitchPartyMon(s16 firstOffset, s16 secondOffset)
 {
     struct PartyMenuBox *menuBoxes[2];
     struct Pokemon *mon1, *mon2;
@@ -3071,10 +3091,14 @@ static void SwitchPartyMon(void)
     *mon1 = *mon2;
     *mon2 = *monBuffer;
     Free(monBuffer);
-    SwitchMenuBoxSprites(&menuBoxes[0]->pokeballSpriteId, &menuBoxes[1]->pokeballSpriteId);
-    SwitchMenuBoxSprites(&menuBoxes[0]->itemSpriteId, &menuBoxes[1]->itemSpriteId);
-    SwitchMenuBoxSprites(&menuBoxes[0]->monSpriteId, &menuBoxes[1]->monSpriteId);
-    SwitchMenuBoxSprites(&menuBoxes[0]->statusSpriteId, &menuBoxes[1]->statusSpriteId);
+    SwitchMenuBoxSprites(&menuBoxes[0]->pokeballSpriteId, &menuBoxes[1]->pokeballSpriteId,
+                         menuBoxes[0]->spriteCoords + 6, menuBoxes[1]->spriteCoords + 6, firstOffset, secondOffset);
+    SwitchMenuBoxSprites(&menuBoxes[0]->itemSpriteId, &menuBoxes[1]->itemSpriteId,
+                         menuBoxes[0]->spriteCoords + 2, menuBoxes[1]->spriteCoords + 2, firstOffset, secondOffset);
+    SwitchMenuBoxSprites(&menuBoxes[0]->monSpriteId, &menuBoxes[1]->monSpriteId,
+                         menuBoxes[0]->spriteCoords + 0, menuBoxes[1]->spriteCoords + 0, firstOffset, secondOffset);
+    SwitchMenuBoxSprites(&menuBoxes[0]->statusSpriteId, &menuBoxes[1]->statusSpriteId,
+                         menuBoxes[0]->spriteCoords + 4, menuBoxes[1]->spriteCoords + 4, firstOffset, secondOffset);
 }
 
 // Finish switching mons or using Softboiled
@@ -4001,12 +4025,16 @@ static void CreatePartyMonIconSpriteParameterized(u16 species, u32 pid, struct P
     if (species != SPECIES_NONE)
     {
         menuBox->monSpriteId = UsePartySpriteOffset(CreateMonIcon(species, SpriteCB_MonIcon, menuBox->spriteCoords[0], menuBox->spriteCoords[1], 4, pid, handleDeoxys));
-        gSprites[menuBox->monSpriteId].oam.priority = priority;
+        if (menuBox->monSpriteId < MAX_SPRITES)
+            gSprites[menuBox->monSpriteId].oam.priority = priority;
     }
 }
 
 static void UpdateHPBar(u8 spriteId, u16 hp, u16 maxhp)
 {
+    if (spriteId >= MAX_SPRITES)
+        return;
+
     switch (GetHPBarLevel(hp, maxhp))
     {
     case HP_BAR_FULL:
@@ -4034,6 +4062,9 @@ static void UpdatePartyMonHPBar(u8 spriteId, struct Pokemon *mon)
 
 static void AnimateSelectedPartyIcon(u8 spriteId, u8 animNum)
 {
+    if (spriteId >= MAX_SPRITES)
+        return;
+
     gSprites[spriteId].data[0] = 0;
     if (animNum == 0)
     {
@@ -4089,7 +4120,8 @@ static void CreatePartyMonHeldItemSpriteParameterized(u16 species, u16 item, str
     if (species != SPECIES_NONE)
     {
         menuBox->itemSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_HeldItem, menuBox->spriteCoords[2], menuBox->spriteCoords[3], 0));
-        gSprites[menuBox->itemSpriteId].oam.priority = 0;
+        if (menuBox->itemSpriteId < MAX_SPRITES)
+            gSprites[menuBox->itemSpriteId].oam.priority = 0;
         ShowOrHideHeldItemSprite(item, menuBox);
     }
 }
@@ -4101,6 +4133,9 @@ static void UpdatePartyMonHeldItemSprite(struct Pokemon *mon, struct PartyMenuBo
 
 static void ShowOrHideHeldItemSprite(u16 item, struct PartyMenuBox *menuBox)
 {
+    if (menuBox->itemSpriteId >= MAX_SPRITES)
+        return;
+
     if (item == ITEM_NONE)
     {
         gSprites[menuBox->itemSpriteId].invisible = TRUE;
@@ -4149,8 +4184,14 @@ void DrawHeldItemIconsForTrade(u8 *partyCounts, u8 *partySpriteIds, u8 whichPart
 
 static void CreateHeldItemSpriteForTrade(u8 spriteId, bool8 isMail)
 {
-    u8 subpriority = gSprites[spriteId].subpriority;
-    u8 newSpriteId = CreateSprite(&sSpriteTemplate_HeldItem, 250, 170, subpriority - 1);
+    u8 newSpriteId;
+
+    if (spriteId >= MAX_SPRITES)
+        return;
+
+    newSpriteId = CreateSprite(&sSpriteTemplate_HeldItem, 250, 170, gSprites[spriteId].subpriority - 1);
+    if (newSpriteId >= MAX_SPRITES)
+        return;
 
     gSprites[newSpriteId].x2 = 4;
     gSprites[newSpriteId].y2 = 10;
@@ -4164,7 +4205,7 @@ static void SpriteCB_HeldItem(struct Sprite *sprite)
 {
     u8 otherSpriteId = sprite->data[7];
 
-    if (gSprites[otherSpriteId].invisible)
+    if (otherSpriteId >= MAX_SPRITES || gSprites[otherSpriteId].invisible)
     {
         sprite->invisible = TRUE;
     }
@@ -4187,7 +4228,8 @@ static void CreatePartyMonPokeballSpriteParameterized(u16 species, struct PartyM
     if (species != SPECIES_NONE)
     {
         menuBox->pokeballSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeball, menuBox->spriteCoords[6], menuBox->spriteCoords[7], 8));
-        gSprites[menuBox->pokeballSpriteId].oam.priority = 0;
+        if (menuBox->pokeballSpriteId < MAX_SPRITES)
+            gSprites[menuBox->pokeballSpriteId].oam.priority = 0;
     }
 }
 
@@ -4196,7 +4238,8 @@ static u8 CreatePokeballButtonSprite(u8 x, u8 y)
 {
     u8 spriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeball, x, y, 8));
 
-    gSprites[spriteId].oam.priority = 2;
+    if (spriteId < MAX_SPRITES)
+        gSprites[spriteId].oam.priority = 2;
     return spriteId;
 }
 
@@ -4208,7 +4251,8 @@ static u8 CreateSmallPokeballButtonSprite(u8 x, u8 y)
 
 static void PartyMenuStartSpriteAnim(u8 spriteId, u8 animNum)
 {
-    StartSpriteAnim(&gSprites[spriteId], animNum);
+    if (spriteId < MAX_SPRITES)
+        StartSpriteAnim(&gSprites[spriteId], animNum);
 }
 
 // Might explain the large blank section in gPartyMenuPokeballSmall_Gfx
@@ -4253,7 +4297,8 @@ static void CreatePartyMonStatusSpriteParameterized(u16 species, u8 status, stru
     {
         menuBox->statusSpriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_StatusIcons, menuBox->spriteCoords[4], menuBox->spriteCoords[5], 0));
         UpdatePartyMonAilmentGfx(status, menuBox);
-        gSprites[menuBox->statusSpriteId].oam.priority = 0;
+        if (menuBox->statusSpriteId < MAX_SPRITES)
+            gSprites[menuBox->statusSpriteId].oam.priority = 0;
     }
 }
 
@@ -4264,6 +4309,9 @@ static void SetPartyMonAilmentGfx(struct Pokemon *mon, struct PartyMenuBox *menu
 
 static void UpdatePartyMonAilmentGfx(u8 status, struct PartyMenuBox *menuBox)
 {
+    if (menuBox->statusSpriteId >= MAX_SPRITES)
+        return;
+
     switch (status)
     {
     case AILMENT_NONE:
@@ -4495,7 +4543,8 @@ void ItemUseCB_Medicine(u8 taskId, TaskFunc task)
             PlaySE(SE_GLASS_FLUTE);
         }
         SetPartyMonAilmentGfx(mon, &sPartyMenuBoxes[gPartyMenu.slotId]);
-        if (gSprites[sPartyMenuBoxes[gPartyMenu.slotId].statusSpriteId].invisible)
+        if (sPartyMenuBoxes[gPartyMenu.slotId].statusSpriteId >= MAX_SPRITES
+         || gSprites[sPartyMenuBoxes[gPartyMenu.slotId].statusSpriteId].invisible)
             DisplayPartyPokemonLevelCheck(mon, &sPartyMenuBoxes[gPartyMenu.slotId], 1);
         if (canHeal == TRUE)
         {
@@ -5053,7 +5102,8 @@ void ItemUseCB_RareCandy(u8 taskId, TaskFunc task)
 static void UpdateMonDisplayInfoAfterRareCandy(u8 slot, struct Pokemon *mon)
 {
     SetPartyMonAilmentGfx(mon, &sPartyMenuBoxes[slot]);
-    if (gSprites[sPartyMenuBoxes[slot].statusSpriteId].invisible)
+    if (sPartyMenuBoxes[slot].statusSpriteId >= MAX_SPRITES
+     || gSprites[sPartyMenuBoxes[slot].statusSpriteId].invisible)
         DisplayPartyPokemonLevelCheck(mon, &sPartyMenuBoxes[slot], 1);
     DisplayPartyPokemonHPCheck(mon, &sPartyMenuBoxes[slot], 1);
     DisplayPartyPokemonMaxHPCheck(mon, &sPartyMenuBoxes[slot], 1);
@@ -5231,7 +5281,8 @@ static void UseSacredAsh(u8 taskId)
 
     PlaySE(SE_USE_ITEM);
     SetPartyMonAilmentGfx(mon, &sPartyMenuBoxes[gPartyMenu.slotId]);
-    if (gSprites[sPartyMenuBoxes[gPartyMenu.slotId].statusSpriteId].invisible)
+    if (sPartyMenuBoxes[gPartyMenu.slotId].statusSpriteId >= MAX_SPRITES
+     || gSprites[sPartyMenuBoxes[gPartyMenu.slotId].statusSpriteId].invisible)
         DisplayPartyPokemonLevelCheck(mon, &sPartyMenuBoxes[gPartyMenu.slotId], 1);
     AnimatePartySlot(sPartyMenuInternal->tLastSlotUsed, 0);
     AnimatePartySlot(gPartyMenu.slotId, 1);
@@ -6227,7 +6278,7 @@ static void Task_WaitAfterMultiPartnerPartySlideIn(u8 taskId)
 
 static void MoveMultiPartyMenuBoxSprite(u8 spriteId, s16 x)
 {
-    if (x >= 0)
+    if (spriteId < MAX_SPRITES && x >= 0)
         gSprites[spriteId].x2 = x;
 }
 

@@ -644,9 +644,9 @@ static void SpriteCB_PartyPokeball(struct Sprite *sprite)
 void HighlightCurrentPartyIndexPokeball(struct Sprite *sprite)
 {
     if (GetConditionGraphCurrentListIndex() == GetMonListCount() - 1)
-        sprite->oam.paletteNum = IndexOfSpritePaletteTag(TAG_CONDITION_BALL);
+        SetSpritePaletteFromTag(sprite, TAG_CONDITION_BALL);
     else
-        sprite->oam.paletteNum = IndexOfSpritePaletteTag(TAG_CONDITION_CANCEL);
+        SetSpritePaletteFromTag(sprite, TAG_CONDITION_CANCEL);
 }
 
 void MonMarkingsCallback(struct Sprite *sprite)
@@ -673,12 +673,15 @@ static void CreateMonMarkingsOrPokeballIndicators(void)
         InitMonMarkingsMenu(&menu->marksMenu);
         BufferMonMarkingsMenuTiles();
         sprite = CreateMonMarkingAllCombosSprite(TAG_CONDITION_MON_MARKINGS, TAG_CONDITION_MON_MARKINGS, sMonMarkings_Pal);
-        sprite->oam.priority = 3;
-        sprite->x = 192;
-        sprite->y = 32;
-        sprite->callback = MonMarkingsCallback;
         menu->monMarksSprite = sprite;
-        PokenavFillPalette(IndexOfSpritePaletteTag(TAG_CONDITION_MON_MARKINGS), 0);
+        if (sprite != NULL)
+        {
+            sprite->oam.priority = 3;
+            sprite->x = 192;
+            sprite->y = 32;
+            sprite->callback = MonMarkingsCallback;
+            PokenavFillPalette(IndexOfSpritePaletteTag(TAG_CONDITION_MON_MARKINGS), 0);
+        }
     }
     else
     {
@@ -689,8 +692,8 @@ static void CreateMonMarkingsOrPokeballIndicators(void)
         // Add icons for occupied slots
         for (i = 0; i < GetMonListCount() - 1; i++)
         {
-            spriteId = CreateSprite(&sprTemplate, 226, (i * 20) + 8, 0);
-            if (spriteId != MAX_SPRITES)
+            spriteId = CreateConditionSelectionIcon(&sprTemplate, 226, (i * 20) + 8);
+            if (spriteId < MAX_SPRITES)
             {
                 menu->partyPokeballSpriteIds[i] = spriteId;
                 gSprites[spriteId].data[0] = i;
@@ -707,8 +710,8 @@ static void CreateMonMarkingsOrPokeballIndicators(void)
         sprTemplate.callback = SpriteCallbackDummy;
         for (; i < PARTY_SIZE; i++)
         {
-            spriteId = CreateSprite(&sprTemplate, 230, (i * 20) + 8, 0);
-            if (spriteId != MAX_SPRITES)
+            spriteId = CreateConditionSelectionIcon(&sprTemplate, 230, (i * 20) + 8);
+            if (spriteId < MAX_SPRITES)
             {
                 menu->partyPokeballSpriteIds[i] = spriteId;
                 gSprites[spriteId].oam.size = 0;
@@ -722,8 +725,8 @@ static void CreateMonMarkingsOrPokeballIndicators(void)
         // Add cancel icon
         sprTemplate.tileTag = TAG_CONDITION_CANCEL;
         sprTemplate.callback = HighlightCurrentPartyIndexPokeball;
-        spriteId = CreateSprite(&sprTemplate, 222, (i * 20) + 8, 0);
-        if (spriteId != MAX_SPRITES)
+        spriteId = CreateConditionSelectionIcon(&sprTemplate, 222, (i * 20) + 8);
+        if (spriteId < MAX_SPRITES)
         {
             menu->partyPokeballSpriteIds[i] = spriteId;
             gSprites[spriteId].oam.shape = SPRITE_SHAPE(32x16);
@@ -747,7 +750,8 @@ static void FreeConditionMenuGfx(struct Pokenav_ConditionMenuGfx *menu)
 
     if (IsConditionMenuSearchMode() == TRUE)
     {
-        DestroySprite(menu->monMarksSprite);
+        if (menu->monMarksSprite != NULL)
+            DestroySprite(menu->monMarksSprite);
         FreeSpriteTilesByTag(TAG_CONDITION_MARKINGS_MENU);
         FreeSpriteTilesByTag(TAG_CONDITION_MON_MARKINGS);
         FreeSpritePaletteByTag(TAG_CONDITION_MARKINGS_MENU);
@@ -756,7 +760,8 @@ static void FreeConditionMenuGfx(struct Pokenav_ConditionMenuGfx *menu)
     else
     {
         for (i = 0; i < PARTY_SIZE + 1; i++)
-            DestroySprite(&gSprites[menu->partyPokeballSpriteIds[i]]);
+            if (menu->partyPokeballSpriteIds[i] < MAX_SPRITES)
+                DestroySprite(&gSprites[menu->partyPokeballSpriteIds[i]]);
 
         FreeSpriteTilesByTag(TAG_CONDITION_BALL);
         FreeSpriteTilesByTag(TAG_CONDITION_CANCEL);
@@ -765,7 +770,7 @@ static void FreeConditionMenuGfx(struct Pokenav_ConditionMenuGfx *menu)
         FreeSpritePaletteByTag(TAG_CONDITION_CANCEL);
     }
 
-    if (menu->monPicSpriteId != SPRITE_NONE)
+    if (menu->monPicSpriteId < MAX_SPRITES)
     {
         DestroySprite(&gSprites[menu->monPicSpriteId]);
         FreeSpriteTilesByTag(TAG_CONDITION_MON);
@@ -809,16 +814,22 @@ static void CreateConditionMonPic(u8 id)
     u8 spriteId;
     struct Pokenav_ConditionMenuGfx *menu = GetSubstructPtr(POKENAV_SUBSTRUCT_CONDITION_GRAPH_MENU_GFX);
 
-    if (menu->monPicSpriteId == SPRITE_NONE)
+    if (menu->monPicSpriteId >= MAX_SPRITES)
     {
         LoadConditionMonPicTemplate(&sprSheet, &sprTemplate, &sprPal);
         sprSheet.data = GetConditionMonPicGfx(id);
         sprPal.data = GetConditionMonPal(id);
-        menu->monPalIndex = LoadSpritePalette(&sprPal);
         menu->monGfxTileStart = LoadSpriteSheet(&sprSheet);
+        if (menu->monGfxTileStart == SPRITE_TILE_NONE)
+            return;
+        menu->monPalIndex = LoadSpritePalette(&sprPal);
+        if (menu->monPalIndex == 0xFF)
+        {
+            FreeSpriteTilesByTag(TAG_CONDITION_MON);
+            return;
+        }
         spriteId = CreateSprite(&sprTemplate, 38, 104, 0);
-        menu->monPicSpriteId = spriteId;
-        if (spriteId == MAX_SPRITES)
+        if (spriteId >= MAX_SPRITES)
         {
             FreeSpriteTilesByTag(TAG_CONDITION_MON);
             FreeSpritePaletteByTag(TAG_CONDITION_MON);

@@ -743,7 +743,8 @@ static void CB2_ExitMailReadFreeVars(void)
         case ICON_TYPE_BEAD:
         case ICON_TYPE_DREAM:
             FreeMonIconPalette(GetIconSpeciesNoPersonality(sMailRead->mail.species));
-            FreeAndDestroyMonIconSprite(&gSprites[sMailRead->monIconSpriteId]);
+            if (sMailRead->monIconSpriteId < MAX_SPRITES)
+                FreeAndDestroyMonIconSprite(&gSprites[sMailRead->monIconSpriteId]);
         }
         memset(sMailRead, 0, sizeof(*sMailRead));
         ResetPaletteFade();

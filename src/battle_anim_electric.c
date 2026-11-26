@@ -558,12 +558,10 @@ static void AnimSparkElectricity(struct Sprite *sprite)
     if (gBattleAnimArgs[6] & 1)
         sprite->oam.priority = GetBattlerSpriteBGPriority(battler) + 1;
 
-    matrixNum = sprite->oam.matrixNum;
+    matrixNum = GetSpriteMatrixHandle(sprite);
     sineVal = gSineTable[gBattleAnimArgs[2]];
 
-    gOamMatrices[matrixNum].a = gOamMatrices[matrixNum].d =  gSineTable[gBattleAnimArgs[2] + 64];
-    gOamMatrices[matrixNum].b =  sineVal;
-    gOamMatrices[matrixNum].c = -sineVal;
+    SetOamMatrix(matrixNum, gSineTable[gBattleAnimArgs[2] + 64], sineVal, -sineVal, gSineTable[gBattleAnimArgs[2] + 64]);
 
     sprite->data[0] = gBattleAnimArgs[3];
     sprite->callback = DestroyAnimSpriteAfterTimer;
@@ -581,7 +579,7 @@ static void AnimZapCannonSpark(struct Sprite *sprite)
     sprite->data[5] = gBattleAnimArgs[2];
     sprite->data[6] = gBattleAnimArgs[5];
     sprite->data[7] = gBattleAnimArgs[4];
-    sprite->oam.tileNum += gBattleAnimArgs[6] * 4;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[6] * 4);
     sprite->callback = AnimZapCannonSpark_Step;
     sprite->callback(sprite);
 }
@@ -647,7 +645,7 @@ static void AnimSparkElectricityFlashing(struct Sprite *sprite)
     sprite->data[6] = gBattleAnimArgs[5];
     sprite->data[7] = gBattleAnimArgs[4];
 
-    sprite->oam.tileNum += gBattleAnimArgs[6] * 4;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[6] * 4);
     sprite->callback = AnimSparkElectricityFlashing_Step;
     sprite->callback(sprite);
 }
@@ -669,7 +667,7 @@ static void AnimSparkElectricityFlashing_Step(struct Sprite *sprite)
 static void AnimElectricity(struct Sprite *sprite)
 {
     InitSpritePosToAnimTarget(sprite, FALSE);
-    sprite->oam.tileNum += gBattleAnimArgs[3] * 4;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[3] * 4);
 
     if (gBattleAnimArgs[3] == 1)
         sprite->oam.matrixNum = ST_OAM_HFLIP;
@@ -751,7 +749,7 @@ static void AnimTask_ElectricBolt_Step(u8 taskId)
 
     if (r7)
     {
-        gSprites[spriteId].oam.tileNum += r8;
+        OffsetSpriteTile(&gSprites[spriteId], r8);
         gSprites[spriteId].data[0] = sp;
         gSprites[spriteId].callback(&gSprites[spriteId]);
     }
@@ -782,10 +780,12 @@ static void AnimThunderWave(struct Sprite *sprite)
 
     sprite->x += gBattleAnimArgs[0];
     sprite->y += gBattleAnimArgs[1];
-    spriteId = CreateSprite(&gThunderWaveSpriteTemplate, sprite->x + 32, sprite->y, sprite->subpriority);
-    gSprites[spriteId].oam.tileNum += 8;
-    gAnimVisualTaskCount++;
-    gSprites[spriteId].callback = AnimThunderWave_Step;
+    spriteId = CreateCountedAnimSprite(&gThunderWaveSpriteTemplate, sprite->x + 32, sprite->y, sprite->subpriority, FALSE);
+    if (spriteId < MAX_SPRITES)
+    {
+        OffsetSpriteTile(&gSprites[spriteId], 8);
+        gSprites[spriteId].callback = AnimThunderWave_Step;
+    }
     sprite->callback = AnimThunderWave_Step;
 }
 
@@ -838,6 +838,7 @@ static void AnimTask_ElectricChargingParticles_Step(u8 taskId)
         {
             u8 spriteId;
             task->data[12] = 0;
+            task->data[6]--;
             spriteId = CreateSprite(&gElectricChargingParticlesSpriteTemplate, task->data[14], task->data[15], 2);
             if (spriteId != MAX_SPRITES)
             {
@@ -867,7 +868,6 @@ static void AnimTask_ElectricChargingParticles_Step(u8 taskId)
                 }
 
                 task->data[7]++;
-                task->data[6]--;
             }
         }
     }
@@ -1127,7 +1127,7 @@ static void AnimVoltTackleBolt(struct Sprite *sprite)
     if (++sprite->data[0] > 12)
     {
         gTasks[sprite->data[6]].data[sprite->data[7]]--;
-        FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
         DestroySprite(sprite);
     }
 }
@@ -1233,7 +1233,7 @@ static bool8 CreateShockWaveBoltSprite(struct Task *task, u8 taskId)
     u8 spriteId = CreateSprite(&gShockWaveProgressingBoltSpriteTemplate, task->data[6], task->data[7], 35);
     if (spriteId != MAX_SPRITES)
     {
-        gSprites[spriteId].oam.tileNum += task->data[4];
+        OffsetSpriteTile(&gSprites[spriteId], task->data[4]);
         task->data[4] += task->data[5];
         if (task->data[4] < 0)
             task->data[4] = 7;

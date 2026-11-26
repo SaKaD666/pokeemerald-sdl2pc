@@ -838,15 +838,21 @@ static void CreateCableCarSprites(void)
             }
             // Create car sprite
             spriteId = CreateSprite(&sSpriteTemplates_CableCar[0], 176, 43, 0x67);
-            gSprites[spriteId].x2 = gSprites[spriteId].y2 = 32;
-            gSprites[spriteId].sXPos = 176;
-            gSprites[spriteId].sYPos = 43;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].x2 = gSprites[spriteId].y2 = 32;
+                gSprites[spriteId].sXPos = 176;
+                gSprites[spriteId].sYPos = 43;
+            }
             // Create door sprite
             spriteId = CreateSprite(&sSpriteTemplates_CableCar[1], 200, 99, 0x65);
-            gSprites[spriteId].x2 = 8;
-            gSprites[spriteId].y2 = 4;
-            gSprites[spriteId].sXPos = 200;
-            gSprites[spriteId].sYPos = 99;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].x2 = 8;
+                gSprites[spriteId].y2 = 4;
+                gSprites[spriteId].sXPos = 200;
+                gSprites[spriteId].sYPos = 99;
+            }
             // Init weather
             sCableCar->weather = WEATHER_VOLCANIC_ASH;
             sCableCar->weatherDelay = 350;
@@ -866,15 +872,21 @@ static void CreateCableCarSprites(void)
             }
             // Create car sprite
             spriteId = CreateSprite(&sSpriteTemplates_CableCar[0], 104, 9, 0x67);
-            gSprites[spriteId].x2 = gSprites[spriteId].y2 = 32;
-            gSprites[spriteId].sXPos = 104;
-            gSprites[spriteId].sYPos = 9;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].x2 = gSprites[spriteId].y2 = 32;
+                gSprites[spriteId].sXPos = 104;
+                gSprites[spriteId].sYPos = 9;
+            }
             // Create door sprite
             spriteId = CreateSprite(&sSpriteTemplates_CableCar[1], 128, 65, 0x65);
-            gSprites[spriteId].x2 = 8;
-            gSprites[spriteId].y2 = 4;
-            gSprites[spriteId].sXPos = 128;
-            gSprites[spriteId].sYPos = 65;
+            if (spriteId < MAX_SPRITES)
+            {
+                gSprites[spriteId].x2 = 8;
+                gSprites[spriteId].y2 = 4;
+                gSprites[spriteId].sXPos = 128;
+                gSprites[spriteId].sYPos = 65;
+            }
             // Init weather
             sCableCar->weather = WEATHER_SUNNY;
             sCableCar->weatherDelay = 265;
@@ -884,6 +896,9 @@ static void CreateCableCarSprites(void)
     for (i = 0; i < 9; i++)
     {
         spriteId = CreateSprite(&sSpriteTemplate_Cable, 16 * i + 96, 8 * i - 8, 0x68);
+        if (spriteId >= MAX_SPRITES)
+            continue;
+
         gSprites[spriteId].x2 = 8;
         gSprites[spriteId].y2 = 8;
     }

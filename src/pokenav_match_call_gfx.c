@@ -51,6 +51,9 @@ struct Pokenav_MatchCallGfx
     u8 *trainerPicGfxPtr;
     u8 trainerPicGfx[TRAINER_PIC_SIZE];
     u8 trainerPicPal[0x20];
+#ifdef PLATFORM_SDL2
+    struct Dma3Transfer trainerPicTransfer;
+#endif
 };
 
 static bool32 GetCurrentLoopedTaskActive(void);
@@ -284,6 +287,11 @@ bool32 OpenMatchCall(void)
     if (!gfx)
         return FALSE;
 
+    gfx->optionsCursorSprite = NULL;
+    gfx->trainerPicSprite = NULL;
+#ifdef PLATFORM_SDL2
+    gfx->trainerPicTransfer.state = DMA3_TRANSFER_IDLE;
+#endif
     gfx->unused19 = 0;
     gfx->loopTaskId = CreateLoopedTask(LoopedTask_OpenMatchCall, 1);
     gfx->isTaskActiveCB = GetCurrentLoopedTaskActive;
@@ -944,6 +952,10 @@ static void TryDrawRematchPokeballIcon(u16 windowId, u32 rematchId, u32 tileOffs
         tilemap[0] = POKEBALL_ICON_EMPTY;
         tilemap[0x20] = POKEBALL_ICON_EMPTY;
     }
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapRamRange(&tilemap[0], sizeof(*tilemap));
+    InvalidateBgTilemapRamRange(&tilemap[0x20], sizeof(*tilemap));
+#endif
 }
 
 void ClearRematchPokeballIcon(u16 windowId, u32 tileOffset)
@@ -953,6 +965,10 @@ void ClearRematchPokeballIcon(u16 windowId, u32 tileOffset)
     tilemap += tileOffset * 64 + 0x1D;
     tilemap[0] = POKEBALL_ICON_EMPTY;
     tilemap[0x20] = POKEBALL_ICON_EMPTY;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapRamRange(&tilemap[0], sizeof(*tilemap));
+    InvalidateBgTilemapRamRange(&tilemap[0x20], sizeof(*tilemap));
+#endif
 }
 
 static void DrawMatchCallLeftColumnWindows(struct Pokenav_MatchCallGfx *gfx)
@@ -1171,6 +1187,7 @@ static void AllocMatchCallSprites(void)
 {
     int i;
     u8 paletteNum;
+    u16 tileStart;
     struct SpriteSheet spriteSheet;
     struct Pokenav_MatchCallGfx *gfx = GetSubstructPtr(POKENAV_SUBSTRUCT_MATCH_CALL_OPEN);
 
@@ -1184,16 +1201,37 @@ static void AllocMatchCallSprites(void)
     spriteSheet.data = gfx->trainerPicGfx;
     spriteSheet.size = sizeof(gfx->trainerPicGfx);
     spriteSheet.tag = GFXTAG_TRAINER_PIC;
-    gfx->trainerPicGfxPtr = (u8 *)OBJ_VRAM0 + LoadSpriteSheet(&spriteSheet) * 0x20;
+    gfx->trainerPicSprite = NULL;
+    gfx->trainerPicGfxPtr = NULL;
+    tileStart = LoadSpriteSheet(&spriteSheet);
+    if (tileStart == SPRITE_TILE_NONE)
+        return;
+    gfx->trainerPicGfxPtr = (u8 *)OBJ_VRAM0 + tileStart * TILE_SIZE_4BPP;
     paletteNum = AllocSpritePalette(PALTAG_TRAINER_PIC);
+    if (paletteNum == 0xFF)
+    {
+        FreeSpriteTilesByTag(GFXTAG_TRAINER_PIC);
+        gfx->trainerPicGfxPtr = NULL;
+        return;
+    }
     gfx->trainerPicPalOffset = OBJ_PLTT_ID(paletteNum);
     gfx->trainerPicSprite = CreateTrainerPicSprite();
-    gfx->trainerPicSprite->invisible = TRUE;
+    if (gfx->trainerPicSprite != NULL)
+        gfx->trainerPicSprite->invisible = TRUE;
+    else
+    {
+        FreeSpriteTilesByTag(GFXTAG_TRAINER_PIC);
+        FreeSpritePaletteByTag(PALTAG_TRAINER_PIC);
+        gfx->trainerPicGfxPtr = NULL;
+    }
 }
 
 static void FreeMatchCallSprites(void)
 {
     struct Pokenav_MatchCallGfx *gfx = GetSubstructPtr(POKENAV_SUBSTRUCT_MATCH_CALL_OPEN);
+#ifdef PLATFORM_SDL2
+    CancelDma3TrackedCopy(&gfx->trainerPicTransfer);
+#endif
     if (gfx->optionsCursorSprite)
         DestroySprite(gfx->optionsCursorSprite);
     if (gfx->trainerPicSprite)
@@ -1238,33 +1276,48 @@ static void SpriteCB_OptionsCursor(struct Sprite *sprite)
 static struct Sprite *CreateTrainerPicSprite(void)
 {
     u8 spriteId = CreateSprite(&sTrainerPicSpriteTemplate, 44, 104, 6);
-    return &gSprites[spriteId];
+    return spriteId == MAX_SPRITES ? NULL : &gSprites[spriteId];
 }
 
 static void LoadCheckPageTrainerPic(struct Pokenav_MatchCallGfx *gfx)
 {
-    u16 cursor;
+#ifndef PLATFORM_SDL2
+    s16 cursor;
+#endif
     int trainerPic = GetMatchCallTrainerPic(PokenavList_GetSelectedIndex());
-    if (trainerPic >= 0)
+    if (trainerPic >= 0 && gfx->trainerPicSprite != NULL)
     {
+        gfx->trainerPicSprite->invisible = TRUE;
+        gfx->trainerPicSprite->callback = SpriteCallbackDummy;
+#ifdef PLATFORM_SDL2
+        CancelDma3TrackedCopy(&gfx->trainerPicTransfer);
+#endif
         DecompressPicFromTable(&gTrainerFrontPicTable[trainerPic], gfx->trainerPicGfx, SPECIES_NONE);
         LZ77UnCompWram(gTrainerFrontPicPaletteTable[trainerPic].data, gfx->trainerPicPal);
+#ifdef PLATFORM_SDL2
+        if (!RequestDma3TrackedCopy(gfx->trainerPicGfx, gfx->trainerPicGfxPtr, sizeof(gfx->trainerPicGfx), 1, &gfx->trainerPicTransfer))
+            return;
+#else
         cursor = RequestDma3Copy(gfx->trainerPicGfx, gfx->trainerPicGfxPtr, sizeof(gfx->trainerPicGfx), 1);
+        if (cursor < 0)
+            return;
         LoadPalette(gfx->trainerPicPal, gfx->trainerPicPalOffset, sizeof(gfx->trainerPicPal));
-        gfx->trainerPicSprite->data[0] = 0;
         gfx->trainerPicSprite->data[7] = cursor;
+#endif
+        gfx->trainerPicSprite->data[0] = 0;
         gfx->trainerPicSprite->callback = SpriteCB_TrainerPicSlideOnscreen;
     }
 }
 
 static void TrainerPicSlideOffscreen(struct Pokenav_MatchCallGfx *gfx)
 {
-    gfx->trainerPicSprite->callback = SpriteCB_TrainerPicSlideOffscreen;
+    if (gfx->trainerPicSprite != NULL)
+        gfx->trainerPicSprite->callback = SpriteCB_TrainerPicSlideOffscreen;
 }
 
 static bool32 WaitForTrainerPic(struct Pokenav_MatchCallGfx *gfx)
 {
-    return gfx->trainerPicSprite->callback != SpriteCallbackDummy;
+    return gfx->trainerPicSprite != NULL && gfx->trainerPicSprite->callback != SpriteCallbackDummy;
 }
 
 static void SpriteCB_TrainerPicSlideOnscreen(struct Sprite *sprite)
@@ -1272,13 +1325,27 @@ static void SpriteCB_TrainerPicSlideOnscreen(struct Sprite *sprite)
     switch (sprite->data[0])
     {
     case 0:
-        if (CheckForSpaceForDma3Request(sprite->data[7]) != -1)
+    {
+#ifdef PLATFORM_SDL2
+        struct Pokenav_MatchCallGfx *gfx = GetSubstructPtr(POKENAV_SUBSTRUCT_MATCH_CALL_OPEN);
+
+        if (gfx->trainerPicTransfer.state == DMA3_TRANSFER_PENDING)
+            break;
+        if (gfx->trainerPicTransfer.state != DMA3_TRANSFER_COMPLETED)
         {
-            sprite->x2 = -80;
-            sprite->invisible = FALSE;
-            sprite->data[0]++;
+            sprite->callback = SpriteCallbackDummy;
+            break;
         }
+        LoadPalette(gfx->trainerPicPal, gfx->trainerPicPalOffset, sizeof(gfx->trainerPicPal));
+#else
+        if (CheckForSpaceForDma3Request(sprite->data[7]) == -1)
+            break;
+#endif
+        sprite->x2 = -80;
+        sprite->invisible = FALSE;
+        sprite->data[0]++;
         break;
+    }
     case 1:
         sprite->x2 += 8;
         if (sprite->x2 >= 0)

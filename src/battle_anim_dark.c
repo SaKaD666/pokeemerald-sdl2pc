@@ -364,7 +364,7 @@ static void AnimTearDrop(struct Sprite *sprite)
         battler = gBattleAnimTarget;
 
     xOffset = 20;
-    sprite->oam.tileNum += 4;
+    OffsetSpriteTile(sprite, 4);
 
     switch (cmd->type)
     {
@@ -830,6 +830,26 @@ void AnimTask_MetallicShine(u8 taskId)
     struct BattleAnimBgData animBg;
     bool32 priorityChanged = FALSE;
 
+    if (IsContest())
+    {
+        species = gContestResources->moveAnim->species;
+    }
+    else
+    {
+        if (GetBattlerSide(gBattleAnimAttacker) != B_SIDE_PLAYER)
+            species = GetMonData(&gEnemyParty[gBattlerPartyIndexes[gBattleAnimAttacker]], MON_DATA_SPECIES);
+        else
+            species = GetMonData(&gPlayerParty[gBattlerPartyIndexes[gBattleAnimAttacker]], MON_DATA_SPECIES);
+    }
+
+    spriteId = GetAnimBattlerSpriteId(ANIM_ATTACKER);
+    newSpriteId = CreateInvisibleSpriteCopy(gBattleAnimAttacker, spriteId, species);
+    if (newSpriteId == MAX_SPRITES)
+    {
+        DestroyAnimVisualTask(taskId);
+        return;
+    }
+
     gBattle_WIN0H = 0;
     gBattle_WIN0V = 0;
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ | WININ_WIN1_CLR);
@@ -855,20 +875,6 @@ void AnimTask_MetallicShine(u8 taskId)
         }
     }
 
-    if (IsContest())
-    {
-        species = gContestResources->moveAnim->species;
-    }
-    else
-    {
-        if (GetBattlerSide(gBattleAnimAttacker) != B_SIDE_PLAYER)
-            species = GetMonData(&gEnemyParty[gBattlerPartyIndexes[gBattleAnimAttacker]], MON_DATA_SPECIES);
-        else
-            species = GetMonData(&gPlayerParty[gBattlerPartyIndexes[gBattleAnimAttacker]], MON_DATA_SPECIES);
-    }
-
-    spriteId = GetAnimBattlerSpriteId(ANIM_ATTACKER);
-    newSpriteId = CreateInvisibleSpriteCopy(gBattleAnimAttacker, spriteId, species);
 
     GetBattleAnimBg1Data(&animBg);
     AnimLoadCompressedBgTilemap(animBg.bgId, gMetalShineTilemap);
@@ -877,12 +883,12 @@ void AnimTask_MetallicShine(u8 taskId)
 
     gBattle_BG1_X = -gSprites[spriteId].x + 96;
     gBattle_BG1_Y = -gSprites[spriteId].y + 32;
-    paletteNum = 16 + gSprites[spriteId].oam.paletteNum;
+    paletteNum = GetSpritePaletteHandle(&gSprites[spriteId]);
 
     if (cmd->useColor == 0)
-        SetGrayscaleOrOriginalPalette(paletteNum, FALSE);
-    else
-        BlendPalette(BG_PLTT_ID(paletteNum), 16, 11, cmd->color);
+        SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], FALSE);
+    else if (ObjPaletteMask(paletteNum) != 0)
+        BlendPalette(OBJ_PLTT_ID(paletteNum), 16, 11, cmd->color);
 
     gTasks[taskId].data[0] = newSpriteId;
     gTasks[taskId].data[1] = cmd->permanent;
@@ -895,7 +901,6 @@ void AnimTask_MetallicShine(u8 taskId)
 static void AnimTask_MetallicShine_Step(u8 taskId)
 {
     struct BattleAnimBgData animBg;
-    u16 paletteNum;
     u8 spriteId;
 
     gTasks[taskId].data[10] += 4;
@@ -908,9 +913,8 @@ static void AnimTask_MetallicShine_Step(u8 taskId)
         if (gTasks[taskId].data[11] == 2)
         {
             spriteId = GetAnimBattlerSpriteId(ANIM_ATTACKER);
-            paletteNum = 16 + gSprites[spriteId].oam.paletteNum;
             if (gTasks[taskId].data[1] == 0)
-                SetGrayscaleOrOriginalPalette(paletteNum, TRUE);
+                SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], TRUE);
 
             DestroySprite(&gSprites[gTasks[taskId].data[0]]);
             GetBattleAnimBg1Data(&animBg);
@@ -984,7 +988,7 @@ void AnimTask_SetGrayscaleOrOriginalPal(u8 taskId)
     }
 
     if (spriteId != SPRITE_NONE)
-        SetGrayscaleOrOriginalPalette(gSprites[spriteId].oam.paletteNum + 16, cmd->mode);
+        SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], cmd->mode);
 
     DestroyAnimVisualTask(taskId);
 }

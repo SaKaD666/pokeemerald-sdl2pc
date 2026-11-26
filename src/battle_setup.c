@@ -610,8 +610,8 @@ void StartRegiBattle(void)
 
 static void CB2_EndWildBattle(void)
 {
-    CpuFill16(0, (void *)(BG_PLTT), BG_PLTT_SIZE);
-    ResetOamRange(0, 128);
+    CpuFill16(0, (void *)(BG_PLTT), BG_PLTT_CAPACITY);
+    ResetOamRange(0, OAM_ENTRY_COUNT);
 
     if (IsPlayerDefeated(gBattleOutcome) == TRUE && CurrentBattlePyramidLocation() == PYRAMID_LOCATION_NONE && !InBattlePike())
     {
@@ -626,8 +626,8 @@ static void CB2_EndWildBattle(void)
 
 static void CB2_EndScriptedWildBattle(void)
 {
-    CpuFill16(0, (void *)(BG_PLTT), BG_PLTT_SIZE);
-    ResetOamRange(0, 128);
+    CpuFill16(0, (void *)(BG_PLTT), BG_PLTT_CAPACITY);
+    ResetOamRange(0, OAM_ENTRY_COUNT);
 
     if (IsPlayerDefeated(gBattleOutcome) == TRUE)
     {
