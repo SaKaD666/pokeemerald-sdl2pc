@@ -504,9 +504,18 @@ void DrawDoorMetatileAt(int x, int y, u16 *tiles)
 
 static void DrawMetatileAt(u16 offset, int x, int y)
 {
-    const struct MapLayout *mapLayout = MapGridGetSourceLayoutAt(x, y);
-    u16 metatileId = MapGridGetMetatileIdAt(x, y);
+    const struct MapLayout *mapLayout;
+    s32 metatileId;
+    u8 metatileLayerType;
     const u16 *metatiles;
+
+#ifdef PLATFORM_SDL2
+    MapGridGetMetatileDrawInfoAt(x, y, &mapLayout, &metatileId, &metatileLayerType);
+#else
+    mapLayout = MapGridGetSourceLayoutAt(x, y);
+    metatileId = MapGridGetMetatileIdAt(x, y);
+    metatileLayerType = MapGridGetMetatileLayerTypeAt(x, y);
+#endif
 
     if (metatileId > NUM_METATILES_TOTAL)
         metatileId = 0;
@@ -522,7 +531,7 @@ static void DrawMetatileAt(u16 offset, int x, int y)
     if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
         sPendingFieldSources[GetFieldTileSourceIndex(offset)] = GetFieldTileSource(mapLayout);
 
-    DrawMetatile(MapGridGetMetatileLayerTypeAt(x, y), metatiles + metatileId * NUM_TILES_PER_METATILE, offset);
+    DrawMetatile(metatileLayerType, metatiles + metatileId * NUM_TILES_PER_METATILE, offset);
 }
 
 static void DrawMetatile(s32 metatileLayerType, const u16 *tiles, u16 offset)

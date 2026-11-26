@@ -1356,8 +1356,13 @@ u8 GetMapMusicFadeoutSpeed(void)
     const struct MapHeader *mapHeader = GetDestinationWarpMapHeader();
     if (IsMapTypeIndoors(mapHeader->mapType) == TRUE)
         return 2;
-    else
-        return 4;
+#ifdef PLATFORM_SDL2
+    if ((gMapHeader.mapType == MAP_TYPE_ROUTE && mapHeader->mapType == MAP_TYPE_ROUTE)
+     || gMapHeader.mapType == MAP_TYPE_UNDERGROUND
+     || mapHeader->mapType == MAP_TYPE_UNDERGROUND)
+        return 2;
+#endif
+    return 4;
 }
 
 void TryFadeOutOldMapMusic(void)
@@ -1741,7 +1746,32 @@ void CB2_LoadMap(void)
 static void CB2_LoadMap2(void)
 {
 #ifdef PLATFORM_SDL2
-    if (!LoadMapInStepsLocal(&gMain.state, FALSE))
+    u8 steps;
+    bool32 done = FALSE;
+
+    for (steps = 0; steps < 4; steps++)
+    {
+        u8 currentState = gMain.state;
+
+        if (LoadMapInStepsLocal(&gMain.state, FALSE))
+        {
+            done = TRUE;
+            break;
+        }
+
+        // A blocked load step must yield so the next frame can service DMA.
+        if (gMain.state == currentState)
+            return;
+
+        // Keep the DMA wait and the full map draw isolated between frames.
+        if (currentState == 8 || currentState == 9)
+            break;
+    }
+
+    if (!done && gMain.state == 13)
+        done = LoadMapInStepsLocal(&gMain.state, FALSE);
+
+    if (!done)
         return;
 #else
     DoMapLoadLoop(&gMain.state);
@@ -2259,7 +2289,11 @@ static void ResetScreenForMapLoad(void)
     ScanlineEffect_Stop();
 
     DmaClear16(3, PLTT + 2, PLTT_SIZE - 2);
+#ifdef PLATFORM_SDL2
+    CpuFastFill16(0, (void *)VRAM, VRAM_SIZE);
+#else
     DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
+#endif
     ResetOamRange(0, OAM_ENTRY_COUNT);
     LoadOam();
 }

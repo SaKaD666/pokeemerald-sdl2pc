@@ -384,6 +384,22 @@ static u16 GetLayoutMetatileAttributes(const struct MapLayout *layout, u16 metat
     return MB_INVALID;
 }
 
+#ifdef PLATFORM_SDL2
+void MapGridGetMetatileDrawInfoAt(s32 x, s32 y, const struct MapLayout **layout, s32 *metatileId, u8 *layerType)
+{
+    const u16 *entry = GetMapGridEntry(x, y);
+    const struct MapConnection *connection = GetMapGridSourceConnection(entry);
+    u16 block = entry != NULL ? *entry : MAPGRID_UNDEFINED;
+
+    *layout = connection != NULL ? GetMapHeaderFromConnection(connection)->mapLayout : gMapHeader.mapLayout;
+    if (block == MAPGRID_UNDEFINED)
+        block = GetBorderBlockAt(x, y);
+
+    *metatileId = UNPACK_METATILE(block);
+    *layerType = UNPACK_LAYER_TYPE(GetLayoutMetatileAttributes(*layout, *metatileId));
+}
+#endif
+
 s32 MapGridGetMetatileBehaviorAt(s32 x, s32 y)
 {
     return UNPACK_BEHAVIOR(GetLayoutMetatileAttributes(MapGridGetSourceLayoutAt(x, y), MapGridGetMetatileIdAt(x, y)));
