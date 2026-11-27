@@ -5151,7 +5151,11 @@ static void Task_LoadSearchMenu(u8 taskId)
             InitWindows(sSearchMenu_WindowTemplate);
             DeactivateAllTextPrinters();
             PutWindowTilemap(0);
+#ifdef PLATFORM_SDL2
+            DecompressAndLoadBgGfxUsingHeap(3, gPokedexSearchMenu_Gfx, 0, 0, 0);
+#else
             DecompressAndLoadBgGfxUsingHeap(3, gPokedexSearchMenu_Gfx, 0x2000, 0, 0);
+#endif
 
             if (!IsNationalPokedexEnabled())
                 CopyToBgTilemapBuffer(3, gPokedexSearchMenuHoenn_Tilemap, 0, 0);
