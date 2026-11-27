@@ -31,9 +31,6 @@
 #include "link_rfu.h"
 #include "wonder_news.h"
 #include "constants/cable_club.h"
-#ifdef PLATFORM_SDL2
-#include "platform/framedraw.h"
-#endif
 
 enum {
     WIN_HEADER,
@@ -74,32 +71,52 @@ static const struct BgTemplate sBGTemplates[] = {
     {
         .bg = 0,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 15,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0x000
     }, {
         .bg = 1,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 14,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0x000
     }, {
         .bg = 2,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 14,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 13,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0x000
     }, {
         .bg = 3,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 12,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 12,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0x000
@@ -111,7 +128,11 @@ static const struct WindowTemplate sMainWindows[] = {
         .bg = 0,
         .tilemapLeft = 0,
         .tilemapTop = 0,
+#ifdef PLATFORM_SDL2
+        .width = DISPLAY_WIDTH / TILE_WIDTH,
+#else
         .width = DISPLAY_TILE_WIDTH,
+#endif
         .height = 2,
         .paletteNum = 12,
         .baseBlock = 0x0013
@@ -119,20 +140,36 @@ static const struct WindowTemplate sMainWindows[] = {
     [WIN_MSG] = {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 17,
+        .width = 38,
+        .height = 4,
+        .paletteNum = 12,
+        .baseBlock = 0x0063
+#else
         .tilemapTop = 15,
         .width = 28,
         .height = 4,
         .paletteNum = 12,
         .baseBlock = 0x004f
+#endif
     },
     [WIN_UNK] = {
         .bg = 0,
         .tilemapLeft = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 17,
+        .width = DISPLAY_WIDTH / TILE_WIDTH,
+        .height = 5,
+        .paletteNum = 13,
+        .baseBlock = 0x0063
+#else
         .tilemapTop = 15,
         .width = DISPLAY_TILE_WIDTH,
         .height = 5,
         .paletteNum = 13,
         .baseBlock = 0x004f
+#endif
     },
     DUMMY_WIN_TEMPLATE
 };
@@ -140,81 +177,150 @@ static const struct WindowTemplate sMainWindows[] = {
 static const struct WindowTemplate sWindowTemplate_YesNoMsg_Wide = {
     .bg = 0,
     .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+    .tilemapTop = 17,
+    .width = 38,
+    .height = 4,
+    .paletteNum = 12,
+    .baseBlock = 0x012b
+#else
+    .tilemapLeft = 1,
     .tilemapTop = 15,
     .width = 28,
     .height = 4,
     .paletteNum = 12,
     .baseBlock = 0x00e5
+#endif
 };
 
 static const struct WindowTemplate sWindowTemplate_YesNoMsg = {
     .bg = 0,
     .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+    .tilemapTop = 17,
+    .width = 30,
+    .height = 4,
+    .paletteNum = 12,
+    .baseBlock = 0x012b
+#else
     .tilemapTop = 15,
     .width = 20,
     .height = 4,
     .paletteNum = 12,
     .baseBlock = 0x00e5
+#endif
 };
 
 static const struct WindowTemplate sWindowTemplate_GiftSelect = {
     .bg = 0,
     .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+    .tilemapTop = 17,
+    .width = 29,
+    .height = 4,
+    .paletteNum = 12,
+    .baseBlock = 0x012b
+#else
     .tilemapTop = 15,
     .width = 19,
     .height = 4,
     .paletteNum = 12,
     .baseBlock = 0x00e5
+#endif
 };
 
 static const struct WindowTemplate sWindowTemplate_ThreeOptions = {
     .bg = 0,
     .tilemapLeft = 8,
+#ifdef PLATFORM_SDL2
+    .tilemapTop = 7,
+    .width = 14,
+    .height = 6,
+    .paletteNum = 12,
+    .baseBlock = 0x01c3
+#else
     .tilemapTop = 6,
     .width = 14,
     .height = 6,
     .paletteNum = 12,
     .baseBlock = 0x0155
+#endif
 };
 
 static const struct WindowTemplate sWindowTemplate_YesNoBox = {
     .bg = 0,
+#ifdef PLATFORM_SDL2
+    .tilemapLeft = 33,
+    .tilemapTop = 17,
+    .width = 6,
+    .height = 4,
+    .paletteNum = 12,
+    .baseBlock = 0x01c3
+#else
     .tilemapLeft = 23,
     .tilemapTop = 15,
     .width = 6,
     .height = 4,
     .paletteNum = 12,
     .baseBlock = 0x0155
+#endif
 };
 
 static const struct WindowTemplate sWindowTemplate_GiftSelect_3Options = {
     .bg = 0,
+#ifdef PLATFORM_SDL2
+    .tilemapLeft = 32,
+    .tilemapTop = 13,
+    .width = 7,
+    .height = 8,
+    .paletteNum = 12,
+    .baseBlock = 0x01c3
+#else
     .tilemapLeft = 22,
     .tilemapTop = 11,
     .width = 7,
     .height = 8,
     .paletteNum = 12,
     .baseBlock = 0x0155
+#endif
 };
 
 static const struct WindowTemplate sWindowTemplate_GiftSelect_2Options = {
     .bg = 0,
+#ifdef PLATFORM_SDL2
+    .tilemapLeft = 32,
+    .tilemapTop = 15,
+    .width = 7,
+    .height = 6,
+    .paletteNum = 12,
+    .baseBlock = 0x01c3
+#else
     .tilemapLeft = 22,
     .tilemapTop = 13,
     .width = 7,
     .height = 6,
     .paletteNum = 12,
     .baseBlock = 0x0155
+#endif
 };
 
 static const struct WindowTemplate sWindowTemplate_GiftSelect_1Option = {
     .bg = 0,
+#ifdef PLATFORM_SDL2
+    .tilemapLeft = 32,
+    .tilemapTop = 17,
+    .width = 7,
+    .height = 4,
+    .paletteNum = 12,
+    .baseBlock = 0x01c3
+#else
     .tilemapLeft = 22,
     .tilemapTop = 15,
     .width = 7,
     .height = 4,
     .paletteNum = 12,
     .baseBlock = 0x0155
+#endif
 };
 
 static const struct ListMenuItem sListMenuItems_CardsOrNews[] = {
@@ -389,9 +495,6 @@ static bool32 HandleMysteryGiftOrEReaderSetup(s32 isEReader)
     switch (gMain.state)
     {
     case 0:
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(TRUE);
-#endif
         SetVBlankCallback(NULL);
         ResetPaletteFade();
         ResetSpriteData();
@@ -410,10 +513,17 @@ static bool32 HandleMysteryGiftOrEReaderSetup(s32 isEReader)
         ChangeBgX(3, 0, BG_COORD_SET);
         ChangeBgY(3, 0, BG_COORD_SET);
 
+#ifdef PLATFORM_SDL2
+        SetBgTilemapBuffer(3, Alloc(BG_SCREEN_SIZE * 2));
+        SetBgTilemapBuffer(2, Alloc(BG_SCREEN_SIZE * 2));
+        SetBgTilemapBuffer(1, Alloc(BG_SCREEN_SIZE * 2));
+        SetBgTilemapBuffer(0, Alloc(BG_SCREEN_SIZE * 2));
+#else
         SetBgTilemapBuffer(3, Alloc(BG_SCREEN_SIZE));
         SetBgTilemapBuffer(2, Alloc(BG_SCREEN_SIZE));
         SetBgTilemapBuffer(1, Alloc(BG_SCREEN_SIZE));
         SetBgTilemapBuffer(0, Alloc(BG_SCREEN_SIZE));
+#endif
 
         LoadMysteryGiftTextboxBorder(3);
         InitWindows(sMainWindows);
@@ -430,9 +540,15 @@ static bool32 HandleMysteryGiftOrEReaderSetup(s32 isEReader)
         Menu_LoadStdPalAt(BG_PLTT_ID(12));
         LoadUserWindowBorderGfx(0, 0xA, BG_PLTT_ID(14));
         LoadUserWindowBorderGfx_(0, 0x1, BG_PLTT_ID(15));
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect(0, 0x000, 0, 0, 64, 32, 17);
+        FillBgTilemapBufferRect(1, 0x000, 0, 0, 64, 32, 17);
+        FillBgTilemapBufferRect(2, 0x000, 0, 0, 64, 32, 17);
+#else
         FillBgTilemapBufferRect(0, 0x000, 0, 0, 32, 32, 17);
         FillBgTilemapBufferRect(1, 0x000, 0, 0, 32, 32, 17);
         FillBgTilemapBufferRect(2, 0x000, 0, 0, 32, 32, 17);
+#endif
         MG_DrawCheckerboardPattern(3);
         PrintMysteryGiftOrEReaderHeader(isEReader, FALSE);
         gMain.state++;
@@ -496,9 +612,6 @@ void MainCB_FreeAllBuffersAndReturnToInitTitleScreen(void)
         UnsetBgTilemapBuffer(bg);
         Free(tilemap);
     }
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(FALSE);
-#endif
     SetMainCallback2(CB2_InitTitleScreen);
 }
 
@@ -520,7 +633,11 @@ void PrintMysteryGiftOrEReaderHeader(bool8 isEReader, bool32 useCancel)
     }
 
     AddTextPrinterParameterized4(WIN_HEADER, FONT_NORMAL, 4, 1, 0, 0, sTextColors_Header, TEXT_SKIP_DRAW, title);
+#ifdef PLATFORM_SDL2
+    AddTextPrinterParameterized4(WIN_HEADER, FONT_SMALL, GetStringRightAlignXOffset(FONT_SMALL, options, DISPLAY_WIDTH - 18), 1, 0, 0, sTextColors_Header, TEXT_SKIP_DRAW, options);
+#else
     AddTextPrinterParameterized4(WIN_HEADER, FONT_SMALL, GetStringRightAlignXOffset(FONT_SMALL, options, 0xDE), 1, 0, 0, sTextColors_Header, TEXT_SKIP_DRAW, options);
+#endif
     CopyWindowToVram(WIN_HEADER, COPYWIN_GFX);
     PutWindowTilemap(WIN_HEADER);
 }
@@ -533,7 +650,23 @@ void MG_DrawTextBorder(u8 windowId)
 void MG_DrawCheckerboardPattern(u32 bg)
 {
     s32 i = 0, j;
+#ifdef PLATFORM_SDL2
+    s32 cols = DISPLAY_WIDTH / TILE_WIDTH;
+    s32 rows = 21;
 
+    FillBgTilemapBufferRect(bg, 0x003, 0, 0, cols, 2, 17);
+
+    for (i = 0; i < rows; i++)
+    {
+        for (j = 0; j < cols; j++)
+        {
+            if ((i & 1) != (j & 1))
+                FillBgTilemapBufferRect(bg, 1, j, i + 2, 1, 1, 17);
+            else
+                FillBgTilemapBufferRect(bg, 2, j, i + 2, 1, 1, 17);
+        }
+    }
+#else
     FillBgTilemapBufferRect(bg, 0x003, 0, 0, 32, 2, 17);
 
     for (i = 0; i < 18; i++)
@@ -546,6 +679,7 @@ void MG_DrawCheckerboardPattern(u32 bg)
                 FillBgTilemapBufferRect(bg, 2, j, i + 2, 1, 1, 17);
         }
     }
+#endif
 }
 
 static void ClearScreenInBg0(bool32 ignoreTopTwoRows)
@@ -553,10 +687,18 @@ static void ClearScreenInBg0(bool32 ignoreTopTwoRows)
     switch (ignoreTopTwoRows)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect(0, 0, 0, 0, 64, 32, 17);
+#else
         FillBgTilemapBufferRect(0, 0, 0, 0, 32, 32, 17);
+#endif
         break;
     case 1:
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect(0, 0, 0, 2, 64, 30, 17);
+#else
         FillBgTilemapBufferRect(0, 0, 0, 2, 32, 30, 17);
+#endif
         break;
     }
     CopyBgTilemapBufferToVram(0);
@@ -579,7 +721,11 @@ static void ClearMessage(void)
     CopyWindowToVram(WIN_MSG, COPYWIN_MAP);
 }
 
+#ifdef PLATFORM_SDL2
+#define DOWN_ARROW_X 288
+#else
 #define DOWN_ARROW_X 208
+#endif
 #define DOWN_ARROW_Y 20
 
 bool32 PrintMysteryGiftMenuMessage(u8 *textState, const u8 *str)
@@ -668,10 +814,17 @@ static u32 MysteryGift_HandleThreeOptionMenu(u8 *unused0, u16 *unused1, u8 which
         width++;
 
     windowTemplate.width = width;
+#ifdef PLATFORM_SDL2
+    if (width < (DISPLAY_WIDTH / TILE_WIDTH))
+        windowTemplate.tilemapLeft = ((DISPLAY_WIDTH / TILE_WIDTH) - width) / 2;
+    else
+        windowTemplate.tilemapLeft = 0;
+#else
     if (width < DISPLAY_TILE_WIDTH)
         windowTemplate.tilemapLeft = (DISPLAY_TILE_WIDTH - width) / 2;
     else
         windowTemplate.tilemapLeft = 0;
+#endif
 
     response = DoMysteryGiftListMenu(&windowTemplate, &listMenuTemplate, 1, LIST_MENU_TILE_NUM, LIST_MENU_PAL_NUM);
     if (response != LIST_NOTHING_CHOSEN)
@@ -707,9 +860,15 @@ s8 DoMysteryGiftYesNo(u8 *textState, u16 *windowId, bool8 yesNoBoxPlacement, con
         // Create Yes/No
         windowTemplate = sWindowTemplate_YesNoBox;
         if (yesNoBoxPlacement == 0)
+#ifdef PLATFORM_SDL2
+            windowTemplate.tilemapTop = 11;
+        else
+            windowTemplate.tilemapTop = 17;
+#else
             windowTemplate.tilemapTop = 9;
         else
             windowTemplate.tilemapTop = 15;
+#endif
         CreateYesNoMenu(&windowTemplate, 10, 14, 0);
         (*textState)++;
         break;
