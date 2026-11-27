@@ -292,7 +292,11 @@ static const struct WindowTemplate sWindowTemplates[WIN_COUNT + 1] =
         .bg = 0,
         .tilemapLeft = 0,
         .tilemapTop = 0,
+#ifdef PLATFORM_SDL2
+        .width = DISPLAY_WIDTH / TILE_WIDTH,
+#else
         .width = DISPLAY_TILE_WIDTH,
+#endif
         .height = 2,
         .paletteNum = 11,
         .baseBlock = 0x074
@@ -546,7 +550,15 @@ static void NamingScreen_InitBGs(void)
     for (i = 0; i < WIN_COUNT; i++)
         sNamingScreen->windows[i] = AddWindow(&sWindowTemplates[i]);
 
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 56, 312);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
+    SetGpuReg(REG_OFFSET_WINOUT, WININ_WIN0_BG0 | WININ_WIN0_BG3 | WININ_WIN0_OBJ);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_1D_MAP | DISPCNT_OBJ_ON | DISPCNT_WIN0_ON);
+#else
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_1D_MAP | DISPCNT_OBJ_ON);
+#endif
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2);
     SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(12, 8));
 
@@ -731,6 +743,13 @@ static bool8 MainState_Exit(void)
 #ifndef PORTABLE // See note on TID generation in InitPlayerTrainerId in new_game.c
         if (sNamingScreen->templateNum == NAMING_SCREEN_PLAYER)
             SeedRngAndSetTrainerId();
+#endif
+#ifdef PLATFORM_SDL2
+        SetGpuReg(REG_OFFSET_WIN0H, 0);
+        SetGpuReg(REG_OFFSET_WIN0V, 0);
+        SetGpuReg(REG_OFFSET_WININ, 0);
+        SetGpuReg(REG_OFFSET_WINOUT, 0);
+        ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
 #endif
         SetMainCallback2(sNamingScreen->returnCallback);
         DestroyTask(FindTaskIdByFunc(Task_NamingScreen));
