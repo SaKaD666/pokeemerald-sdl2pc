@@ -1109,26 +1109,34 @@ static const u8 sLetterSearchRanges[][4] =
     ((letter) >= sLetterSearchRanges[range][2]                                  \
   && (letter) < sLetterSearchRanges[range][2] + sLetterSearchRanges[range][3])  \
 
+#ifdef PLATFORM_SDL2
+#define SEARCH_MENU_LEFT_OFFSET_TILES 2
+#define SEARCH_MENU_LEFT_OFFSET_PX    16
+#else
+#define SEARCH_MENU_LEFT_OFFSET_TILES 0
+#define SEARCH_MENU_LEFT_OFFSET_PX    0
+#endif
+
 static const struct SearchMenuTopBarItem sSearchMenuTopBarItems[SEARCH_TOPBAR_COUNT] =
 {
     [SEARCH_TOPBAR_SEARCH] =
     {
         .description = gText_SearchForPkmnBasedOnParameters,
-        .highlightX = 0,
+        .highlightX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .highlightY = 0,
         .highlightWidth = 5,
     },
     [SEARCH_TOPBAR_SHIFT] =
     {
         .description = gText_SwitchPokedexListings,
-        .highlightX = 6,
+        .highlightX = 6 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .highlightY = 0,
         .highlightWidth = 5,
     },
     [SEARCH_TOPBAR_CANCEL] =
     {
         .description = gText_ReturnToPokedex,
-        .highlightX = 12,
+        .highlightX = 12 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .highlightY = 0,
         .highlightWidth = 5,
     },
@@ -1139,67 +1147,67 @@ static const struct SearchMenuItem sSearchMenuItems[SEARCH_COUNT] =
     [SEARCH_NAME] =
     {
         .description = gText_ListByFirstLetter,
-        .titleBgX = 0,
+        .titleBgX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .titleBgY = 2,
         .titleBgWidth = 5,
-        .selectionBgX = 5,
+        .selectionBgX = 5 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .selectionBgY = 2,
         .selectionBgWidth = 12,
     },
     [SEARCH_COLOR] =
     {
         .description = gText_ListByBodyColor,
-        .titleBgX = 0,
+        .titleBgX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .titleBgY = 4,
         .titleBgWidth = 5,
-        .selectionBgX = 5,
+        .selectionBgX = 5 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .selectionBgY = 4,
         .selectionBgWidth = 12,
     },
     [SEARCH_TYPE_LEFT] =
     {
         .description = gText_ListByType,
-        .titleBgX = 0,
+        .titleBgX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .titleBgY = 6,
         .titleBgWidth = 5,
-        .selectionBgX = 5,
+        .selectionBgX = 5 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .selectionBgY = 6,
         .selectionBgWidth = 6,
     },
     [SEARCH_TYPE_RIGHT] =
     {
         .description = gText_ListByType,
-        .titleBgX = 0,
+        .titleBgX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .titleBgY = 6,
         .titleBgWidth = 5,
-        .selectionBgX = 11,
+        .selectionBgX = 11 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .selectionBgY = 6,
         .selectionBgWidth = 6,
     },
     [SEARCH_ORDER] =
     {
         .description = gText_SelectPokedexListingMode,
-        .titleBgX = 0,
+        .titleBgX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .titleBgY = 8,
         .titleBgWidth = 5,
-        .selectionBgX = 5,
+        .selectionBgX = 5 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .selectionBgY = 8,
         .selectionBgWidth = 12,
     },
     [SEARCH_MODE] =
     {
         .description = gText_SelectPokedexMode,
-        .titleBgX = 0,
+        .titleBgX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .titleBgY = 10,
         .titleBgWidth = 5,
-        .selectionBgX = 5,
+        .selectionBgX = 5 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .selectionBgY = 10,
         .selectionBgWidth = 12,
     },
     [SEARCH_OK] =
     {
         .description = gText_ExecuteSearchSwitch,
-        .titleBgX = 0,
+        .titleBgX = 0 + SEARCH_MENU_LEFT_OFFSET_TILES,
         .titleBgY = 12,
         .titleBgWidth = 5,
         .selectionBgX = 0,
@@ -5433,19 +5441,29 @@ static void LoadPokedexSearchMenuBgTilemap_SDL2(const u32 *tilemapSrc)
     LZ77UnCompWram(tilemapSrc, src);
     for (y = 0; y < 23; y++)
     {
-        if (y <= 13)
+        if (y <= 1)
         {
+            u16 barFill = (y == 0) ? 0x106F : 0x107F;
+            for (x = 0; x < SEARCH_MENU_LEFT_OFFSET_TILES; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, barFill);
             for (x = 0; x <= 16; x++)
-                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + x]);
-            for (x = 17; x < 40; x++)
-                WritePokedexListTilemapEntry(bg3, x, y, 0x004F);
+                WritePokedexListTilemapEntry(bg3, x + SEARCH_MENU_LEFT_OFFSET_TILES, y, src[y * 32 + x]);
+            for (x = 17 + SEARCH_MENU_LEFT_OFFSET_TILES; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, barFill);
+        }
+        else if (y <= 13)
+        {
+            for (x = 0; x < SEARCH_MENU_LEFT_OFFSET_TILES; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0001);
+            for (x = 0; x <= 16; x++)
+                WritePokedexListTilemapEntry(bg3, x + SEARCH_MENU_LEFT_OFFSET_TILES, y, src[y * 32 + x]);
+            for (x = 17 + SEARCH_MENU_LEFT_OFFSET_TILES; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0001);
         }
         else if (y == 14 || y == 15 || y >= 22)
         {
-            for (x = 0; x <= 16; x++)
+            for (x = 0; x < 40; x++)
                 WritePokedexListTilemapEntry(bg3, x, y, 0x0001);
-            for (x = 17; x < 40; x++)
-                WritePokedexListTilemapEntry(bg3, x, y, 0x004F);
         }
         else
         {
@@ -6046,27 +6064,27 @@ static void PrintSelectedSearchParameters(u8 taskId)
 {
     u16 searchParamId;
 
-    ClearSearchMenuRect(40, 16, 96, 80);
+    ClearSearchMenuRect(40 + SEARCH_MENU_LEFT_OFFSET_PX, 16, 96, 80);
 
     searchParamId = gTasks[taskId].tCursorPos_Name + gTasks[taskId].tScrollOffset_Name;
-    PrintSearchText(sDexSearchNameOptions[searchParamId].title, 0x2D, 0x11);
+    PrintSearchText(sDexSearchNameOptions[searchParamId].title, 0x2D + SEARCH_MENU_LEFT_OFFSET_PX, 0x11);
 
     searchParamId = gTasks[taskId].tCursorPos_Color + gTasks[taskId].tScrollOffset_Color;
-    PrintSearchText(sDexSearchColorOptions[searchParamId].title, 0x2D, 0x21);
+    PrintSearchText(sDexSearchColorOptions[searchParamId].title, 0x2D + SEARCH_MENU_LEFT_OFFSET_PX, 0x21);
 
     searchParamId = gTasks[taskId].tCursorPos_TypeLeft + gTasks[taskId].tScrollOffset_TypeLeft;
-    PrintSearchText(sDexSearchTypeOptions[searchParamId].title, 0x2D, 0x31);
+    PrintSearchText(sDexSearchTypeOptions[searchParamId].title, 0x2D + SEARCH_MENU_LEFT_OFFSET_PX, 0x31);
 
     searchParamId = gTasks[taskId].tCursorPos_TypeRight + gTasks[taskId].tScrollOffset_TypeRight;
-    PrintSearchText(sDexSearchTypeOptions[searchParamId].title, 0x5D, 0x31);
+    PrintSearchText(sDexSearchTypeOptions[searchParamId].title, 0x5D + SEARCH_MENU_LEFT_OFFSET_PX, 0x31);
 
     searchParamId = gTasks[taskId].tCursorPos_Order + gTasks[taskId].tScrollOffset_Order;
-    PrintSearchText(sDexOrderOptions[searchParamId].title, 0x2D, 0x41);
+    PrintSearchText(sDexOrderOptions[searchParamId].title, 0x2D + SEARCH_MENU_LEFT_OFFSET_PX, 0x41);
 
     if (IsNationalPokedexEnabled())
     {
         searchParamId = gTasks[taskId].tCursorPos_Mode + gTasks[taskId].tScrollOffset_Mode;
-        PrintSearchText(sDexModeOptions[searchParamId].title, 0x2D, 0x51);
+        PrintSearchText(sDexModeOptions[searchParamId].title, 0x2D + SEARCH_MENU_LEFT_OFFSET_PX, 0x51);
     }
 }
 
@@ -6079,28 +6097,29 @@ static void DrawOrEraseSearchParameterBox(bool8 erase)
 #ifdef PLATFORM_SDL2
     if (!erase)
     {
-        WritePokedexListTilemapEntry(ptr, 18, 0, 0xC0B);
-        for (i = 19; i <= 37; i++)
+        WritePokedexListTilemapEntry(ptr, 20, 0, 0xC0B);
+        for (i = 21; i <= 36; i++)
             WritePokedexListTilemapEntry(ptr, i, 0, 0x80D);
-        WritePokedexListTilemapEntry(ptr, 38, 0, 0x80B);
+        WritePokedexListTilemapEntry(ptr, 37, 0, 0x80B);
         for (j = 1; j < 13; j++)
         {
-            WritePokedexListTilemapEntry(ptr, 18, j, 0x40A);
-            for (i = 19; i <= 37; i++)
+            WritePokedexListTilemapEntry(ptr, 20, j, 0x40A);
+            for (i = 21; i <= 36; i++)
                 WritePokedexListTilemapEntry(ptr, i, j, 0x0002);
-            WritePokedexListTilemapEntry(ptr, 38, j, 0x000A);
+            WritePokedexListTilemapEntry(ptr, 37, j, 0x000A);
         }
-        WritePokedexListTilemapEntry(ptr, 18, 13, 0x40B);
-        for (i = 19; i <= 37; i++)
+        WritePokedexListTilemapEntry(ptr, 20, 13, 0x40B);
+        for (i = 21; i <= 36; i++)
             WritePokedexListTilemapEntry(ptr, i, 13, 0x000D);
-        WritePokedexListTilemapEntry(ptr, 38, 13, 0x000B);
+        WritePokedexListTilemapEntry(ptr, 37, 13, 0x000B);
     }
     else
     {
         for (j = 0; j < 14; j++)
         {
-            for (i = 18; i <= 38; i++)
-                WritePokedexListTilemapEntry(ptr, i, j, 0x004F);
+            u16 fill = (j == 0) ? 0x106F : (j == 1 ? 0x107F : 0x0001);
+            for (i = 20; i <= 37; i++)
+                WritePokedexListTilemapEntry(ptr, i, j, fill);
         }
     }
     InvalidateBgTilemapRamRange(ptr, BG_SCREEN_SIZE * 2);
@@ -6283,12 +6302,12 @@ static void CreateSearchParameterScrollArrows(u8 taskId)
     u8 spriteId;
 
 #ifdef PLATFORM_SDL2
-    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 228, 4, 0);
+    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 232, 4, 0);
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sIsDownArrow = FALSE;
     gSprites[spriteId].callback = SpriteCB_SearchParameterScrollArrow;
 
-    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 228, 108, 0);
+    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 232, 108, 0);
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sIsDownArrow = TRUE;
     gSprites[spriteId].vFlip = TRUE;
@@ -6324,7 +6343,7 @@ static void EraseAndPrintSearchTextBox(const u8 *str)
 static void EraseSelectorArrow(u32 y)
 {
 #ifdef PLATFORM_SDL2
-    ClearSearchMenuRect(152, y * 16 + 8, 8, 16);
+    ClearSearchMenuRect(168, y * 16 + 8, 8, 16);
 #else
     ClearSearchMenuRect(144, y * 16 + 8, 8, 16);
 #endif
@@ -6333,7 +6352,7 @@ static void EraseSelectorArrow(u32 y)
 static void PrintSelectorArrow(u32 y)
 {
 #ifdef PLATFORM_SDL2
-    PrintSearchText(gText_SelectorArrow, 152, y * 16 + 9);
+    PrintSearchText(gText_SelectorArrow, 168, y * 16 + 9);
 #else
     PrintSearchText(gText_SelectorArrow, 144, y * 16 + 9);
 #endif
@@ -6342,7 +6361,7 @@ static void PrintSelectorArrow(u32 y)
 static void PrintSearchParameterTitle(u32 y, const u8 *str)
 {
 #ifdef PLATFORM_SDL2
-    PrintSearchText(str, 160, y * 16 + 9);
+    PrintSearchText(str, 176, y * 16 + 9);
 #else
     PrintSearchText(str, 152, y * 16 + 9);
 #endif
@@ -6351,7 +6370,7 @@ static void PrintSearchParameterTitle(u32 y, const u8 *str)
 static void ClearSearchParameterBoxText(void)
 {
 #ifdef PLATFORM_SDL2
-    ClearSearchMenuRect(152, 8, 152, 96);
+    ClearSearchMenuRect(168, 8, 128, 96);
 #else
     ClearSearchMenuRect(144, 8, 96, 96);
 #endif
