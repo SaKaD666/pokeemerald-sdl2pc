@@ -1005,6 +1005,7 @@ static void memsetu16(uint16_t *dst, uint16_t fill, size_t count)
 void DrawFrame(uint16_t *pixels)
 {
     int i;
+    int scanlineCount = DISPLAY_HEIGHT;
 #ifdef PLATFORM_SDL2
     const bool8 gbaView = sGbaSizedFrameView;
     const int viewX = (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
@@ -1012,10 +1013,13 @@ void DrawFrame(uint16_t *pixels)
     uint16_t scanlinePixels[DISPLAY_WIDTH];
 
     if (gbaView)
+    {
         memset(pixels, 0, DISPLAY_WIDTH * DISPLAY_HEIGHT * sizeof(*pixels));
+        scanlineCount = GBA_DISPLAY_HEIGHT;
+    }
 #endif
 
-    for (i = 0; i < DISPLAY_HEIGHT; i++)
+    for (i = 0; i < scanlineCount; i++)
     {
         uint16_t *row = &pixels[i * DISPLAY_WIDTH];
         REG_VCOUNT = i;
@@ -1046,13 +1050,10 @@ void DrawFrame(uint16_t *pixels)
 #ifdef PLATFORM_SDL2
         if (gbaView)
         {
-            if (i < GBA_DISPLAY_HEIGHT)
-            {
-                memsetu16(scanlinePixels, backdropColor, DISPLAY_WIDTH);
-                DrawScanline(scanlinePixels, i);
-                memcpy(&pixels[(i + viewY) * DISPLAY_WIDTH + viewX], scanlinePixels,
-                       GBA_DISPLAY_WIDTH * sizeof(*pixels));
-            }
+            memsetu16(scanlinePixels, backdropColor, DISPLAY_WIDTH);
+            DrawScanline(scanlinePixels, i);
+            memcpy(&pixels[(i + viewY) * DISPLAY_WIDTH + viewX], scanlinePixels,
+                   GBA_DISPLAY_WIDTH * sizeof(*pixels));
         }
         else
 #endif
