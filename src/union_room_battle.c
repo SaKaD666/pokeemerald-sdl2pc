@@ -20,9 +20,6 @@
 #include "union_room_battle.h"
 #include "constants/rgb.h"
 #include "constants/trainers.h"
-#ifdef PLATFORM_SDL2
-#include "platform/framedraw.h"
-#endif
 
 struct UnionRoomBattle
 {
@@ -35,7 +32,12 @@ static const struct BgTemplate sBgTemplates[] = {
     {
         .bg = 0,
         .charBaseIndex = 3,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1
+#else
         .mapBaseIndex = 31
+#endif
     }
 };
 
@@ -43,8 +45,13 @@ static const struct WindowTemplate sWindowTemplates[] = {
     {
         .bg = 0,
         .tilemapLeft = 3,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 17,
+        .width = 34,
+#else
         .tilemapTop = 15,
         .width = 24,
+#endif
         .height = 4,
         .paletteNum = 14,
         .baseBlock = 0x014
@@ -118,9 +125,6 @@ void CB2_UnionRoomBattle(void)
     switch (gMain.state)
     {
     case 0:
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(TRUE);
-#endif
         SetGpuReg(REG_OFFSET_DISPCNT, 0x0000);
         sBattle = AllocZeroed(sizeof(struct UnionRoomBattle));
         ResetSpriteData();
@@ -135,7 +139,11 @@ void CB2_UnionRoomBattle(void)
         ClearWindowTilemap(0);
         FillWindowPixelBuffer(0, PIXEL_FILL(0));
         FillWindowPixelBuffer(0, PIXEL_FILL(1));
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect(0, 0, 0, 0, 64, 32, 0xF);
+#else
         FillBgTilemapBufferRect(0, 0, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 0xF);
+#endif
         LoadUserWindowBorderGfx(0, 1, BG_PLTT_ID(13));
         LoadUserWindowBorderGfx_(0, 1, BG_PLTT_ID(13));
         Menu_LoadStdPal();
@@ -203,9 +211,6 @@ void CB2_UnionRoomBattle(void)
     case 51:
         if (IsLinkTaskFinished())
         {
-#ifdef PLATFORM_SDL2
-            SetFrameViewToGbaSize(FALSE);
-#endif
             SetMainCallback2(CB2_SetUpPartiesAndStartBattle);
         }
         break;
@@ -218,9 +223,6 @@ void CB2_UnionRoomBattle(void)
     case 7:
         if (PrintUnionRoomBattleMessage(&sBattle->textState, gText_RefusedBattle, 1))
         {
-#ifdef PLATFORM_SDL2
-            SetFrameViewToGbaSize(FALSE);
-#endif
             SetMainCallback2(CB2_ReturnToField);
         }
         break;
@@ -233,9 +235,6 @@ void CB2_UnionRoomBattle(void)
     case 9:
         if (PrintUnionRoomBattleMessage(&sBattle->textState, gText_BattleWasRefused, 1))
         {
-#ifdef PLATFORM_SDL2
-            SetFrameViewToGbaSize(FALSE);
-#endif
             SetMainCallback2(CB2_ReturnToField);
         }
         break;
