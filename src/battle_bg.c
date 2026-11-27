@@ -279,7 +279,7 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
     },
     [B_WIN_SWITCH_PROMPT] = {
         .bg = 0,
-        .tilemapLeft = 21,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
         .tilemapTop = 55,
         .width = 8,
         .height = 4,
@@ -288,8 +288,8 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
     },
     [B_WIN_YESNO] = {
         .bg = 0,
-        .tilemapLeft = 26,
-        .tilemapTop = 9,
+        .tilemapLeft = BATTLE_YESNO_BOX_LEFT,
+        .tilemapTop = BATTLE_YESNO_BOX_TOP,
         .width = 3,
         .height = 4,
         .paletteNum = 5,
@@ -500,7 +500,7 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [B_WIN_SWITCH_PROMPT] = {
         .bg = 0,
-        .tilemapLeft = 21,
+        .tilemapLeft = BATTLE_MOVE_INFO_LEFT,
         .tilemapTop = 55,
         .width = 8,
         .height = 4,
@@ -509,8 +509,8 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [B_WIN_YESNO] = {
         .bg = 0,
-        .tilemapLeft = 26,
-        .tilemapTop = 9,
+        .tilemapLeft = BATTLE_YESNO_BOX_LEFT,
+        .tilemapTop = BATTLE_YESNO_BOX_TOP,
         .width = 3,
         .height = 4,
         .paletteNum = 5,

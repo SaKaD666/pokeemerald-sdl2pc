@@ -970,7 +970,7 @@ static void AnimTask_SurfWaveScanlineEffect(u8 taskId)
             gScanlineEffectRegBuffers[0][i] = gScanlineEffectRegBuffers[1][i] = task->data[2];
         for (i = task->data[4]; i < task->data[5]; i++)
             gScanlineEffectRegBuffers[0][i] = gScanlineEffectRegBuffers[1][i] = task->data[1];
-        for (i = task->data[5]; i < 160; i++)
+        for (i = task->data[5]; i < DISPLAY_HEIGHT; i++)
             gScanlineEffectRegBuffers[0][i] = gScanlineEffectRegBuffers[1][i] = task->data[2];
 
         if (task->data[4] == 0)
@@ -994,7 +994,11 @@ static void AnimTask_SurfWaveScanlineEffect(u8 taskId)
                 task->data[0]++;
             }
         }
+#ifdef PLATFORM_SDL2
+        else if (++task->data[5] > 131)
+#else
         else if (++task->data[5] > 111)
+#endif
         {
             task->data[0]++;
         }
@@ -1003,7 +1007,7 @@ static void AnimTask_SurfWaveScanlineEffect(u8 taskId)
             gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer][i] = task->data[2];
         for (i = task->data[4]; i < task->data[5]; i++)
             gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer][i] = task->data[1];
-        for (i = task->data[5]; i < 160; i++)
+        for (i = task->data[5]; i < DISPLAY_HEIGHT; i++)
             gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer][i] = task->data[2];
         break;
     case 2:
@@ -1011,7 +1015,7 @@ static void AnimTask_SurfWaveScanlineEffect(u8 taskId)
             gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer][i] = task->data[2];
         for (i = task->data[4]; i < task->data[5]; i++)
             gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer][i] = task->data[1];
-        for (i = task->data[5]; i < 160; i++)
+        for (i = task->data[5]; i < DISPLAY_HEIGHT; i++)
             gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer][i] = task->data[2];
 
         if (task->data[15] == -1)

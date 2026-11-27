@@ -5975,6 +5975,9 @@ static void Cmd_drawlvlupbox(void)
         gBattle_BG1_Y = 256;
         SetBgAttribute(0, BG_ATTR_PRIORITY, 1);
         SetBgAttribute(1, BG_ATTR_PRIORITY, 0);
+#ifdef PLATFORM_SDL2
+        SetBgAttribute(1, BG_ATTR_SCREENSIZE, 1);
+#endif
         ShowBg(0);
         ShowBg(1);
         HandleBattleWindow(BATTLE_LEVEL_UP_FRAME_LEFT, BATTLE_LEVEL_UP_FRAME_TOP,
@@ -10237,7 +10240,7 @@ void BattleCreateYesNoCursorAt(u8 cursorPosition)
     src[0] = 1;
     src[1] = 2;
 
-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 0x19, 9 + (2 * cursorPosition), 1, 2, 0x11);
+    CopyToBgTilemapBufferRect_ChangePalette(0, src, BATTLE_YESNO_CURSOR_LEFT, BATTLE_YESNO_BOX_TOP + (2 * cursorPosition), 1, 2, 0x11);
     CopyBgTilemapBufferToVram(0);
 }
 
@@ -10247,7 +10250,7 @@ void BattleDestroyYesNoCursorAt(u8 cursorPosition)
     src[0] = 0x1016;
     src[1] = 0x1016;
 
-    CopyToBgTilemapBufferRect_ChangePalette(0, src, 0x19, 9 + (2 * cursorPosition), 1, 2, 0x11);
+    CopyToBgTilemapBufferRect_ChangePalette(0, src, BATTLE_YESNO_CURSOR_LEFT, BATTLE_YESNO_BOX_TOP + (2 * cursorPosition), 1, 2, 0x11);
     CopyBgTilemapBufferToVram(0);
 }
 

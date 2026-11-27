@@ -149,7 +149,7 @@ u8 GetBattlerSpriteCoord(u8 battler, u8 coordType)
             }
             else
             {
-                retVal += BATTLE_OPPONENT_MON_Y_SHIFT + BATTLE_OPPONENT_MON_Y_FINE_SHIFT;
+                retVal += BATTLE_OPPONENT_MON_Y_FINE_SHIFT;
             }
         }
 #endif

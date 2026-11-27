@@ -2,6 +2,7 @@
 #include "malloc.h"
 #include "battle.h"
 #include "battle_anim.h"
+#include "battle_bg.h"
 #include "bg.h"
 #include "contest.h"
 #include "data.h"
@@ -2396,9 +2397,17 @@ void AnimTask_MorningSunLightBeam(u8 taskId)
         else
         {
             if (GetBattlerSide(gBattleAnimAttacker) != B_SIDE_PLAYER)
+#ifdef PLATFORM_SDL2
+                gBattle_BG1_X = -135 - (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_OPPONENT_MON_X_FINE_SHIFT);
+#else
                 gBattle_BG1_X = -135;
+#endif
             else
+#ifdef PLATFORM_SDL2
+                gBattle_BG1_X = -10 - BATTLE_PLAYER_PLATFORM_SHIFT;
+#else
                 gBattle_BG1_X = -10;
+#endif
 
             gBattle_BG1_Y = 0;
         }
@@ -2591,9 +2600,17 @@ void AnimTask_DoomDesireLightBeam(u8 taskId)
             else
             {
                 if (position == B_POSITION_OPPONENT_LEFT)
+#ifdef PLATFORM_SDL2
+                    gBattle_BG1_X = -135 - (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_OPPONENT_MON_X_FINE_SHIFT);
+#else
                     gBattle_BG1_X = -135;
+#endif
                 if (position == B_POSITION_PLAYER_LEFT)
+#ifdef PLATFORM_SDL2
+                    gBattle_BG1_X = -10 - BATTLE_PLAYER_PLATFORM_SHIFT;
+#else
                     gBattle_BG1_X = -10;
+#endif
             }
 
             gBattle_BG1_Y = 0;
