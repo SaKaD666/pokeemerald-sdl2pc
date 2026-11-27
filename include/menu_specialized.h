@@ -126,6 +126,50 @@ void DestroyConditionSparkleSprites(struct Sprite **sprites);
 void FreeConditionSparkles(struct Sprite **sprites);
 
 // Move relearner
+#ifdef PLATFORM_SDL2
+#define RELEARNER_DESC_LEFT          1
+#define RELEARNER_DESC_WIDTH         22
+#define RELEARNER_DESC_HEIGHT        14
+#define RELEARNER_LIST_LEFT          25
+#define RELEARNER_LIST_WIDTH         14
+#define RELEARNER_LIST_HEIGHT        14
+#define RELEARNER_LIST_MAX_SHOWED    7
+#define RELEARNER_MSG_LEFT           1
+#define RELEARNER_MSG_TOP            17
+#define RELEARNER_MSG_WIDTH          38
+#define RELEARNER_YESNO_LEFT         32
+#define RELEARNER_YESNO_TOP          10
+#define RELEARNER_MODE_ARROW_LEFT    51
+#define RELEARNER_MODE_ARROW_RIGHT   141
+#define RELEARNER_LIST_ARROW_X       (RELEARNER_LIST_LEFT * 8 + RELEARNER_LIST_WIDTH * 8 / 2)
+#define RELEARNER_LIST_ARROW_TOP     8
+#define RELEARNER_LIST_ARROW_BOTTOM  120
+#define RELEARNER_BATTLE_STAT_X      150
+#define RELEARNER_CONTEST_STAT_X     136
+#define RELEARNER_CONTEST_HEART_X    152
+#else
+#define RELEARNER_DESC_LEFT          1
+#define RELEARNER_DESC_WIDTH         16
+#define RELEARNER_DESC_HEIGHT        12
+#define RELEARNER_LIST_LEFT          19
+#define RELEARNER_LIST_WIDTH         10
+#define RELEARNER_LIST_HEIGHT        12
+#define RELEARNER_LIST_MAX_SHOWED    6
+#define RELEARNER_MSG_LEFT           4
+#define RELEARNER_MSG_TOP            15
+#define RELEARNER_MSG_WIDTH          22
+#define RELEARNER_YESNO_LEFT         22
+#define RELEARNER_YESNO_TOP          8
+#define RELEARNER_MODE_ARROW_LEFT    27
+#define RELEARNER_MODE_ARROW_RIGHT   117
+#define RELEARNER_LIST_ARROW_X       192
+#define RELEARNER_LIST_ARROW_TOP     8
+#define RELEARNER_LIST_ARROW_BOTTOM  104
+#define RELEARNER_BATTLE_STAT_X      106
+#define RELEARNER_CONTEST_STAT_X     92
+#define RELEARNER_CONTEST_HEART_X    104
+#endif
+
 void MoveRelearnerPrintMessage(u8 *str);
 bool16 MoveRelearnerRunTextPrinters(void);
 void MoveRelearnerCreateYesNoMenu(void);

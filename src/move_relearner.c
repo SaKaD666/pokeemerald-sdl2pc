@@ -24,9 +24,6 @@
 #include "task.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
-#ifdef PLATFORM_SDL2
-#include "platform/framedraw.h"
-#endif
 
 /*
  * Move relearner state machine
@@ -257,10 +254,10 @@ static const struct SpritePalette sMoveRelearnerPalette =
 static const struct ScrollArrowsTemplate sDisplayModeArrowsTemplate =
 {
     .firstArrowType = SCROLL_ARROW_LEFT,
-    .firstX = 27,
+    .firstX = RELEARNER_MODE_ARROW_LEFT,
     .firstY = 16,
     .secondArrowType = SCROLL_ARROW_RIGHT,
-    .secondX = 117,
+    .secondX = RELEARNER_MODE_ARROW_RIGHT,
     .secondY = 16,
     .fullyUpThreshold = -1,
     .fullyDownThreshold = -1,
@@ -272,11 +269,11 @@ static const struct ScrollArrowsTemplate sDisplayModeArrowsTemplate =
 static const struct ScrollArrowsTemplate sMoveListScrollArrowsTemplate =
 {
     .firstArrowType = SCROLL_ARROW_UP,
-    .firstX = 192,
-    .firstY = 8,
+    .firstX = RELEARNER_LIST_ARROW_X,
+    .firstY = RELEARNER_LIST_ARROW_TOP,
     .secondArrowType = SCROLL_ARROW_DOWN,
-    .secondX = 192,
-    .secondY = 104,
+    .secondX = RELEARNER_LIST_ARROW_X,
+    .secondY = RELEARNER_LIST_ARROW_BOTTOM,
     .fullyUpThreshold = 0,
     .fullyDownThreshold = 0,
     .tileTag = TAG_LIST_ARROWS,
@@ -332,8 +329,13 @@ static const struct BgTemplate sMoveRelearnerMenuBackgroundTemplates[] =
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0,
@@ -341,8 +343,13 @@ static const struct BgTemplate sMoveRelearnerMenuBackgroundTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0,
@@ -446,9 +453,6 @@ static void CB2_InitLearnMoveReturnFromSelectMove(void)
 
 static void InitMoveRelearnerBackgroundLayers(void)
 {
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
     ResetVramOamAndBgCntRegs();
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sMoveRelearnerMenuBackgroundTemplates, ARRAY_COUNT(sMoveRelearnerMenuBackgroundTemplates));
@@ -762,9 +766,6 @@ static void FreeMoveRelearnerResources(void)
     FREE_AND_SET_NULL(sMoveRelearnerStruct);
     ResetSpriteData();
     FreeAllSpritePalettes();
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(FALSE);
-#endif
 }
 
 // Note: The hearts are already made invisible by MoveRelearnerShowHideHearts,
@@ -862,13 +863,13 @@ static void CreateUISprites(void)
 
     // These are the appeal hearts.
     for (i = 0; i < 8; i++)
-        sMoveRelearnerStruct->heartSpriteIds[i] = CreateSprite(&sConstestMoveHeartSprite, (i - (i / 4) * 4) * 8 + 104, (i / 4) * 8 + 36, 0);
+        sMoveRelearnerStruct->heartSpriteIds[i] = CreateSprite(&sConstestMoveHeartSprite, (i - (i / 4) * 4) * 8 + RELEARNER_CONTEST_HEART_X, (i / 4) * 8 + 36, 0);
 
     // These are the jam harts.
     // The animation is used to toggle between full/empty heart sprites.
     for (i = 0; i < 8; i++)
     {
-        sMoveRelearnerStruct->heartSpriteIds[i + 8] = CreateSprite(&sConstestMoveHeartSprite, (i - (i / 4) * 4) * 8 + 104, (i / 4) * 8 + 52, 0);
+        sMoveRelearnerStruct->heartSpriteIds[i + 8] = CreateSprite(&sConstestMoveHeartSprite, (i - (i / 4) * 4) * 8 + RELEARNER_CONTEST_HEART_X, (i / 4) * 8 + 52, 0);
         StartSpriteAnim(&gSprites[sMoveRelearnerStruct->heartSpriteIds[i + 8]], 2);
     }
 
