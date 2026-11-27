@@ -1,5 +1,4 @@
 #include "global.h"
-#include "platform/framedraw.h"
 #include "malloc.h"
 #include "bg.h"
 #include "decompress.h"
@@ -170,10 +169,17 @@ struct UnionRoomChatDisplay
     u16 messageWindowId;
     s16 bg1hofs;
     u8 expandedPlaceholdersBuffer[0x106];
+#ifdef PLATFORM_SDL2
+    u8 bg0Buffer[BG_SCREEN_SIZE * 2];
+    u8 bg1Buffer[BG_SCREEN_SIZE * 2];
+    u8 bg3Buffer[BG_SCREEN_SIZE * 2];
+    u8 bg2Buffer[BG_SCREEN_SIZE * 2];
+#else
     u8 bg0Buffer[BG_SCREEN_SIZE];
     u8 bg1Buffer[BG_SCREEN_SIZE];
     u8 bg3Buffer[BG_SCREEN_SIZE];
     u8 bg2Buffer[BG_SCREEN_SIZE];
+#endif
     u8 textEntryTiles[TILE_SIZE_4BPP * 2];
 };
 
@@ -534,32 +540,55 @@ static const struct BgTemplate sBgTemplates[] = {
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 6,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 7,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
     }, {
         .bg = 1,
+#ifdef PLATFORM_SDL2
+        .charBaseIndex = 1,
+        .mapBaseIndex = 12,
+        .screenSize = 1,
+#else
         .charBaseIndex = 3,
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
     }, {
         .bg = 2,
+#ifdef PLATFORM_SDL2
+        .charBaseIndex = 0,
+        .mapBaseIndex = 14,
+        .screenSize = 1,
+#else
         .charBaseIndex = 2,
         .mapBaseIndex = 23,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
     }, {
         .bg = 3,
+#ifdef PLATFORM_SDL2
+        .charBaseIndex = 2,
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .charBaseIndex = 1,
         .mapBaseIndex = 15,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 1
@@ -571,15 +600,24 @@ static const struct WindowTemplate sWinTemplates[] = {
         .bg = 3,
         .tilemapLeft = 8,
         .tilemapTop = 1,
+#ifdef PLATFORM_SDL2
+        .width = 31,
+        .height = 21,
+#else
         .width = 21,
         .height = 19,
+#endif
         .paletteNum = 15,
         .baseBlock = 0x0001,
     },
     [WIN_TEXT_ENTRY] = {
         .bg = 1,
         .tilemapLeft = 9,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 20,
+#else
         .tilemapTop = 18,
+#endif
         .width = 15,
         .height = 2,
         .paletteNum = 12,
@@ -946,9 +984,6 @@ static void CB2_LoadInterface(void)
     switch (gMain.state)
     {
     case 0:
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(TRUE);
-#endif
         ResetTasks();
         ResetSpriteData();
         FreeAllSpritePalettes();
@@ -973,7 +1008,11 @@ static void CB2_LoadInterface(void)
             sChat->handleInputTask = CreateTask(Task_HandlePlayerInput, 8);
             sChat->receiveMessagesTask = CreateTask(Task_ReceiveChatMessage, 7);
             LoadWirelessStatusIndicatorSpriteGfx();
+#ifdef PLATFORM_SDL2
+            CreateWirelessStatusIndicatorSprite(DISPLAY_WIDTH - 8, DISPLAY_HEIGHT - 12);
+#else
             CreateWirelessStatusIndicatorSprite(GBA_DISPLAY_WIDTH - 8, GBA_DISPLAY_HEIGHT - 10);
+#endif
         }
         break;
     }
@@ -1607,9 +1646,6 @@ static void Chat_SaveAndExit(void)
             SetVBlankCallback(NULL);
             FreeDisplay();
             FreeUnionRoomChat();
-#ifdef PLATFORM_SDL2
-            SetFrameViewToGbaSize(FALSE);
-#endif
             SetMainCallback2(CB2_ReturnToField);
         }
         break;
@@ -2550,7 +2586,11 @@ static bool32 Display_ScrollChat(u8 *state)
         if (IsDma3ManagerBusyWithBgCopy())
             return TRUE;
 
+#ifdef PLATFORM_SDL2
+        if (sDisplay->currLine < 10)
+#else
         if (sDisplay->currLine < 9)
+#endif
         {
             sDisplay->currLine++;
             *state = 4;
@@ -2750,8 +2790,13 @@ static void AddYesNoMenuAt(u8 left, u8 top, u8 initialCursorPos)
 {
     struct WindowTemplate template;
     template.bg = 0;
+#ifdef PLATFORM_SDL2
+    template.tilemapLeft = left + 10;
+    template.tilemapTop = top + 2;
+#else
     template.tilemapLeft = left;
     template.tilemapTop = top;
+#endif
     template.width = 6;
     template.height = 4;
     template.paletteNum = 14;
@@ -2798,8 +2843,13 @@ static void AddStdMessageWindow(int msgId, u16 bg0vofs)
     struct WindowTemplate template;
     template.bg = 0;
     template.tilemapLeft = 8;
+#ifdef PLATFORM_SDL2
+    template.tilemapTop = 18;
+    template.width = 31;
+#else
     template.tilemapTop = 16;
     template.width = 21;
+#endif
     template.height = 4;
     template.paletteNum = 14;
     template.baseBlock = 0x6A;
@@ -3026,7 +3076,11 @@ static void PrintChatMessage(u16 row, u8 *str, u8 colorIdx)
     color[0] = TEXT_COLOR_WHITE;
     color[1] = colorIdx * 2 + 2;
     color[2] = colorIdx * 2 + 3;
+#ifdef PLATFORM_SDL2
+    FillWindowPixelRect(WIN_CHAT_HISTORY, PIXEL_FILL(1), 0, row * 15, 248, 15);
+#else
     FillWindowPixelRect(WIN_CHAT_HISTORY, PIXEL_FILL(1), 0, row * 15, 168, 15);
+#endif
     AddTextPrinterParameterized3(WIN_CHAT_HISTORY, FONT_SHORT, 0, row * 15 + 1, color, TEXT_SKIP_DRAW, str);
 }
 
@@ -3048,8 +3102,13 @@ static void ResetGpuBgState(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
     ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON | DISPCNT_WIN1_ON | DISPCNT_OBJWIN_ON);
     SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 64, DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT - 20));
+#else
     SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 64, GBA_DISPLAY_WIDTH);
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, GBA_DISPLAY_HEIGHT - 16));
+#endif
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG0 | WININ_WIN0_BG2 | WININ_WIN0_BG3
                               | WININ_WIN0_OBJ | WININ_WIN0_CLR);
     SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ | WINOUT_WIN01_CLR);
@@ -3066,7 +3125,11 @@ static void SetBgTilemapBuffers(void)
 static void ClearBg0(void)
 {
     RequestDma3Fill(0, (void *)BG_CHAR_ADDR(0), 0x20, 1);
+#ifdef PLATFORM_SDL2
+    FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 64, 32);
+#else
     FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 32, 32);
+#endif
     CopyBgTilemapBufferToVram(0);
 }
 
@@ -3075,7 +3138,26 @@ static void LoadKeyboardWindowGfx(void)
     LoadPalette(gUnionRoomChat_Keyboard_Pal, BG_PLTT_ID(7), PLTT_SIZE_4BPP);
     LoadPalette(gUnionRoomChat_InputText_Pal, BG_PLTT_ID(12), PLTT_SIZE_4BPP);
     DecompressAndCopyTileDataToVram(1, gUnionRoomChat_Keyboard_Gfx, 0, 0, 0);
+#ifdef PLATFORM_SDL2
+    {
+        const u16 *src = (const u16 *)gDecompressionBuffer;
+        u16 *dst = (u16 *)sDisplay->bg1Buffer;
+        u16 i, x, y;
+
+        LZ77UnCompWram(gUnionRoomChat_Keyboard_Tilemap, gDecompressionBuffer);
+        for (i = 0; i < sizeof(sDisplay->bg1Buffer) / sizeof(u16); i++)
+            dst[i] = 0x7000;
+
+        for (y = 0; y < 20; y++)
+        {
+            u16 srcY = (y < 17) ? y : ((y < 19) ? 2 : 17);
+            for (x = 0; x < 7; x++)
+                dst[y * 32 + x] = src[srcY * 32 + x];
+        }
+    }
+#else
     CopyToBgTilemapBuffer(1, gUnionRoomChat_Keyboard_Tilemap, 0, 0);
+#endif
     CopyBgTilemapBufferToVram(1);
 }
 
@@ -3084,7 +3166,11 @@ static void LoadChatWindowGfx(void)
     u8 *ptr;
 
     LoadPalette(gUnionRoomChat_Background_Pal, BG_PLTT_ID(0), PLTT_SIZE_4BPP);
+#ifdef PLATFORM_SDL2
+    ptr = DecompressAndCopyTileDataToVram(2, gUnionRoomChat_Background_Gfx, 0, 320, 0);
+#else
     ptr = DecompressAndCopyTileDataToVram(2, gUnionRoomChat_Background_Gfx, 0, 0, 0);
+#endif
     if (ptr)
     {
         // The below is nonsense. Tiles 0x11 and 0x21 of the background tileset are
@@ -3095,14 +3181,81 @@ static void LoadChatWindowGfx(void)
         CpuFastCopy(&ptr[0x21 * TILE_SIZE_4BPP], &sDisplay->textEntryTiles[TILE_SIZE_4BPP * 1], TILE_SIZE_4BPP);
     }
 
+#ifdef PLATFORM_SDL2
+    {
+        const u16 *src = (const u16 *)gDecompressionBuffer;
+        u16 *dst = (u16 *)sDisplay->bg2Buffer;
+        u16 x, y;
+
+        LZ77UnCompWram(gUnionRoomChat_Background_Tilemap, gDecompressionBuffer);
+        CpuFill16(0, dst, sizeof(sDisplay->bg2Buffer));
+        for (y = 0; y < 23; y++)
+        {
+            u16 srcY;
+            if (y == 0)
+                srcY = 0;
+            else if (y < 18)
+                srcY = 1;
+            else if (y < 22)
+                srcY = y - 2;
+            else
+                srcY = 19;
+
+            for (x = 0; x < DISPLAY_WIDTH / TILE_WIDTH; x++)
+            {
+                u16 tile;
+                u16 dstIdx = (x < 32) ? (y * 32 + x) : (1024 + y * 32 + (x - 32));
+                if (y == 0)
+                {
+                    if (x < 23)
+                        tile = src[x];
+                    else if (x < 33)
+                        tile = src[23];
+                    else if (x < 39)
+                        tile = src[24 + (x - 33)];
+                    else
+                        tile = src[0];
+                }
+                else if (y == 20 || y == 21)
+                {
+                    if (x < 25)
+                        tile = src[srcY * 32 + x];
+                    else if (x < 39)
+                        tile = src[srcY * 32 + 25 + ((x - 25) % 4)];
+                    else
+                        tile = (y == 20) ? src[18 * 32 + 29] : src[19 * 32 + 29];
+                }
+                else if (y == 22)
+                {
+                    tile = (x < 6) ? src[19 * 32 + x] : src[19 * 32 + 25 + (x & 3)];
+                }
+                else
+                {
+                    if (x < 8)
+                        tile = src[srcY * 32 + x];
+                    else if (x < 39)
+                        tile = 0;
+                    else
+                        tile = src[srcY * 32 + 29];
+                }
+                dst[dstIdx] = ((tile & 0x3FF) == 0) ? tile : (tile + 320);
+            }
+        }
+    }
+#else
     CopyToBgTilemapBuffer(2, gUnionRoomChat_Background_Tilemap, 0, 0);
+#endif
     CopyBgTilemapBufferToVram(2);
 }
 
 static void LoadChatUnkPalette(void)
 {
     LoadPalette(sUnusedPalette, BG_PLTT_ID(8), sizeof(sUnusedPalette));
+#ifdef PLATFORM_SDL2
+    RequestDma3Fill(0, (void *)BG_CHAR_ADDR(2) + TILE_SIZE_4BPP, TILE_SIZE_4BPP, 1);
+#else
     RequestDma3Fill(0, (void *)BG_CHAR_ADDR(1) + TILE_SIZE_4BPP, TILE_SIZE_4BPP, 1);
+#endif
 }
 
 static void LoadChatMessagesWindow(void)
@@ -3155,7 +3308,11 @@ static void InitScanlineEffect(void)
 
 static void WriteSlidingKeyboardScanlines(u16 *buffer, s16 bg1hofs)
 {
+#ifdef PLATFORM_SDL2
+    const u16 keyboardBottom = DISPLAY_HEIGHT - 20;
+#else
     const u16 keyboardBottom = GBA_DISPLAY_HEIGHT - 16;
+#endif
 
     CpuFill16(bg1hofs, buffer, keyboardBottom * sizeof(*buffer));
     CpuFill16(0, buffer + keyboardBottom, (DISPLAY_HEIGHT + 2 - keyboardBottom) * sizeof(*buffer));
@@ -3259,9 +3416,15 @@ static bool32 TryKeyboardCursorReopen(void)
 
 static void CreateTextEntrySprites(void)
 {
+#ifdef PLATFORM_SDL2
+    u8 spriteId = CreateSprite(&sSpriteTemplate_TextEntryCursor, 76, 168, 2);
+    sSprites->textEntryCursor = &gSprites[spriteId];
+    spriteId = CreateSprite(&sSpriteTemplate_TextEntryArrow, 64, 168, 1);
+#else
     u8 spriteId = CreateSprite(&sSpriteTemplate_TextEntryCursor, 76, 152, 2);
     sSprites->textEntryCursor = &gSprites[spriteId];
     spriteId = CreateSprite(&sSpriteTemplate_TextEntryArrow, 64, 152, 1);
+#endif
     sSprites->textEntryArrow = &gSprites[spriteId];
 }
 
@@ -3291,9 +3454,15 @@ static void SpriteCB_TextEntryArrow(struct Sprite *sprite)
 
 static void CreateRButtonSprites(void)
 {
+#ifdef PLATFORM_SDL2
+    u8 spriteId = CreateSprite(&sSpriteTemplate_RButtonIcon, 8, 168, 3);
+    sSprites->rButtonIcon = &gSprites[spriteId];
+    spriteId = CreateSprite(&sSpriteTemplate_RButtonLabels, 32, 168, 4);
+#else
     u8 spriteId = CreateSprite(&sSpriteTemplate_RButtonIcon, 8, 152, 3);
     sSprites->rButtonIcon = &gSprites[spriteId];
     spriteId = CreateSprite(&sSpriteTemplate_RButtonLabels, 32, 152, 4);
+#endif
     sSprites->rButtonLabel = &gSprites[spriteId];
     sSprites->rButtonLabel->invisible = TRUE;
 }
