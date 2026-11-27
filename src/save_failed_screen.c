@@ -14,11 +14,12 @@
 #include "gba/flash_internal.h"
 #include "text_window.h"
 #include "constants/rgb.h"
-#ifdef PLATFORM_SDL2
-#include "platform/framedraw.h"
-#endif
 
+#ifdef PLATFORM_SDL2
+#define MSG_WIN_TOP 13
+#else
 #define MSG_WIN_TOP 12
+#endif
 #define CLOCK_WIN_TOP (MSG_WIN_TOP - 4)
 
 extern const u8 gText_SaveFailedCheckingBackup[];
@@ -47,6 +48,9 @@ static EWRAM_DATA u16 sClockInfo[2] = {0};
 static EWRAM_DATA u8 UNUSED sUnused1[12] = {0};
 static EWRAM_DATA u8 sWindowIds[2] = {0};
 static EWRAM_DATA u8 UNUSED sUnused2[4] = {0};
+#ifdef PLATFORM_SDL2
+static EWRAM_DATA ALIGNED(4) u8 sSaveFailedBg0Tilemap[BG_SCREEN_SIZE * 2] = {0};
+#endif
 
 static const struct OamData sClockOamData =
 {
@@ -70,8 +74,13 @@ static const struct BgTemplate sBgTemplates[3] =
     {
         .bg = 0,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0,
@@ -79,8 +88,13 @@ static const struct BgTemplate sBgTemplates[3] =
     {
         .bg = 2,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 12,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 14,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0,
@@ -88,8 +102,13 @@ static const struct BgTemplate sBgTemplates[3] =
     {
         .bg = 3,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 14,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 15,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0,
@@ -102,9 +121,15 @@ static const struct WindowTemplate sWindowTemplate_Text[] =
 {
     {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 2,
+        .tilemapTop = 14,
+        .width = 36,
+#else
         .tilemapLeft = 1,
         .tilemapTop = 13,
         .width = 28,
+#endif
         .height = 6,
         .paletteNum = 15,
         .baseBlock = 1,
@@ -115,12 +140,21 @@ static const struct WindowTemplate sWindowTemplate_Clock[] =
 {
     {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 19,
+        .tilemapTop = 10,
+#else
         .tilemapLeft = 14,
         .tilemapTop = 9,
+#endif
         .width = 2,
         .height = 2,
         .paletteNum = 15,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 217,
+#else
         .baseBlock = 169,
+#endif
     }
 };
 
@@ -147,6 +181,29 @@ static void CB2_ReturnToTitleScreen(void);
 static void VBlankCB_UpdateClockGraphics(void);
 static bool8 VerifySectorWipe(u16 sector);
 static bool8 WipeSectors(SaveSectorMask);
+
+#ifdef PLATFORM_SDL2
+static void LoadCenteredBirchTilemap(const u32 *src, u16 *dst, u16 fillTile, u8 srcHeight)
+{
+    const u16 *srcTiles = (const u16 *)&gDecompressionBuffer[0x2000];
+    u16 i, x, y;
+
+    LZ77UnCompWram(src, (void *)srcTiles);
+    for (i = 0; i < (BG_SCREEN_SIZE * 2) / sizeof(u16); i++)
+        dst[i] = fillTile;
+
+    for (y = 0; y < srcHeight; y++)
+    {
+        u16 dstY = y + 1;
+        for (x = 0; x < DISPLAY_TILE_WIDTH; x++)
+        {
+            u16 dstX = x + 5;
+            u16 dstIdx = (dstX < 32) ? (dstY * 32 + dstX) : (1024 + dstY * 32 + (dstX - 32));
+            dst[dstIdx] = srcTiles[y * 32 + x];
+        }
+    }
+}
+#endif
 
 // Although this is a general text printer, it's only used in this file.
 static void SaveFailedScreenTextPrint(const u8 *text, u8 x, u8 y)
@@ -183,9 +240,6 @@ static void CB2_SaveFailedScreen(void)
     case 0:
     default:
         SetVBlankCallback(NULL);
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(TRUE);
-#endif
         SetGpuReg(REG_OFFSET_DISPCNT, 0);
         SetGpuReg(REG_OFFSET_BG3CNT, 0);
         SetGpuReg(REG_OFFSET_BG2CNT, 0);
@@ -203,11 +257,26 @@ static void CB2_SaveFailedScreen(void)
         DmaFill32(3, 0, OAM, OAM_SIZE);
         DmaFill16(3, 0, PLTT, PLTT_SIZE);
         LZ77UnCompVram(gBirchBagGrass_Gfx, (void *)VRAM);
+#ifdef PLATFORM_SDL2
+        LoadCenteredBirchTilemap(gBirchBagTilemap, (u16 *)BG_SCREEN_ADDR(12), 0x0010, 20);
+        LoadCenteredBirchTilemap(gBirchGrassTilemap, (u16 *)BG_SCREEN_ADDR(14), 0x1070, 22);
+#else
         LZ77UnCompVram(gBirchBagTilemap, (void *)(BG_SCREEN_ADDR(14)));
         LZ77UnCompVram(gBirchGrassTilemap, (void *)(BG_SCREEN_ADDR(15)));
+#endif
         LZ77UnCompVram(sSaveFailedClockGfx, (void *)(OBJ_VRAM0 + 0x20));
         ResetBgsAndClearDma3BusyFlags(0);
         InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
+#ifdef PLATFORM_SDL2
+        SetBgTilemapBuffer(0, sSaveFailedBg0Tilemap);
+        CpuFill32(0, sSaveFailedBg0Tilemap, sizeof(sSaveFailedBg0Tilemap));
+        LoadBgTiles(0, gTextWindowFrame1_Gfx, 0x120, 0x214);
+        InitWindows(sDummyWindowTemplate);
+        sWindowIds[TEXT_WIN_ID] = AddWindowWithoutTileMap(sWindowTemplate_Text);
+        SetWindowTileData(sWindowIds[TEXT_WIN_ID], &gDecompressionBuffer[0x2000]);
+        sWindowIds[CLOCK_WIN_ID] = AddWindowWithoutTileMap(sWindowTemplate_Clock);
+        SetWindowTileData(sWindowIds[CLOCK_WIN_ID], &gDecompressionBuffer[0x3B00]);
+#else
         SetBgTilemapBuffer(0, (void *)&gDecompressionBuffer[0x2000]);
         CpuFill32(0, &gDecompressionBuffer[0x2000], 0x800);
         LoadBgTiles(0, gTextWindowFrame1_Gfx, 0x120, 0x214);
@@ -216,6 +285,7 @@ static void CB2_SaveFailedScreen(void)
         SetWindowTileData(sWindowIds[TEXT_WIN_ID], &gDecompressionBuffer[0x2800]);
         sWindowIds[CLOCK_WIN_ID] = AddWindowWithoutTileMap(sWindowTemplate_Clock);
         SetWindowTileData(sWindowIds[CLOCK_WIN_ID], &gDecompressionBuffer[0x3D00]);
+#endif
         DeactivateAllTextPrinters();
         ResetSpriteData();
 #ifdef PLATFORM_SDL2
@@ -346,7 +416,6 @@ static void CB2_ReturnToTitleScreen(void)
         UnsetBgTilemapBuffer(0);
 #ifdef PLATFORM_SDL2
         ReleaseOamSlots(0, 1);
-        SetFrameViewToGbaSize(FALSE);
 #endif
         if (gGameContinueCallback == NULL) // no callback exists, so do a soft reset.
         {
@@ -366,7 +435,11 @@ static void VBlankCB_UpdateClockGraphics(void)
     u16 tile = sClockInfo[CLOCK_RUNNING] ? sClockFrames[n][0] : 1;
 
     gMain.oamBuffer[0] = sClockOamData;
+#ifdef PLATFORM_SDL2
+    gMain.oamBuffer[0].x = 152;
+#else
     gMain.oamBuffer[0].x = 112;
+#endif
     gMain.oamBuffer[0].y = (CLOCK_WIN_TOP + 1) * 8;
     gMain.oamBuffer[0].tileNum = tile;
 
