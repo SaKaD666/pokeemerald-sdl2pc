@@ -194,73 +194,55 @@ static void RenderBGScanline(int bgNum, uint16_t control, uint16_t hoffs, uint16
 static inline uint32_t getBgX(int bgNumber)
 {
     if (bgNumber == 2)
-    {
         return REG_BG2X;
-    }
-    else if (bgNumber == 3)
-    {
+    if (bgNumber == 3)
         return REG_BG3X;
-    }
+    return 0;
 }
 
 static inline uint32_t getBgY(int bgNumber)
 {
     if (bgNumber == 2)
-    {
         return REG_BG2Y;
-    }
-    else if (bgNumber == 3)
-    {
+    if (bgNumber == 3)
         return REG_BG3Y;
-    }
+    return 0;
 }
 
 static inline uint16_t getBgPA(int bgNumber)
 {
     if (bgNumber == 2)
-    {
         return REG_BG2PA;
-    }
-    else if (bgNumber == 3)
-    {
+    if (bgNumber == 3)
         return REG_BG3PA;
-    }
+    return 0;
 }
 
 static inline uint16_t getBgPB(int bgNumber)
 {
     if (bgNumber == 2)
-    {
         return REG_BG2PB;
-    }
-    else if (bgNumber == 3)
-    {
+    if (bgNumber == 3)
         return REG_BG3PB;
-    }
+    return 0;
 }
 
 static inline uint16_t getBgPC(int bgNumber)
 {
     if (bgNumber == 2)
-    {
         return REG_BG2PC;
-    }
-    else if (bgNumber == 3)
-    {
+    if (bgNumber == 3)
         return REG_BG3PC;
-    }
+    return 0;
 }
 
 static inline uint16_t getBgPD(int bgNumber)
 {
     if (bgNumber == 2)
-    {
         return REG_BG2PD;
-    }
-    else if (bgNumber == 3)
-    {
+    if (bgNumber == 3)
         return REG_BG3PD;
-    }
+    return 0;
 }
 
 static void RenderRotScaleBGScanline(int bgNum, uint16_t control, uint16_t x, uint16_t y, int lineNum, uint16_t *line)
@@ -1050,7 +1032,7 @@ void DrawFrame(uint16_t *pixels)
 #ifdef PLATFORM_SDL2
         if (gbaView)
         {
-            memsetu16(scanlinePixels, backdropColor, DISPLAY_WIDTH);
+            memsetu16(scanlinePixels, backdropColor, GBA_DISPLAY_WIDTH);
             DrawScanline(scanlinePixels, i);
             memcpy(&pixels[(i + viewY) * DISPLAY_WIDTH + viewX], scanlinePixels,
                    GBA_DISPLAY_WIDTH * sizeof(*pixels));

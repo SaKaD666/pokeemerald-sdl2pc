@@ -134,6 +134,26 @@ void CopyBufferedValuesToGpuRegs(void)
     }
 }
 
+static void QueueGpuRegWrite(u8 regOffset)
+{
+    s32 i;
+
+    sGpuRegBufferLocked = TRUE;
+
+    for (i = 0; i < GPU_REG_BUF_SIZE && sGpuRegWaitingList[i] != EMPTY_SLOT; i++)
+    {
+        if (sGpuRegWaitingList[i] == regOffset)
+        {
+            sGpuRegBufferLocked = FALSE;
+            return;
+        }
+    }
+
+    if (i < GPU_REG_BUF_SIZE)
+        sGpuRegWaitingList[i] = regOffset;
+    sGpuRegBufferLocked = FALSE;
+}
+
 static void SetGpuRegValue(u8 regOffset, u16 value)
 {
     if (regOffset < GPU_REG_BUF_SIZE)
@@ -144,27 +164,9 @@ static void SetGpuRegValue(u8 regOffset, u16 value)
         vcount = REG_VCOUNT & 0xFF;
 
         if ((vcount >= GPU_REG_WRITE_START_LINE && vcount < DISPLAY_SCANLINE_COUNT - 2) || (REG_DISPCNT & DISPCNT_FORCED_BLANK))
-        {
             CopyBufferedValueToGpuReg(regOffset);
-        }
         else
-        {
-            s32 i;
-
-            sGpuRegBufferLocked = TRUE;
-
-            for (i = 0; i < GPU_REG_BUF_SIZE && sGpuRegWaitingList[i] != EMPTY_SLOT; i++)
-            {
-                if (sGpuRegWaitingList[i] == regOffset)
-                {
-                    sGpuRegBufferLocked = FALSE;
-                    return;
-                }
-            }
-
-            sGpuRegWaitingList[i] = regOffset;
-            sGpuRegBufferLocked = FALSE;
-        }
+            QueueGpuRegWrite(regOffset);
     }
 }
 
@@ -204,27 +206,9 @@ void SetGpuReg_ForcedBlank(u8 regOffset, u16 value)
         GPU_REG_BUF(regOffset) = value;
 
         if (REG_DISPCNT & DISPCNT_FORCED_BLANK)
-        {
             CopyBufferedValueToGpuReg(regOffset);
-        }
         else
-        {
-            s32 i;
-
-            sGpuRegBufferLocked = TRUE;
-
-            for (i = 0; i < GPU_REG_BUF_SIZE && sGpuRegWaitingList[i] != EMPTY_SLOT; i++)
-            {
-                if (sGpuRegWaitingList[i] == regOffset)
-                {
-                    sGpuRegBufferLocked = FALSE;
-                    return;
-                }
-            }
-
-            sGpuRegWaitingList[i] = regOffset;
-            sGpuRegBufferLocked = FALSE;
-        }
+            QueueGpuRegWrite(regOffset);
     }
 }
 
