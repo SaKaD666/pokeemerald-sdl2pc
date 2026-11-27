@@ -19,9 +19,6 @@
 #include "text_window.h"
 #include "decompress.h"
 #include "constants/rgb.h"
-#ifdef PLATFORM_SDL2
-#include "platform/framedraw.h"
-#endif
 
 enum {
     WIN_MSG,
@@ -38,8 +35,13 @@ static const struct BgTemplate sBgTemplates[] =
     {
         .bg = 0,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -50,21 +52,36 @@ static const struct WindowTemplate sWindowTemplates[] =
 {
     [WIN_MSG] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 2,
+        .tilemapTop = 17,
+        .width = 36,
+#else
         .tilemapLeft = 4,
         .tilemapTop = 15,
         .width = 22,
+#endif
         .height = 4,
         .paletteNum = 14,
         .baseBlock = 20
     },
     [WIN_LOADING] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 12,
+        .tilemapTop = 7,
+#else
         .tilemapLeft = 7,
         .tilemapTop = 6,
+#endif
         .width = 16,
         .height = 4,
         .paletteNum = 14,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 0xA4
+#else
         .baseBlock = 0x6C
+#endif
     },
     DUMMY_WIN_TEMPLATE
 };
@@ -84,9 +101,6 @@ static bool8 CheckLanguageMatch(void)
 
 void CB2_InitMysteryEventMenu(void)
 {
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
     ResetSpriteData();
     FreeAllSpritePalettes();
     ResetTasks();
@@ -101,7 +115,11 @@ void CB2_InitMysteryEventMenu(void)
         for (i = 0; i < (int)ARRAY_COUNT(sWindowTemplates) - 1; i++)
             FillWindowPixelBuffer(i, PIXEL_FILL(0));
 
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 64, 32);
+#else
         FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
+#endif
         LoadUserWindowBorderGfx(0, 1, BG_PLTT_ID(13));
         Menu_LoadStdPalAt(BG_PLTT_ID(14));
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_1D_MAP | DISPCNT_BG0_ON);
