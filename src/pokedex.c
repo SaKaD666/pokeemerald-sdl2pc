@@ -2220,7 +2220,7 @@ static void UpdatePokedexStartMenuTilemap_SDL2(u8 page, s16 menuY)
     {
         CpuFastFill16(0, bg0, BG_SCREEN_SIZE * 2);
         HideBg(0);
-        ScheduleBgCopyTilemapToVram(0);
+        CopyBgTilemapBufferToVram(0);
         return;
     }
 
@@ -2241,7 +2241,7 @@ static void UpdatePokedexStartMenuTilemap_SDL2(u8 page, s16 menuY)
 
     SetGpuReg(REG_OFFSET_BG0VOFS, 4);
     ShowBg(0);
-    ScheduleBgCopyTilemapToVram(0);
+    CopyBgTilemapBufferToVram(0);
 }
 #endif
 
