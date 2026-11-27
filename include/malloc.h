@@ -10,7 +10,11 @@
 
 #define TRY_FREE_AND_SET_NULL(ptr) if (ptr != NULL) FREE_AND_SET_NULL(ptr)
 
+#ifdef PLATFORM_SDL2
+#define HEAP_SIZE 0x40000
+#else
 #define HEAP_SIZE 0x1C000
+#endif
 extern u8 gHeap[HEAP_SIZE];
 
 void *Alloc(u32 size);

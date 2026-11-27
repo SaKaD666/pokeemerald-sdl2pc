@@ -65,7 +65,7 @@ const IntrFunc gIntrTableTemplate[] =
 static u16 sUnusedVar; // Never read
 
 #ifdef PORTABLE
-u8 gHeap[HEAP_SIZE];
+ALIGNED(8) u8 gHeap[HEAP_SIZE];
 #endif
 u16 gKeyRepeatStartDelay;
 bool8 gLinkTransferringData;

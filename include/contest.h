@@ -1,6 +1,7 @@
 #ifndef GUARD_CONTEST_H
 #define GUARD_CONTEST_H
 
+#include "malloc.h"
 #include "palette.h"
 #include "constants/contest.h"
 
@@ -303,10 +304,18 @@ struct ContestResources
 #define eContestAI (*gContestResources->aiData)
 #define eContestExcitement (*gContestResources->excitement)
 #define eContestGfxState (gContestResources->gfxState)
+#ifdef PLATFORM_SDL2
+#define CONTEST_HEAP_SCRATCH_BASE (HEAP_SIZE - 0x4000)
+#define eUnzippedContestAudience_Gfx (gHeap + CONTEST_HEAP_SCRATCH_BASE)
+#define eContestAudienceFrame2_Gfx (gHeap + CONTEST_HEAP_SCRATCH_BASE + 0x1000)
+#define eContestDebugMode (gHeap[CONTEST_HEAP_SCRATCH_BASE + 0x2000])
+#define eContestTempSave (*(struct ContestTempSave *)(gHeap + CONTEST_HEAP_SCRATCH_BASE + 0x2004))
+#else
 #define eUnzippedContestAudience_Gfx (gHeap + 0x18000)
 #define eContestAudienceFrame2_Gfx (gHeap + 0x19000)
 #define eContestDebugMode (gHeap[0x1a000])
 #define eContestTempSave (*(struct ContestTempSave *)(gHeap + 0x1a004))
+#endif
 
 extern struct ContestPokemon gContestMons[CONTESTANT_COUNT];
 extern s16 gContestMonRound1Points[CONTESTANT_COUNT];
