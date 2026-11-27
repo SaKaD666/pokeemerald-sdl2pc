@@ -425,7 +425,7 @@ static const struct SlidingWindow sPowerAccSlidingWindow =
     .height = 7,
     .left = 0,
 #ifdef PLATFORM_SDL2
-    .top = 15
+    .top = 16
 #else
     .top = 45
 #endif
@@ -438,7 +438,7 @@ static const struct SlidingWindow sAppealJamSlidingWindow =
     .height = 7,
     .left = 0,
 #ifdef PLATFORM_SDL2
-    .top = 15
+    .top = 16
 #else
     .top = 45
 #endif
@@ -620,7 +620,7 @@ static const struct WindowTemplate sSummaryTemplate[] =
         .bg = 0,
         .tilemapLeft = 1,
 #ifdef PLATFORM_SDL2
-        .tilemapTop = 17,
+        .tilemapTop = 18,
         .width = 9,
         .height = 4,
         .paletteNum = 6,
@@ -637,7 +637,7 @@ static const struct WindowTemplate sSummaryTemplate[] =
         .bg = 0,
         .tilemapLeft = 1,
 #ifdef PLATFORM_SDL2
-        .tilemapTop = 17,
+        .tilemapTop = 18,
         .width = 5,
         .height = 4,
         .paletteNum = 6,
@@ -666,7 +666,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
     [PSS_LABEL_WINDOW_PORTRAIT_DEX_NUMBER] = {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 4,
+#else
         .tilemapTop = 2,
+#endif
         .width = 4,
         .height = 2,
         .paletteNum = 7,
@@ -679,7 +683,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
     [PSS_LABEL_WINDOW_PORTRAIT_NICKNAME] = {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 14,
+#else
         .tilemapTop = 12,
+#endif
         .width = 9,
         .height = 2,
         .paletteNum = 6,
@@ -692,7 +700,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
     [PSS_LABEL_WINDOW_PORTRAIT_SPECIES] = {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 16,
+#else
         .tilemapTop = 14,
+#endif
         .width = 9,
         .height = 4,
         .paletteNum = 6,
@@ -1552,9 +1564,13 @@ static void ExpandSummaryInfoTilemap(u16 *dst, const u16 *src, bool8 isEgg)
     u16 y;
 
     CpuFill16(0, dst, 0x1000);
-    for (y = 0; y < 18; y++)
+    for (y = 0; y < 2; y++)
         CopySummaryTilemapSpan(dst, src, y, 0, y, 0, 10);
-    for (y = 18; y < 23; y++)
+    for (y = 2; y < 4; y++)
+        FillSummaryTilemapSpan(dst, y, 0, 10, 0x0001);
+    for (y = 2; y < 18; y++)
+        CopySummaryTilemapSpan(dst, src, y + 2, 0, y, 0, 10);
+    for (y = 20; y < 23; y++)
         FillSummaryTilemapSpan(dst, y, 0, 10, 0x0001);
 
     CopySummaryTilemapSpan(dst, src, 0, 10, 0, 10, 20);
@@ -1705,7 +1721,7 @@ static void InitBGs(void)
     SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 80, DISPLAY_WIDTH);
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT));
     SetGpuWindowHorizontalRange(REG_OFFSET_WIN1H, 0, 80);
-    SetGpuReg(REG_OFFSET_WIN1V, WIN_RANGE(120, DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WIN1V, WIN_RANGE(128, DISPLAY_HEIGHT));
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ);
     SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG0 | WINOUT_WIN01_BG3 | WINOUT_WIN01_OBJ);
     display |= DISPCNT_WIN0_ON;
@@ -3186,33 +3202,46 @@ static void TilemapFiveMovesDisplay(u16 *dst, u16 palette, bool8 remove)
 
 static void DrawPokerusCuredSymbol(struct Pokemon *mon) // This checks if the mon has been cured of pokerus
 {
+#ifdef PLATFORM_SDL2
+    u16 idx = SummaryTileIndex(3, 19);
+    if (!CheckPartyPokerus(mon, 0) && CheckPartyHasHadPokerus(mon, 0)) // If yes it draws the cured symbol
+    {
+        sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0][idx] = 0x2C;
+        sMonSummaryScreen->infoEggTilemapBuffer[0][idx] = 0x2C;
+    }
+    else
+    {
+        sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0][idx] = 0x81A;
+        sMonSummaryScreen->infoEggTilemapBuffer[0][idx] = 0x81A;
+    }
+#else
     if (!CheckPartyPokerus(mon, 0) && CheckPartyHasHadPokerus(mon, 0)) // If yes it draws the cured symbol
     {
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0][0x223] = 0x2C;
-#ifdef PLATFORM_SDL2
-        sMonSummaryScreen->infoEggTilemapBuffer[0][0x223] = 0x2C;
-#else
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][1][0x223] = 0x2C;
-#endif
     }
     else
     {
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0][0x223] = 0x81A;
-#ifdef PLATFORM_SDL2
-        sMonSummaryScreen->infoEggTilemapBuffer[0][0x223] = 0x81A;
-#else
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][1][0x223] = 0x81A;
-#endif
     }
+#endif
     ScheduleBgCopyTilemapToVram(3);
 }
 
 static void SetMonPicBackgroundPalette(bool8 isMonShiny)
 {
+#ifdef PLATFORM_SDL2
+    if (!isMonShiny)
+        SetBgTilemapPalette(3, 1, 6, 8, 8, 0);
+    else
+        SetBgTilemapPalette(3, 1, 6, 8, 8, 5);
+#else
     if (!isMonShiny)
         SetBgTilemapPalette(3, 1, 4, 8, 8, 0);
     else
         SetBgTilemapPalette(3, 1, 4, 8, 8, 5);
+#endif
     ScheduleBgCopyTilemapToVram(3);
 }
 
@@ -3289,7 +3318,7 @@ static void DrawContestMoveHearts(u16 move)
         for (i = 0; i < MAX_CONTEST_MOVE_HEARTS; i++)
         {
 #ifdef PLATFORM_SDL2
-            u16 idx = SummaryTileIndex(6 + (i & 3), 17 + (i / 4));
+            u16 idx = SummaryTileIndex(6 + (i & 3), 18 + (i / 4));
 #else
             u16 idx = (i / 4 * 32) + (i & 3) + 0x1E6;
 #endif
@@ -3307,7 +3336,7 @@ static void DrawContestMoveHearts(u16 move)
         for (i = 0; i < MAX_CONTEST_MOVE_HEARTS; i++)
         {
 #ifdef PLATFORM_SDL2
-            u16 idx = SummaryTileIndex(6 + (i & 3), 19 + (i / 4));
+            u16 idx = SummaryTileIndex(6 + (i & 3), 20 + (i / 4));
 #else
             u16 idx = (i / 4 * 32) + (i & 3) + 0x226;
 #endif
@@ -4646,7 +4675,11 @@ static void PlayMonCry(void)
 static u8 CreateMonSprite(struct Pokemon *unused)
 {
     struct PokeSummary *summary = &sMonSummaryScreen->summary;
+#ifdef PLATFORM_SDL2
+    u8 spriteId = UseSummarySpriteOffset(CreateSprite(&gMultiuseSpriteTemplate, 40, 80, 5));
+#else
     u8 spriteId = UseSummarySpriteOffset(CreateSprite(&gMultiuseSpriteTemplate, 40, 64, 5));
+#endif
 
     FreeSpriteOamMatrix(&gSprites[spriteId]);
     gSprites[spriteId].data[0] = summary->species2;
@@ -4726,7 +4759,11 @@ static void CreateMonMarkingsSprite(struct Pokemon *mon)
         sprite->coordOffsetEnabled = TRUE;
         StartSpriteAnim(sprite, GetMonData(mon, MON_DATA_MARKINGS));
         sMonSummaryScreen->markingsSprite->x = 60;
+#ifdef PLATFORM_SDL2
+        sMonSummaryScreen->markingsSprite->y = 42;
+#else
         sMonSummaryScreen->markingsSprite->y = 26;
+#endif
         sMonSummaryScreen->markingsSprite->oam.priority = 1;
     }
 }
@@ -4743,7 +4780,11 @@ static void CreateCaughtBallSprite(struct Pokemon *mon)
     u8 ball = ItemIdToBallId(GetMonData(mon, MON_DATA_POKEBALL));
 
     LoadBallGfx(ball);
+#ifdef PLATFORM_SDL2
+    sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = UseSummarySpriteOffset(CreateSprite(&gBallSpriteTemplates[ball], 16, 152, 0));
+#else
     sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL] = UseSummarySpriteOffset(CreateSprite(&gBallSpriteTemplates[ball], 16, 136, 0));
+#endif
     gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].callback = SpriteCallbackDummy;
     gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_BALL]].oam.priority = 3;
 }
