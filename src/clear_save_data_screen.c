@@ -12,9 +12,6 @@
 #include "constants/songs.h"
 #include "constants/rgb.h"
 #include "platform.h"
-#ifdef PLATFORM_SDL2
-#include "platform/framedraw.h"
-#endif
 
 extern const u8 gText_ClearAllSaveData[];
 extern const u8 gText_ClearingData[];
@@ -31,8 +28,13 @@ static const struct BgTemplate sClearSaveBgTemplates[2] =
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0,
@@ -40,8 +42,13 @@ static const struct BgTemplate sClearSaveBgTemplates[2] =
     {
         .bg = 3,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0,
@@ -52,9 +59,15 @@ static const struct WindowTemplate sClearSaveTextWindow[] =
 {
     {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 2,
+        .tilemapTop = 17,
+        .width = 36,
+#else
         .tilemapLeft = 3,
         .tilemapTop = 15,
         .width = 26,
+#endif
         .height = 4,
         .paletteNum = 15,
         .baseBlock = 11,
@@ -71,7 +84,11 @@ static const struct WindowTemplate sClearSaveYesNo[] =
         .width = 5,
         .height = 4,
         .paletteNum = 15,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 155,
+#else
         .baseBlock = 115,
+#endif
     }
 };
 
@@ -139,9 +156,6 @@ static bool8 SetupClearSaveDataScreen(void)
     case 0:
     default:
         SetVBlankCallback(NULL);
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(TRUE);
-#endif
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0);
         SetGpuReg(REG_OFFSET_BG0HOFS, 0);
         SetGpuReg(REG_OFFSET_BG0VOFS, 0);
@@ -165,8 +179,13 @@ static bool8 SetupClearSaveDataScreen(void)
         for (i = 0; i < 0x10; i++)
             ((u16 *)(VRAM + 0x20))[i] = 0x1111;
 
+#ifdef PLATFORM_SDL2
+        for (i = 0; i < 0x800; i++)
+            ((u16 *)(BG_SCREEN_ADDR(28)))[i] = 0x0001;
+#else
         for (i = 0; i < 0x400; i++)
             ((u16 *)(BG_SCREEN_ADDR(30)))[i] = 0x0001;
+#endif
         ResetTasks();
         ResetSpriteData();
         ResetBgsAndClearDma3BusyFlags(0);
