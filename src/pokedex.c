@@ -4139,7 +4139,7 @@ static void Task_LoadAreaScreen(u8 taskId)
             SetVBlankCallback(NULL);
             ResetOtherVideoRegisters(DISPCNT_BG1_ON);
 #ifdef PLATFORM_SDL2
-            ConfigureInfoScreenBgs_SDL2(FALSE, sInfoScreen_WindowTemplates);
+            ConfigureInfoScreenBgs_SDL2(TRUE, sInfoScreenPage_WindowTemplates_SDL2);
 #endif
             sPokedexView->selectedScreen = AREA_SCREEN;
             gMain.state = 1;
@@ -4149,7 +4149,11 @@ static void Task_LoadAreaScreen(u8 taskId)
         LoadScreenSelectBarSubmenu(0xD);
         HighlightSubmenuScreenSelectBarItem(0, 0xD);
         LoadPokedexBgPalette(sPokedexView->isSearchResults);
+#ifdef PLATFORM_SDL2
+        ShowBg(1);
+#else
         SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_SCREENBASE(13) | BGCNT_16COLOR | BGCNT_TXT256x256);
+#endif
         gMain.state++;
         break;
     case 2:
@@ -4602,10 +4606,7 @@ static void LoadScreenSelectBarMain(u16 unused)
 static void LoadScreenSelectBarSubmenu(u16 unused)
 {
 #ifdef PLATFORM_SDL2
-    if (GetBgAttribute(1, BG_ATTR_SCREENSIZE) == 1)
-        LoadPokedexSelectBar_SDL2(gPokedexScreenSelectBarSubmenu_Tilemap, 23);
-    else
-        CopyToBgTilemapBuffer(1, gPokedexScreenSelectBarSubmenu_Tilemap, 0, 0);
+    LoadPokedexSelectBar_SDL2(gPokedexScreenSelectBarSubmenu_Tilemap, 23);
 #else
     CopyToBgTilemapBuffer(1, gPokedexScreenSelectBarSubmenu_Tilemap, 0, 0);
 #endif
@@ -4636,14 +4637,13 @@ static void HighlightSubmenuScreenSelectBarItem(u8 a, u16 b)
 {
 #ifdef PLATFORM_SDL2
     static const u8 sDestCols[4] = { 1, 10, 19, 32 };
-    bool8 wide = (GetBgAttribute(1, BG_ATTR_SCREENSIZE) == 1);
 #endif
     u8 i;
 
     for (i = 0; i < 4; i++)
     {
 #ifdef PLATFORM_SDL2
-        u8 row = wide ? sDestCols[i] : (i * 7 + 1);
+        u8 row = sDestCols[i];
 #else
         u8 row = i * 7 + 1;
 #endif

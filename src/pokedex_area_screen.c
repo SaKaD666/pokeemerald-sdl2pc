@@ -219,7 +219,12 @@ static bool8 DrawAreaGlow(void)
         break;
     case 2:
         DecompressAndCopyTileDataToVram(2, sAreaGlow_Gfx, 0, 0, 0);
+#ifdef PLATFORM_SDL2
+        CopyToBgTilemapBufferRect_ChangePalette(2, sPokedexAreaScreen->areaGlowTilemap, 0, 0, AREA_SCREEN_WIDTH, AREA_SCREEN_HEIGHT, 17);
+        CopyBgTilemapBufferToVram(2);
+#else
         LoadBgTilemap(2, sPokedexAreaScreen->areaGlowTilemap, sizeof(sPokedexAreaScreen->areaGlowTilemap), 0);
+#endif
         break;
     case 3:
         if (!FreeTempTileDataBuffersIfPossible())
@@ -229,7 +234,12 @@ static bool8 DrawAreaGlow(void)
         }
         return TRUE;
     case 4:
+#ifdef PLATFORM_SDL2
+        ChangeBgX(2, -(40 << 8), BG_COORD_SET);
+        ChangeBgY(2, -(24 << 8), BG_COORD_SET);
+#else
         ChangeBgY(2, -BG_SCREEN_SIZE, BG_COORD_SET);
+#endif
         break;
     default:
         return FALSE;
@@ -602,6 +612,9 @@ static void Task_ShowPokedexAreaScreen(u8 taskId)
         HideBg(3);
         HideBg(2);
         HideBg(0);
+#ifdef PLATFORM_SDL2
+        CopyBgTilemapBufferToVram(3);
+#endif
         break;
     case 1:
         SetBgAttribute(3, BG_ATTR_CHARBASEINDEX, 3);
@@ -611,7 +624,12 @@ static void Task_ShowPokedexAreaScreen(u8 taskId)
     case 2:
         if (TryShowPokedexAreaMap() == TRUE)
             return;
+#ifdef PLATFORM_SDL2
+        ChangeBgX(3, -(40 << 8), BG_COORD_SET);
+        PokedexAreaMapChangeBgY(-24);
+#else
         PokedexAreaMapChangeBgY(-8);
+#endif
         break;
     case 3:
         ResetDrawAreaGlowState();
@@ -623,7 +641,11 @@ static void Task_ShowPokedexAreaScreen(u8 taskId)
     case 5:
         ShowRegionMapForPokedexAreaScreen(&sPokedexAreaScreen->regionMap);
         CreateRegionMapPlayerIcon(1, 1);
+#ifdef PLATFORM_SDL2
+        PokedexAreaScreen_UpdateRegionMapVariablesAndVideoRegs(-40, -24);
+#else
         PokedexAreaScreen_UpdateRegionMapVariablesAndVideoRegs(0, -8);
+#endif
         break;
     case 6:
         CreateAreaMarkerSprites();
@@ -719,8 +741,13 @@ static void CreateAreaMarkerSprites(void)
     for (i = 0; i < sPokedexAreaScreen->numSpecialAreas; i++)
     {
         mapSecId = sPokedexAreaScreen->specialAreaRegionMapSectionIds[i];
+#ifdef PLATFORM_SDL2
+        x = 8 * (gRegionMapEntries[mapSecId].x + 1) + 4 + 40;
+        y = 8 * (gRegionMapEntries[mapSecId].y) + 44;
+#else
         x = 8 * (gRegionMapEntries[mapSecId].x + 1) + 4;
         y = 8 * (gRegionMapEntries[mapSecId].y) + 28;
+#endif
         x += 4 * (gRegionMapEntries[mapSecId].width - 1);
         y += 4 * (gRegionMapEntries[mapSecId].height - 1);
         spriteId = CreateSprite(&sAreaMarkerSpriteTemplate, x, y, 0);
@@ -781,7 +808,11 @@ static void CreateAreaUnknownSprites(void)
         // The current species is absent on the map, try to create "Area Unknown" sprites
         for (i = 0; i < ARRAY_COUNT(sPokedexAreaScreen->areaUnknownSprites); i++)
         {
+#ifdef PLATFORM_SDL2
+            u8 spriteId = CreateSprite(&sAreaUnknownSpriteTemplate, i * 32 + 200, 156, 0);
+#else
             u8 spriteId = CreateSprite(&sAreaUnknownSpriteTemplate, i * 32 + 160, 140, 0);
+#endif
             if (spriteId != MAX_SPRITES)
             {
                 SetSpriteSheetTileOffset(&gSprites[spriteId], i * 16);
