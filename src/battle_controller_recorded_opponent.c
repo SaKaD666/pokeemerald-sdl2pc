@@ -2,6 +2,7 @@
 #include "battle.h"
 #include "battle_ai_script_commands.h"
 #include "battle_anim.h"
+#include "battle_bg.h"
 #include "battle_controllers.h"
 #include "battle_interface.h"
 #include "battle_message.h"
@@ -1238,7 +1239,7 @@ static void RecordedOpponentHandleDrawTrainerPic(void)
     DecompressTrainerFrontPic(trainerPicId, gActiveBattler);
     SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate,
-                                               xPos,
+                                               xPos + BATTLE_OPPONENT_TRAINER_X_SHIFT,
                                                (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40,
                                                GetBattlerSpriteSubpriority(gActiveBattler));
 
@@ -1262,7 +1263,7 @@ static void RecordedOpponentHandleTrainerSlideBack(void)
 {
     SetSpritePrimaryCoordsFromSecondaryCoords(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[0] = 35;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = 280;
+    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = DISPLAY_WIDTH + 40;
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[4] = gSprites[gBattlerSpriteIds[gActiveBattler]].y;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = StartAnimLinearTranslation;
     StoreSpriteCallbackInData6(&gSprites[gBattlerSpriteIds[gActiveBattler]], SpriteCallbackDummy);

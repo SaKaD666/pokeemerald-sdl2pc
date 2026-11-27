@@ -627,8 +627,12 @@ static u32 UNUSED HandleMoveInputUnused(void)
     if (JOY_NEW(B_BUTTON))
     {
         PlaySE(SE_SELECT);
+#ifdef PLATFORM_SDL2
+        gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
+#else
         gBattle_BG0_X = 0;
-        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT * 2;
+#endif
+        gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT * 2 - BATTLE_MOVE_MENU_Y_OFFSET;
         var = 0xFF;
     }
     if (JOY_NEW(DPAD_LEFT) && gMoveSelectionCursor[gActiveBattler] & 1)
@@ -2572,9 +2576,6 @@ static void PlayerHandlePrintString(void)
 {
     u16 *stringId;
 
-#ifdef PLATFORM_SDL2
-    BattleActionMenuRestoreViewport();
-#endif
     gBattle_BG0_X = 0;
     gBattle_BG0_Y = 0;
     stringId = (u16 *)(&gBattleBufferA[gActiveBattler][2]);

@@ -1048,6 +1048,64 @@ static void LoadBattleTextboxTilemap(void)
 }
 
 #ifdef PLATFORM_SDL2
+static void RestoreBattleBg0Rows(u16 *tilemap, u16 startY, const u16 (*savedRows)[40], u16 rowCount)
+{
+    u16 row;
+
+    for (row = 0; row < rowCount; row++)
+    {
+        u16 y = startY + row;
+        u16 blockOffset = (y / 32) * 2048 + (y % 32) * 32;
+
+        CpuCopy16(savedRows[row], tilemap + blockOffset, 32 * sizeof(*tilemap));
+        CpuCopy16(savedRows[row] + 32, tilemap + blockOffset + 1024, 8 * sizeof(*tilemap));
+    }
+}
+
+static void HideBattleBg0Rows(u16 *tilemap, u16 startY, u16 (*savedRows)[40], u16 rowCount)
+{
+    u16 row;
+
+    for (row = 0; row < rowCount; row++)
+    {
+        u16 y = startY + row;
+        u16 blockOffset = (y / 32) * 2048 + (y % 32) * 32;
+
+        CpuCopy16(tilemap + blockOffset, savedRows[row], 32 * sizeof(*tilemap));
+        CpuCopy16(tilemap + blockOffset + 1024, savedRows[row] + 32, 8 * sizeof(*tilemap));
+        CpuFill16(0, tilemap + blockOffset, 32 * sizeof(*tilemap));
+        CpuFill16(0, tilemap + blockOffset + 1024, 8 * sizeof(*tilemap));
+    }
+}
+
+static bool8 RestoreActiveBattleMenuViewport(u16 *tilemap)
+{
+    bool8 changed = FALSE;
+
+    if (sBattleActionMenuTopRowHidden)
+    {
+        RestoreBattleBg0Rows(tilemap, 19, sBattleActionMenuTopRows, ARRAY_COUNT(sBattleActionMenuTopRows));
+        sBattleActionMenuTopRowHidden = FALSE;
+        changed = TRUE;
+    }
+    if (sBattleMoveMenuTopRowHidden)
+    {
+        RestoreBattleBg0Rows(tilemap, 36, sBattleMoveMenuTopRows, ARRAY_COUNT(sBattleMoveMenuTopRows));
+        sBattleMoveMenuTopRowHidden = FALSE;
+        changed = TRUE;
+    }
+
+    return changed;
+}
+
+void BattleMessagePrepareViewport(void)
+{
+    u16 *tilemap = GetBgTilemapBuffer(0);
+
+    if (tilemap != NULL && RestoreActiveBattleMenuViewport(tilemap))
+        CopyBgTilemapBufferToVram(0);
+}
+
 void BattleActionMenuPrepareViewport(void)
 {
     u16 *tilemap = GetBgTilemapBuffer(0);
@@ -1057,53 +1115,15 @@ void BattleActionMenuPrepareViewport(void)
 
     if (sBattleMoveMenuTopRowHidden)
     {
-        for (u16 row = 0; row < 6; row++)
-        {
-            u16 y = row + 36;
-            u16 *leftBlockRow = tilemap + 2048 + (y - 32) * 32;
-            u16 *rightBlockRow = tilemap + 3072 + (y - 32) * 32;
-
-            CpuCopy16(sBattleMoveMenuTopRows[row], leftBlockRow, 32 * sizeof(*tilemap));
-            CpuCopy16(sBattleMoveMenuTopRows[row] + 32, rightBlockRow, 8 * sizeof(*tilemap));
-        }
+        RestoreBattleBg0Rows(tilemap, 36, sBattleMoveMenuTopRows, ARRAY_COUNT(sBattleMoveMenuTopRows));
         sBattleMoveMenuTopRowHidden = FALSE;
     }
 
     if (sBattleActionMenuTopRowHidden)
         return;
 
-    for (u16 row = 0; row < 3; row++)
-    {
-        u16 y = row + 19;
-        u16 *leftBlockRow = tilemap + y * 32;
-        u16 *rightBlockRow = tilemap + 1024 + y * 32;
-
-        CpuCopy16(leftBlockRow, sBattleActionMenuTopRows[row], 32 * sizeof(*tilemap));
-        CpuCopy16(rightBlockRow, sBattleActionMenuTopRows[row] + 32, 8 * sizeof(*tilemap));
-        CpuFill16(0, leftBlockRow, 32 * sizeof(*tilemap));
-        CpuFill16(0, rightBlockRow, 8 * sizeof(*tilemap));
-    }
+    HideBattleBg0Rows(tilemap, 19, sBattleActionMenuTopRows, ARRAY_COUNT(sBattleActionMenuTopRows));
     sBattleActionMenuTopRowHidden = TRUE;
-    CopyBgTilemapBufferToVram(0);
-}
-
-void BattleActionMenuRestoreViewport(void)
-{
-    u16 *tilemap = GetBgTilemapBuffer(0);
-
-    if (tilemap == NULL || !sBattleActionMenuTopRowHidden)
-        return;
-
-    for (u16 row = 0; row < 3; row++)
-    {
-        u16 y = row + 19;
-        u16 *leftBlockRow = tilemap + y * 32;
-        u16 *rightBlockRow = tilemap + 1024 + y * 32;
-
-        CpuCopy16(sBattleActionMenuTopRows[row], leftBlockRow, 32 * sizeof(*tilemap));
-        CpuCopy16(sBattleActionMenuTopRows[row] + 32, rightBlockRow, 8 * sizeof(*tilemap));
-    }
-    sBattleActionMenuTopRowHidden = FALSE;
     CopyBgTilemapBufferToVram(0);
 }
 
@@ -1116,32 +1136,14 @@ void BattleMoveMenuPrepareViewport(void)
 
     if (sBattleActionMenuTopRowHidden)
     {
-        for (u16 row = 0; row < 3; row++)
-        {
-            u16 y = row + 19;
-            u16 *leftBlockRow = tilemap + y * 32;
-            u16 *rightBlockRow = tilemap + 1024 + y * 32;
-
-            CpuCopy16(sBattleActionMenuTopRows[row], leftBlockRow, 32 * sizeof(*tilemap));
-            CpuCopy16(sBattleActionMenuTopRows[row] + 32, rightBlockRow, 8 * sizeof(*tilemap));
-        }
+        RestoreBattleBg0Rows(tilemap, 19, sBattleActionMenuTopRows, ARRAY_COUNT(sBattleActionMenuTopRows));
         sBattleActionMenuTopRowHidden = FALSE;
     }
 
     if (sBattleMoveMenuTopRowHidden)
         return;
 
-    for (u16 row = 0; row < 6; row++)
-    {
-        u16 y = row + 36;
-        u16 *leftBlockRow = tilemap + 2048 + (y - 32) * 32;
-        u16 *rightBlockRow = tilemap + 3072 + (y - 32) * 32;
-
-        CpuCopy16(leftBlockRow, sBattleMoveMenuTopRows[row], 32 * sizeof(*tilemap));
-        CpuCopy16(rightBlockRow, sBattleMoveMenuTopRows[row] + 32, 8 * sizeof(*tilemap));
-        CpuFill16(0, leftBlockRow, 32 * sizeof(*tilemap));
-        CpuFill16(0, rightBlockRow, 8 * sizeof(*tilemap));
-    }
+    HideBattleBg0Rows(tilemap, 36, sBattleMoveMenuTopRows, ARRAY_COUNT(sBattleMoveMenuTopRows));
     sBattleMoveMenuTopRowHidden = TRUE;
     CopyBgTilemapBufferToVram(0);
 }

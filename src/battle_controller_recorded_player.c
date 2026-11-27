@@ -2,6 +2,7 @@
 #include "battle.h"
 #include "battle_ai_script_commands.h"
 #include "battle_anim.h"
+#include "battle_bg.h"
 #include "battle_controllers.h"
 #include "battle_message.h"
 #include "battle_interface.h"
@@ -1213,6 +1214,8 @@ static void RecordedPlayerHandleDrawTrainerPic(void)
         else
         {
             yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
+            if (!IsDoubleBattle() && !(gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER))
+                yPos += BATTLE_PLAYER_MON_Y_SHIFT;
         }
 
     }
@@ -1220,6 +1223,8 @@ static void RecordedPlayerHandleDrawTrainerPic(void)
     {
         xPos = 80;
         yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
+        if (!IsDoubleBattle())
+            yPos += BATTLE_PLAYER_MON_Y_SHIFT;
     }
 
     if (gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER)

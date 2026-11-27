@@ -1039,7 +1039,8 @@ static void WallyHandleDrawTrainerPic(void)
     SetMultiuseSpriteTemplateToTrainerBack(TRAINER_BACK_PIC_WALLY, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate,
                                                80,
-                                               80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size),
+                                               80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size)
+                                                 + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0),
                                                30);
     SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
@@ -1054,7 +1055,8 @@ static void WallyHandleTrainerSlide(void)
     SetMultiuseSpriteTemplateToTrainerBack(TRAINER_BACK_PIC_WALLY, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate,
                                                80,
-                                               80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size),
+                                               80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size)
+                                                 + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0),
                                                30);
     SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -96;
@@ -1175,9 +1177,6 @@ static void WallyHandlePrintString(void)
 {
     u16 *stringId;
 
-#ifdef PLATFORM_SDL2
-    BattleActionMenuRestoreViewport();
-#endif
     gBattle_BG0_X = 0;
     gBattle_BG0_Y = 0;
     stringId = (u16 *)(&gBattleBufferA[gActiveBattler][2]);
@@ -1242,10 +1241,12 @@ static void WallyHandleChooseMove(void)
         if (!IsDma3ManagerBusyWithBgCopy())
         {
 #ifdef PLATFORM_SDL2
-            BattleActionMenuRestoreViewport();
-#endif
+            BattleMoveMenuPrepareViewport();
+            gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
+#else
             gBattle_BG0_X = 0;
-            gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT * 2;
+#endif
+            gBattle_BG0_Y = BATTLE_TEXTBOX_PAGE_HEIGHT * 2 - BATTLE_MOVE_MENU_Y_OFFSET;
             gBattleStruct->wallyMovesState++;
         }
         break;

@@ -358,7 +358,8 @@ static void SafariHandleDrawTrainerPic(void)
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(
       &gMultiuseSpriteTemplate,
       80,
-      (8 - gTrainerBackPicCoords[gSaveBlock2Ptr->playerGender].size) * 4 + 80,
+      (8 - gTrainerBackPicCoords[gSaveBlock2Ptr->playerGender].size) * 4 + 80
+        + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0),
       30);
     SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
@@ -421,9 +422,6 @@ static void SafariHandlePrintString(void)
 {
     u16 *stringId;
 
-#ifdef PLATFORM_SDL2
-    BattleActionMenuRestoreViewport();
-#endif
     gBattle_BG0_X = 0;
     gBattle_BG0_Y = 0;
     stringId = (u16 *)(&gBattleBufferA[gActiveBattler][2]);

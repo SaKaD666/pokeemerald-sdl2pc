@@ -51,6 +51,7 @@
 #define BATTLE_OPPONENT_MON_Y_FINE_SHIFT -8
 #define BATTLE_OPPONENT_PLATFORM_X_FINE_SHIFT 16
 #define BATTLE_OPPONENT_PLATFORM_Y_TILE_SHIFT 0
+#define BATTLE_OPPONENT_TRAINER_X_SHIFT (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_OPPONENT_MON_X_FINE_SHIFT)
 #define BATTLE_OPPONENT_HEALTHBOX_Y_SHIFT -6
 #define BATTLE_PLAYER_HEALTHBOX_X_SHIFT 42
 #define BATTLE_OPPONENT_HEALTHBOX_X_SHIFT -18
@@ -96,6 +97,8 @@ void DrawCaughtMonBattleBackground(void);
 #define BATTLE_MOVE_NAME_4_BASE_BLOCK 0x0330
 #define BATTLE_MOVE_TYPE_BASE_BLOCK 0x02A0
 #define BATTLE_TERRAIN_SCROLL_Y_OFFSET 0
+#define BATTLE_PLAYER_MON_Y_SHIFT 0
+#define BATTLE_OPPONENT_TRAINER_X_SHIFT 0
 #define BATTLE_LEVEL_UP_BOX_LEFT 19
 #define BATTLE_LEVEL_UP_BOX_TOP 8
 #define BATTLE_LEVEL_UP_FRAME_LEFT 18
@@ -112,8 +115,8 @@ void LoadBattleMenuWindowGfx(void);
 void DrawMainBattleBackground(void);
 void LoadBattleTextboxAndBackground(void);
 #ifdef PLATFORM_SDL2
+void BattleMessagePrepareViewport(void);
 void BattleActionMenuPrepareViewport(void);
-void BattleActionMenuRestoreViewport(void);
 void BattleMoveMenuPrepareViewport(void);
 #endif
 void InitLinkBattleVsScreen(u8 taskId);

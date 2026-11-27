@@ -2977,6 +2977,7 @@ void BattlePutTextOnWindow(const u8 *text, u8 windowId)
 #ifdef PLATFORM_SDL2
     if (windowId == B_WIN_MSG || windowId == ARENA_WIN_JUDGMENT_TEXT)
     {
+        BattleMessagePrepareViewport();
         gBattle_BG0_X = BATTLE_TEXTBOX_X_OFFSET;
         gBattle_BG0_Y = (0x200 - BATTLE_MESSAGE_WINDOW_Y_OFFSET) & 0x1FF;
     }
