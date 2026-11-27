@@ -2217,14 +2217,14 @@ void CB2_InitEndLinkBattle(void)
         ScanlineEffect_Clear();
 
         i = 0;
-        while (i < 80)
+        while (i < DISPLAY_HEIGHT / 2)
         {
             gScanlineEffectRegBuffers[0][i] = 0xF0;
             gScanlineEffectRegBuffers[1][i] = 0xF0;
             i++;
         }
 
-        while (i < 160)
+        while (i < DISPLAY_HEIGHT)
         {
             gScanlineEffectRegBuffers[0][i] = 0xFF10;
             gScanlineEffectRegBuffers[1][i] = 0xFF10;

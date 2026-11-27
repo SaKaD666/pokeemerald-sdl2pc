@@ -306,7 +306,7 @@ static const struct WindowTemplate sStandardBattleWindowTemplates[] =
     },
     [B_WIN_LEVEL_UP_BANNER] = {
         .bg = 2,
-        .tilemapLeft = 18,
+        .tilemapLeft = BATTLE_LEVEL_UP_FRAME_LEFT,
         .tilemapTop = 0,
         .width = 12,
         .height = 3,
@@ -527,7 +527,7 @@ static const struct WindowTemplate sBattleArenaWindowTemplates[] =
     },
     [B_WIN_LEVEL_UP_BANNER] = {
         .bg = 2,
-        .tilemapLeft = 18,
+        .tilemapLeft = BATTLE_LEVEL_UP_FRAME_LEFT,
         .tilemapTop = 0,
         .width = 12,
         .height = 3,

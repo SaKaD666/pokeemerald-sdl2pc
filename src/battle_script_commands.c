@@ -6198,7 +6198,11 @@ static void PutMonIconOnLvlUpBanner(void)
     LoadSpriteSheet(&iconSheet);
     LoadSpritePalette(&iconPalSheet);
 
+#ifdef PLATFORM_SDL2
+    spriteId = CreateSprite(&sSpriteTemplate_MonIconOnLvlUpBanner, DISPLAY_WIDTH + 16, 10, 0);
+#else
     spriteId = CreateSprite(&sSpriteTemplate_MonIconOnLvlUpBanner, 256, 10, 0);
+#endif
     gSprites[spriteId].sDestroy = FALSE;
     gSprites[spriteId].sXOffset = gBattle_BG2_X;
 }
