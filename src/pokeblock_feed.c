@@ -25,6 +25,9 @@
 #include "trig.h"
 #include "util.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 enum {
     ANIMDATA_ROT_IDX,
@@ -698,6 +701,9 @@ void PreparePokeblockFeedScene(void)
 
 static void HandleInitBackgrounds(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     ResetVramOamAndBgCntRegs();
 
     ResetBgsAndClearDma3BusyFlags(0);
@@ -882,6 +888,9 @@ static void Task_ExitPokeblockFeed(u8 taskId)
         ResetSpriteData();
         FreeAllSpritePalettes();
         m4aMPlayVolumeControl(&gMPlayInfo_BGM, TRACKS_ALL, 0x100);
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(gMain.savedCallback);
         DestroyTask(taskId);
         FreeAllWindowBuffers();

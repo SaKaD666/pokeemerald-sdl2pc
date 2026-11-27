@@ -21,6 +21,9 @@
 #include "text.h"
 #include "window.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 COMMON_DATA u16 (*gContestMonPixels)[][32] = {0};
 COMMON_DATA struct ImageProcessingContext gImageProcessingContext = {0};
@@ -193,6 +196,7 @@ static void CB2_QuitContestPainting(void)
         return;
     ClearScheduledBgCopiesToVram();
     ReleaseOamSlots(0, 1);
+    SetFrameViewToGbaSize(FALSE);
 #endif
     SetMainCallback2(gMain.savedCallback);
     FREE_AND_SET_NULL(gContestPaintingMonPalette);
@@ -277,6 +281,9 @@ static void HoldContestPainting(void)
 
 static void InitContestPaintingWindow(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
     ChangeBgX(1, 0, BG_COORD_SET);

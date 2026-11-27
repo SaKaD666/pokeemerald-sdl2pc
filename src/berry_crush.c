@@ -33,6 +33,9 @@
 #include "text.h"
 #include "text_window.h"
 #include "trig.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 #include "window.h"
 #include "constants/items.h"
 #include "constants/rgb.h"
@@ -973,6 +976,9 @@ static u32 QuitBerryCrush(MainCallback exitCallback)
 
     DestroyTask(sGame->taskId);
     FREE_AND_SET_NULL(sGame);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
     SetMainCallback2(exitCallback);
     if (exitCallback == CB2_ReturnToField)
     {
@@ -1054,6 +1060,9 @@ static void GetBerryFromBag(void)
 static void ChooseBerry(void)
 {
     DestroyTask(sGame->taskId);
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
     ChooseBerryForMachine(GetBerryFromBag);
 }
 
@@ -1197,6 +1206,9 @@ static s32 ShowGameDisplay(void)
         FreeAllSpritePalettes();
         break;
     case 3:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ResetBgsAndClearDma3BusyFlags(0);
         InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
         SetBgTilemapBuffer(1, game->gfx.bgBuffers[0]);

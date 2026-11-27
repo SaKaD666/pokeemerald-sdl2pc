@@ -32,6 +32,9 @@
 #include "constants/items.h"
 #include "constants/songs.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 #define MAX_MENU_ITEMS 9
 #define MENU_MIDPOINT (MAX_MENU_ITEMS / 2)
@@ -620,6 +623,9 @@ static bool8 InitPokeblockMenu(void)
 
 static void HandleInitBackgrounds(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     ResetVramOamAndBgCntRegs();
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sBgTemplatesForPokeblockMenu, ARRAY_COUNT(sBgTemplatesForPokeblockMenu));
@@ -988,6 +994,9 @@ static void Task_FreeDataAndExitPokeblockCase(u8 taskId)
         ResetSpriteData();
         FreeAllSpritePalettes();
 
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         if (sPokeblockMenu->callbackOnUse != NULL)
             SetMainCallback2(sPokeblockMenu->callbackOnUse);
         else

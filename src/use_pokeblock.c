@@ -24,6 +24,9 @@
 #include "graphics.h"
 #include "pokemon_summary_screen.h"
 #include "item_menu.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 /*
     This file handles the screen where the player chooses
@@ -501,6 +504,9 @@ static void LoadUsePokeblockMenu(void)
         sInfo->mainState++;
         break;
     case 3:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         ResetBgsAndClearDma3BusyFlags(0);
         InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
         InitWindows(sWindowTemplates);
@@ -837,6 +843,9 @@ static void CloseUsePokeblockMenu(void)
         sInfo->mainState++;
         break;
     case 3:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(FALSE);
+#endif
         SetMainCallback2(sInfo->exitCallback);
         FreeConditionSparkles(sMenu->sparkles);
         for (i = 0; i < ARRAY_COUNT(sMenu->selectionIconSpriteIds); i++)

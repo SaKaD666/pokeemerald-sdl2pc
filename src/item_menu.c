@@ -820,7 +820,15 @@ void InitBagBgs(void *tilemap)
         ChangeBgY(bg, -BAG_VIEW_Y * 256, BG_COORD_SET);
     }
     ScheduleBgCopyTilemapToVram(2);
+#ifdef PLATFORM_SDL2
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, BAG_VIEW_X, BAG_VIEW_X + GBA_DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(BAG_VIEW_Y, BAG_VIEW_Y + GBA_DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
+    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_WIN0_ON);
+#else
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
+#endif
     ShowBg(0);
     ShowBg(1);
     ShowBg(2);

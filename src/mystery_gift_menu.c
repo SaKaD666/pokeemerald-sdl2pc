@@ -31,6 +31,9 @@
 #include "link_rfu.h"
 #include "wonder_news.h"
 #include "constants/cable_club.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 enum {
     WIN_HEADER,
@@ -386,6 +389,9 @@ static bool32 HandleMysteryGiftOrEReaderSetup(s32 isEReader)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetVBlankCallback(NULL);
         ResetPaletteFade();
         ResetSpriteData();
@@ -490,6 +496,9 @@ void MainCB_FreeAllBuffersAndReturnToInitTitleScreen(void)
         UnsetBgTilemapBuffer(bg);
         Free(tilemap);
     }
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
     SetMainCallback2(CB2_InitTitleScreen);
 }
 

@@ -19,6 +19,9 @@
 #include "text_window.h"
 #include "decompress.h"
 #include "constants/rgb.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 enum {
     WIN_MSG,
@@ -81,6 +84,9 @@ static bool8 CheckLanguageMatch(void)
 
 void CB2_InitMysteryEventMenu(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     ResetSpriteData();
     FreeAllSpritePalettes();
     ResetTasks();

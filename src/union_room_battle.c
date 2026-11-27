@@ -20,6 +20,9 @@
 #include "union_room_battle.h"
 #include "constants/rgb.h"
 #include "constants/trainers.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 struct UnionRoomBattle
 {
@@ -115,6 +118,9 @@ void CB2_UnionRoomBattle(void)
     switch (gMain.state)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        SetFrameViewToGbaSize(TRUE);
+#endif
         SetGpuReg(REG_OFFSET_DISPCNT, 0x0000);
         sBattle = AllocZeroed(sizeof(struct UnionRoomBattle));
         ResetSpriteData();
@@ -197,6 +203,9 @@ void CB2_UnionRoomBattle(void)
     case 51:
         if (IsLinkTaskFinished())
         {
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_SetUpPartiesAndStartBattle);
         }
         break;
@@ -209,6 +218,9 @@ void CB2_UnionRoomBattle(void)
     case 7:
         if (PrintUnionRoomBattleMessage(&sBattle->textState, gText_RefusedBattle, 1))
         {
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_ReturnToField);
         }
         break;
@@ -221,6 +233,9 @@ void CB2_UnionRoomBattle(void)
     case 9:
         if (PrintUnionRoomBattleMessage(&sBattle->textState, gText_BattleWasRefused, 1))
         {
+#ifdef PLATFORM_SDL2
+            SetFrameViewToGbaSize(FALSE);
+#endif
             SetMainCallback2(CB2_ReturnToField);
         }
         break;

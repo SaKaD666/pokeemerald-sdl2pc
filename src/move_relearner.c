@@ -24,6 +24,9 @@
 #include "task.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#ifdef PLATFORM_SDL2
+#include "platform/framedraw.h"
+#endif
 
 /*
  * Move relearner state machine
@@ -443,6 +446,9 @@ static void CB2_InitLearnMoveReturnFromSelectMove(void)
 
 static void InitMoveRelearnerBackgroundLayers(void)
 {
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(TRUE);
+#endif
     ResetVramOamAndBgCntRegs();
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sMoveRelearnerMenuBackgroundTemplates, ARRAY_COUNT(sMoveRelearnerMenuBackgroundTemplates));
@@ -756,6 +762,9 @@ static void FreeMoveRelearnerResources(void)
     FREE_AND_SET_NULL(sMoveRelearnerStruct);
     ResetSpriteData();
     FreeAllSpritePalettes();
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
 }
 
 // Note: The hearts are already made invisible by MoveRelearnerShowHideHearts,
