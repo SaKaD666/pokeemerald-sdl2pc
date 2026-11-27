@@ -132,9 +132,9 @@ void HandleIntroSlide(u8 environment)
 #ifdef PLATFORM_SDL2
     if (gTasks[taskId].func != BattleIntroSlideLink && gTasks[taskId].func != BattleIntroSlidePartner)
     {
-        // The regular entry art is one block. Leave the extra columns transparent
-        // so the wide terrain shows through during the horizontal scanline effect.
-        CpuFill32(0, (void *)BG_SCREEN_ADDR(29), BG_SCREEN_SIZE);
+        // The regular entry art is a 32x32 repeating overlay. Mirror it into the
+        // second map block so scrolling covers the full 320px width cleanly.
+        CpuCopy32((void *)BG_SCREEN_ADDR(28), (void *)BG_SCREEN_ADDR(29), BG_SCREEN_SIZE);
         SetAnimBgAttribute(1, BG_ANIM_SCREEN_SIZE, 1);
     }
 #endif
@@ -169,6 +169,10 @@ static void BattleIntroSlide1(u8 taskId)
     switch (gTasks[taskId].tState)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        // Align bottom grass overlays flush with the lowered 320x180 battle textbox.
+        gBattle_BG1_Y = (u16)(-20);
+#endif
         if (gBattleTypeFlags & BATTLE_TYPE_LINK)
         {
             gTasks[taskId].data[2] = 16;
@@ -206,12 +210,20 @@ static void BattleIntroSlide1(u8 taskId)
         {
             if (gTasks[taskId].tEnvironment == BATTLE_ENVIRONMENT_LONG_GRASS)
             {
+#ifdef PLATFORM_SDL2
+                if (gBattle_BG1_Y != (u16)(-100))
+#else
                 if (gBattle_BG1_Y != (u16)(-80))
+#endif
                     gBattle_BG1_Y -= 2;
             }
             else
             {
+#ifdef PLATFORM_SDL2
+                if (gBattle_BG1_Y != (u16)(-76))
+#else
                 if (gBattle_BG1_Y != (u16)(-56))
+#endif
                     gBattle_BG1_Y -= 1;
             }
         }
@@ -233,10 +245,17 @@ static void BattleIntroSlide1(u8 taskId)
         {
             gScanlineEffect.state = 3;
             gTasks[taskId].tState++;
+#ifdef PLATFORM_SDL2
+            CpuFill32(0, (void *)BG_SCREEN_ADDR(28), BG_SCREEN_SIZE * 2);
+            SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
+            SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
+            SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT512x256);
+#else
             CpuFill32(0, (void *)BG_SCREEN_ADDR(28), BG_SCREEN_SIZE);
             SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
             SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
             SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT256x512);
+#endif
             SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(30) | BGCNT_TXT512x256);
         }
         break;
@@ -276,6 +295,10 @@ static void BattleIntroSlide2(u8 taskId)
     switch (gTasks[taskId].tState)
     {
     case 0:
+#ifdef PLATFORM_SDL2
+        if (gTasks[taskId].tEnvironment == BATTLE_ENVIRONMENT_SAND)
+            gBattle_BG1_Y = (u16)(-20);
+#endif
         gTasks[taskId].data[4] = 16;
         if (gBattleTypeFlags & BATTLE_TYPE_LINK)
         {
@@ -342,10 +365,17 @@ static void BattleIntroSlide2(u8 taskId)
         {
             gScanlineEffect.state = 3;
             gTasks[taskId].tState++;
+#ifdef PLATFORM_SDL2
+            CpuFill32(0, (void *)BG_SCREEN_ADDR(28), BG_SCREEN_SIZE * 2);
+            SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
+            SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
+            SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT512x256);
+#else
             CpuFill32(0, (void *)BG_SCREEN_ADDR(28), BG_SCREEN_SIZE);
             SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
             SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
             SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT256x512);
+#endif
             SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(30) | BGCNT_TXT512x256);
         }
         break;
@@ -430,10 +460,17 @@ static void BattleIntroSlide3(u8 taskId)
         {
             gScanlineEffect.state = 3;
             gTasks[taskId].tState++;
+#ifdef PLATFORM_SDL2
+            CpuFill32(0, (void *)BG_SCREEN_ADDR(28), BG_SCREEN_SIZE * 2);
+            SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
+            SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
+            SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT512x256);
+#else
             CpuFill32(0, (void *)BG_SCREEN_ADDR(28), BG_SCREEN_SIZE);
             SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
             SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
             SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT256x512);
+#endif
             SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(30) | BGCNT_TXT512x256);
         }
         break;
@@ -514,7 +551,11 @@ static void BattleIntroSlideLink(u8 taskId)
             gTasks[taskId].tState++;
             SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
             SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
+#ifdef PLATFORM_SDL2
+            SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT512x256);
+#else
             SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT256x512);
+#endif
             SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(30) | BGCNT_TXT512x256);
         }
         break;
@@ -582,7 +623,11 @@ static void BattleIntroSlidePartner(u8 taskId)
             SetGpuReg(REG_OFFSET_DISPCNT, GetGpuReg(REG_OFFSET_DISPCNT) & ~DISPCNT_WIN1_ON);
             SetBgAttribute(1, BG_ATTR_CHARBASEINDEX, 0);
             SetBgAttribute(2, BG_ATTR_CHARBASEINDEX, 0);
+#ifdef PLATFORM_SDL2
+            SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT512x256);
+#else
             SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(28) | BGCNT_TXT256x512);
+#endif
             SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_16COLOR | BGCNT_SCREENBASE(30) | BGCNT_TXT512x256);
             gScanlineEffect.state = 3;
             gTasks[taskId].tState++;
