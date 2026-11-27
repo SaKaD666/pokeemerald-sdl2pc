@@ -1558,8 +1558,8 @@ static void ExpandSummaryInfoRow(u16 *dst, const u16 *src, u16 dstY, u16 srcY)
 
 static void ExpandSummaryInfoTilemap(u16 *dst, const u16 *src, bool8 isEgg)
 {
-    static const u8 sNormalMemoSrcRows[8] = { 14, 15, 16, 17, 17, 17, 18, 19 };
-    static const u8 sEggMemoSrcRows[8] = { 14, 15, 16, 16, 17, 17, 18, 19 };
+    static const u8 sNormalMemoSrcRows[9] = { 14, 15, 16, 17, 17, 17, 17, 17, 18 };
+    static const u8 sEggMemoSrcRows[9] = { 14, 15, 16, 16, 17, 17, 17, 17, 18 };
     const u8 *memoSrcRows = isEgg ? sEggMemoSrcRows : sNormalMemoSrcRows;
     u16 y;
 
@@ -1598,12 +1598,11 @@ static void ExpandSummaryInfoTilemap(u16 *dst, const u16 *src, bool8 isEgg)
 
     for (y = 0; y < ARRAY_COUNT(sNormalMemoSrcRows); y++)
         ExpandSummaryInfoRow(dst, src, 14 + y, memoSrcRows[y]);
-    FillSummaryTilemapSpan(dst, 22, 10, 40, 0x0001);
 }
 
 static void ExpandSummarySkillsTilemap(u16 *dst, const u16 *src)
 {
-    static const u8 sExpSrcRows[6] = { 14, 15, 16, 16, 15, 17 };
+    static const u8 sExpSrcRows[7] = { 14, 15, 16, 16, 15, 16, 17 };
     u16 y;
 
     CpuFill16(0, dst, 0x1000);
@@ -1652,20 +1651,20 @@ static void ExpandSummarySkillsTilemap(u16 *dst, const u16 *src)
         dst[SummaryTileIndex(39, 14 + y)] = src[s * 32 + 29];
     }
 
-    dst[SummaryTileIndex(10, 20)] = src[18 * 32 + 10];
-    FillSummaryTilemapSpan(dst, 20, 11, 29, src[18 * 32 + 11]);
-    dst[SummaryTileIndex(29, 20)] = src[18 * 32 + 19];
-    dst[SummaryTileIndex(30, 20)] = src[18 * 32 + 20];
-    FillSummaryTilemapSpan(dst, 20, 31, 39, src[18 * 32 + 21]);
-    dst[SummaryTileIndex(39, 20)] = src[18 * 32 + 29];
+    dst[SummaryTileIndex(10, 21)] = src[18 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 21, 11, 29, src[18 * 32 + 11]);
+    dst[SummaryTileIndex(29, 21)] = src[18 * 32 + 19];
+    dst[SummaryTileIndex(30, 21)] = src[18 * 32 + 20];
+    FillSummaryTilemapSpan(dst, 21, 31, 39, src[18 * 32 + 21]);
+    dst[SummaryTileIndex(39, 21)] = src[18 * 32 + 29];
 
-    dst[SummaryTileIndex(10, 21)] = src[19 * 32 + 10];
-    FillSummaryTilemapSpan(dst, 21, 11, 40, src[19 * 32 + 11]);
+    dst[SummaryTileIndex(10, 22)] = src[19 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 22, 11, 40, src[19 * 32 + 11]);
 }
 
 static void ExpandSummaryMovesTilemap(u16 *dst, const u16 *src)
 {
-    static const u8 sDescSrcRows[6] = { 15, 16, 17, 16, 17, 18 };
+    static const u8 sDescSrcRows[7] = { 15, 16, 17, 16, 17, 16, 18 };
     u16 y;
 
     CpuFill16(0, dst, 0x1000);
@@ -1701,8 +1700,8 @@ static void ExpandSummaryMovesTilemap(u16 *dst, const u16 *src)
         dst[SummaryTileIndex(39, 15 + y)] = src[s * 32 + 29];
     }
 
-    dst[SummaryTileIndex(10, 21)] = src[19 * 32 + 10];
-    FillSummaryTilemapSpan(dst, 21, 11, 40, src[19 * 32 + 11]);
+    dst[SummaryTileIndex(10, 22)] = src[19 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 22, 11, 40, src[19 * 32 + 11]);
 }
 #endif
 
@@ -3274,7 +3273,7 @@ static void DrawExperienceProgressBar(struct Pokemon *unused)
     for (i = 0; i < 8; i++)
     {
         u16 tile = (numExpProgressBarTicks > 7) ? 0x206A : 0x2062 + (numExpProgressBarTicks % 8);
-        dst[SummaryTileIndex(31 + i, 20)] = tile;
+        dst[SummaryTileIndex(31 + i, 21)] = tile;
         numExpProgressBarTicks -= 8;
         if (numExpProgressBarTicks < 0)
             numExpProgressBarTicks = 0;
