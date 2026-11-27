@@ -3158,7 +3158,7 @@ static void AnimTrickBag(struct Sprite *sprite)
         if (!IsContest())
         {
             sprite->data[1] = cmd->waveOffset;
-            sprite->x = 120;
+            sprite->x = DISPLAY_WIDTH / 2;
         }
         else
         {

@@ -2016,14 +2016,8 @@ void InitPrioritiesForVisibleBattlers(void)
     {
         if (IsBattlerSpriteVisible(i))
         {
-            u8 priority = 2;
-
             gSprites[gBattlerSpriteIds[i]].subpriority = GetBattlerSpriteSubpriority(i);
-#ifdef PLATFORM_SDL2
-            if (!IsContest() && GetBattlerSide(i) == B_SIDE_PLAYER)
-                priority = 1;
-#endif
-            gSprites[gBattlerSpriteIds[i]].oam.priority = priority;
+            gSprites[gBattlerSpriteIds[i]].oam.priority = 2;
         }
     }
 }

@@ -1232,7 +1232,11 @@ static void AnimSmallWaterOrb(struct Sprite *sprite)
         sprite->data[3] += sprite->data[5];
         sprite->x = sprite->data[2] >> 4;
         sprite->y = sprite->data[3] >> 4;
+#ifdef PLATFORM_SDL2
+        if (sprite->x < -8 || sprite->x > DISPLAY_WIDTH + 8 || sprite->y < -8 || sprite->y > DISPLAY_HEIGHT - 40)
+#else
         if (sprite->x < -8 || sprite->x > 248 || sprite->y < -8 || sprite->y > 120)
+#endif
         {
             gTasks[sprite->data[6]].data[sprite->data[7]]--;
             DestroySprite(sprite);
