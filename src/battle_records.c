@@ -1,5 +1,4 @@
 #include "global.h"
-#include "platform/framedraw.h"
 #include "battle_records.h"
 #include "bg.h"
 #include "window.h"
@@ -36,15 +35,22 @@ EWRAM_DATA static u8 *sTilemapBuffer = NULL;
 
 static const u32 sTrainerHillWindowTileset[] = INCGFX_U32("graphics/trainer_hill/records_window.png", ".4bpp");
 static const u16 sTrainerHillWindowPalette[] = INCGFX_U16("graphics/trainer_hill/records_window.png", ".gbapal");
+#ifndef PLATFORM_SDL2
 static const u32 sTrainerHillWindowTilemap[] = INCBIN_U32("graphics/trainer_hill/records_window.bin");
+#endif
 
 static const struct BgTemplate sTrainerHillRecordsBgTemplates[] =
 {
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -52,8 +58,13 @@ static const struct BgTemplate sTrainerHillRecordsBgTemplates[] =
     {
         .bg = 3,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -64,8 +75,13 @@ static const struct WindowTemplate sTrainerHillRecordsWindowTemplates[] =
 {
     {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 7,
+        .tilemapTop = 2,
+#else
         .tilemapLeft = 2,
         .tilemapTop = 1,
+#endif
         .width = 26,
         .height = 18,
         .paletteNum = 15,
@@ -77,8 +93,13 @@ static const struct WindowTemplate sTrainerHillRecordsWindowTemplates[] =
 static const struct WindowTemplate sLinkBattleRecordsWindow =
 {
     .bg = 0,
+#ifdef PLATFORM_SDL2
+    .tilemapLeft = 7,
+    .tilemapTop = 2,
+#else
     .tilemapLeft = 2,
     .tilemapTop = 1,
+#endif
     .width = 26,
     .height = 17,
     .paletteNum = 15,
@@ -372,9 +393,6 @@ static void Task_ExitTrainerHillRecords(u8 taskId)
     if (!gPaletteFade.active)
     {
         SetVBlankCallback(NULL);
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(FALSE);
-#endif
         SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
         Free(sTilemapBuffer);
         RemoveTrainerHillRecordsWindow(0);
@@ -448,7 +466,20 @@ static void SetDispcntReg(void)
 static void LoadTrainerHillRecordsWindowGfx(u8 bgId)
 {
     LoadBgTiles(bgId, sTrainerHillWindowTileset, sizeof(sTrainerHillWindowTileset), 0);
+#ifdef PLATFORM_SDL2
+    // Frame the records window symmetrically inside 40x23 (8px side/top teal margin)
+    FillBgTilemapBufferRect(bgId, 0x0001,  1,  1,  1,  1, 0);
+    FillBgTilemapBufferRect(bgId, 0x0002,  2,  1, 36,  1, 0);
+    FillBgTilemapBufferRect(bgId, 0x0401, 38,  1,  1,  1, 0);
+    FillBgTilemapBufferRect(bgId, 0x0003,  1,  2,  1, 19, 0);
+    FillBgTilemapBufferRect(bgId, 0x0004,  2,  2, 36, 19, 0);
+    FillBgTilemapBufferRect(bgId, 0x0403, 38,  2,  1, 19, 0);
+    FillBgTilemapBufferRect(bgId, 0x0801,  1, 21,  1,  1, 0);
+    FillBgTilemapBufferRect(bgId, 0x0802,  2, 21, 36,  1, 0);
+    FillBgTilemapBufferRect(bgId, 0x0C01, 38, 21,  1,  1, 0);
+#else
     CopyToBgTilemapBufferRect(bgId, sTrainerHillWindowTilemap, 0, 0, 0x20, 0x20);
+#endif
     LoadPalette(sTrainerHillWindowPalette, BG_PLTT_ID(0), sizeof(sTrainerHillWindowPalette));
 }
 
@@ -469,9 +500,6 @@ static void MainCB2_TrainerHillRecords(void)
 
 void ShowTrainerHillRecords(void)
 {
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
     SetVBlankCallback(NULL);
     SetMainCallback2(CB2_ShowTrainerHillRecords);
 }
@@ -490,7 +518,11 @@ static void CB2_ShowTrainerHillRecords(void)
         gMain.state++;
         break;
     case 2:
+#ifdef PLATFORM_SDL2
+        sTilemapBuffer = AllocZeroed(BG_SCREEN_SIZE * 2);
+#else
         sTilemapBuffer = AllocZeroed(BG_SCREEN_SIZE);
+#endif
         ResetBgsAndClearDma3BusyFlags(0);
         InitBgsFromTemplates(0, sTrainerHillRecordsBgTemplates, ARRAY_COUNT(sTrainerHillRecordsBgTemplates));
         SetBgTilemapBuffer(3, sTilemapBuffer);
