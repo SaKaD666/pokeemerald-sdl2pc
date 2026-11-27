@@ -174,43 +174,55 @@ static const u8 sTextColors[][3] =
     [COLORID_WHITE_BG]   = {TEXT_COLOR_WHITE,       TEXT_COLOR_DARK_GRAY,  TEXT_COLOR_LIGHT_GRAY}, // Unused
 };
 
+#ifdef PLATFORM_SDL2
+#define PBAG_WIN_INFO_BASE    (30 + BAG_LIST_WIDTH * BAG_LIST_HEIGHT)
+#define PBAG_WIN_MSG_BASE     (PBAG_WIN_INFO_BASE + BAG_DESC_WIDTH * 6)
+#define PBAG_WIN_TOSS_BASE    (PBAG_WIN_MSG_BASE + BAG_MSG_WIDTH * 4)
+#define PBAG_WIN_ACTION_BASE  (PBAG_WIN_TOSS_BASE + 5 * 2)
+#else
+#define PBAG_WIN_INFO_BASE    270
+#define PBAG_WIN_MSG_BASE     354
+#define PBAG_WIN_TOSS_BASE    462
+#define PBAG_WIN_ACTION_BASE  472
+#endif
+
 static const struct WindowTemplate sWindowTemplates[] =
 {
     [WIN_LIST] = {
         .bg = 0,
-        .tilemapLeft = 14,
-        .tilemapTop = 2,
-        .width = 15,
-        .height = 16,
+        .tilemapLeft = BAG_LIST_LEFT,
+        .tilemapTop = BAG_LIST_TOP,
+        .width = BAG_LIST_WIDTH,
+        .height = BAG_LIST_HEIGHT,
         .paletteNum = 15,
         .baseBlock = 30
     },
     [WIN_INFO] = {
         .bg = 0,
         .tilemapLeft = 0,
-        .tilemapTop = 13,
-        .width = 14,
+        .tilemapTop = BAG_DESC_TOP,
+        .width = BAG_DESC_WIDTH,
         .height = 6,
         .paletteNum = 15,
-        .baseBlock = 270
+        .baseBlock = PBAG_WIN_INFO_BASE
     },
     [WIN_MSG] = {
         .bg = 1,
         .tilemapLeft = 2,
-        .tilemapTop = 15,
-        .width = 27,
+        .tilemapTop = BAG_MSG_TOP,
+        .width = BAG_MSG_WIDTH,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 354
+        .baseBlock = PBAG_WIN_MSG_BASE
     },
     [WIN_TOSS_NUM] = {
         .bg = 1,
-        .tilemapLeft = 24,
-        .tilemapTop = 17,
+        .tilemapLeft = 24 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 17 + BAG_POPUP_OFFSET_Y,
         .width = 5,
         .height = 2,
         .paletteNum = 15,
-        .baseBlock = 462
+        .baseBlock = PBAG_WIN_TOSS_BASE
     },
     DUMMY_WIN_TEMPLATE,
 };
@@ -227,48 +239,48 @@ static const struct WindowTemplate sWindowTemplates_MenuActions[] =
 {
     [MENU_WIN_1x1] = {
         .bg = 1,
-        .tilemapLeft = 22,
-        .tilemapTop = 17,
+        .tilemapLeft = 22 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 17 + BAG_POPUP_OFFSET_Y,
         .width = 7,
         .height = 2,
         .paletteNum = 15,
-        .baseBlock = 472
+        .baseBlock = PBAG_WIN_ACTION_BASE
     },
     [MENU_WIN_1x2] = {
         .bg = 1,
-        .tilemapLeft = 22,
-        .tilemapTop = 15,
+        .tilemapLeft = 22 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 15 + BAG_POPUP_OFFSET_Y,
         .width = 7,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 472
+        .baseBlock = PBAG_WIN_ACTION_BASE
     },
     [MENU_WIN_2x2] = {
         .bg = 1,
-        .tilemapLeft = 15,
-        .tilemapTop = 15,
+        .tilemapLeft = 15 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 15 + BAG_POPUP_OFFSET_Y,
         .width = 14,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 472
+        .baseBlock = PBAG_WIN_ACTION_BASE
     },
     [MENU_WIN_2x3] = { // Unused
         .bg = 1,
-        .tilemapLeft = 15,
-        .tilemapTop = 13,
+        .tilemapLeft = 15 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 13 + BAG_POPUP_OFFSET_Y,
         .width = 14,
         .height = 6,
         .paletteNum = 15,
-        .baseBlock = 472
+        .baseBlock = PBAG_WIN_ACTION_BASE
     },
     [MENU_WIN_YESNO] = {
         .bg = 1,
-        .tilemapLeft = 24,
-        .tilemapTop = 15,
+        .tilemapLeft = 24 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 15 + BAG_POPUP_OFFSET_Y,
         .width = 5,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 472
+        .baseBlock = PBAG_WIN_ACTION_BASE
     },
 };
 
@@ -536,6 +548,9 @@ static bool8 LoadPyramidBagGfx(void)
         if (FreeTempTileDataBuffersIfPossible() != TRUE)
         {
             LZDecompressWram(gBattlePyramidBagTilemap, gPyramidBagMenu->tilemapBuffer);
+#ifdef PLATFORM_SDL2
+            InitBagWideTilemap(gPyramidBagMenu->tilemapBuffer, TRUE);
+#endif
             gPyramidBagMenu->state++;
         }
         break;
@@ -659,7 +674,9 @@ static void AddScrollArrows(void)
 {
     if (gPyramidBagMenu->scrollIndicatorsTaskId == TASK_NONE)
         gPyramidBagMenu->scrollIndicatorsTaskId = AddScrollIndicatorArrowPairParameterized(SCROLL_ARROW_UP,
-                                                                                            172 + GBA_VIEW_X, 12 + GBA_VIEW_Y, 148 + GBA_VIEW_Y,
+                                                                                            BAG_SCROLL_ARROW_X,
+                                                                                            BAG_SCROLL_ARROW_TOP_Y,
+                                                                                            BAG_SCROLL_ARROW_BOTTOM_Y,
                                                                                             gPyramidBagMenu->listMenuCount - gPyramidBagMenu->listMenuMaxShown,
                                                                                             TAG_SCROLL_ARROW, TAG_SCROLL_ARROW,
                                                                                             &gPyramidBagMenuState.scrollPosition);
@@ -766,8 +783,8 @@ void UpdatePyramidBagList(void)
             gPyramidBagMenu->listMenuCount++;
     }
     gPyramidBagMenu->listMenuCount++;
-    if (gPyramidBagMenu->listMenuCount > 8)
-        gPyramidBagMenu->listMenuMaxShown = 8;
+    if (gPyramidBagMenu->listMenuCount > BAG_MAX_ITEMS_SHOWN)
+        gPyramidBagMenu->listMenuMaxShown = BAG_MAX_ITEMS_SHOWN;
     else
         gPyramidBagMenu->listMenuMaxShown = gPyramidBagMenu->listMenuCount;
 }
@@ -1511,7 +1528,7 @@ static void LoadPyramidBagPalette(void)
 static void CreatePyramidBagSprite(void)
 {
     u8 *spriteId = &gPyramidBagMenu->spriteIds[PBAG_SPRITE_BAG];
-    *spriteId = CreateSprite(&sSpriteTemplate_PyramidBag, 68 + GBA_VIEW_X, 56 + GBA_VIEW_Y, 0);
+    *spriteId = CreateSprite(&sSpriteTemplate_PyramidBag, BAG_PYRAMID_SPRITE_X, BAG_PYRAMID_SPRITE_Y, 0);
 }
 
 static void ShakePyramidBag(void)
@@ -1545,8 +1562,8 @@ static void ShowItemIcon(u16 itemId, bool8 isAlt)
         if (itemSpriteId != MAX_SPRITES)
         {
             *spriteId = itemSpriteId;
-            gSprites[itemSpriteId].x2 = 24 + GBA_VIEW_X;
-            gSprites[itemSpriteId].y2 = 88 + GBA_VIEW_Y;
+            gSprites[itemSpriteId].x2 = BAG_ICON_X;
+            gSprites[itemSpriteId].y2 = BAG_ICON_Y;
         }
     }
 }
@@ -1568,5 +1585,5 @@ static void SetSwapLineInvisibility(bool8 invisible)
 
 static void UpdateSwapLinePos(u8 y)
 {
-    UpdateSwapLineSpritesPos(&gPyramidBagMenu->spriteIds[PBAG_SPRITE_SWAP_LINE_START], NUM_SWAP_LINE_SPRITES | SWAP_LINE_HAS_MARGIN, 120 + GBA_VIEW_X, (y + 1) * 16 + GBA_VIEW_Y);
+    UpdateSwapLineSpritesPos(&gPyramidBagMenu->spriteIds[PBAG_SPRITE_SWAP_LINE_START], NUM_SWAP_LINE_SPRITES | SWAP_LINE_HAS_MARGIN, BAG_SWAP_LINE_X, (y + 1) * 16);
 }

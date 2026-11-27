@@ -65,8 +65,8 @@
                             max(BAG_KEYITEMS_COUNT,          \
                                 BAG_POKEBALLS_COUNT))))) + 1)
 
-// Up to 8 item slots can be visible at a time
-#define MAX_ITEMS_SHOWN 8
+// Up to BAG_MAX_ITEMS_SHOWN item slots can be visible at a time
+#define MAX_ITEMS_SHOWN BAG_MAX_ITEMS_SHOWN
 
 enum {
     SWITCH_POCKET_NONE,
@@ -375,11 +375,11 @@ static const struct YesNoFuncTable sYesNoSellItemFunctions = {ConfirmSell, Cance
 
 static const struct ScrollArrowsTemplate sBagScrollArrowsTemplate = {
     .firstArrowType = SCROLL_ARROW_LEFT,
-    .firstX = 28 + GBA_VIEW_X,
-    .firstY = 16 + GBA_VIEW_Y,
+    .firstX = 28 + BAG_POCKET_BANNER_OFFSET_X * 8,
+    .firstY = 16,
     .secondArrowType = SCROLL_ARROW_RIGHT,
-    .secondX = 100 + GBA_VIEW_X,
-    .secondY = 16 + GBA_VIEW_Y,
+    .secondX = 100 + BAG_POCKET_BANNER_OFFSET_X * 8,
+    .secondY = 16,
     .fullyUpThreshold = -1,
     .fullyDownThreshold = -1,
     .tileTag = TAG_BAG_SCROLL_ARROW,
@@ -406,61 +406,81 @@ static const u8 sFontColorTable[][3] = {
     [COLORID_TMHM_INFO]   = {TEXT_COLOR_TRANSPARENT, TEXT_DYNAMIC_COLOR_5,  TEXT_DYNAMIC_COLOR_1}
 };
 
+#ifdef PLATFORM_SDL2
+#define BAG_WIN_DESC_BASE      (0x27 + BAG_LIST_WIDTH * BAG_LIST_HEIGHT)
+#define BAG_WIN_TMHM_ICON_BASE (BAG_WIN_DESC_BASE + BAG_DESC_WIDTH * 6)
+#define BAG_WIN_TMHM_INFO_BASE (BAG_WIN_TMHM_ICON_BASE + 5 * 6)
+#define BAG_WIN_POCKET_BASE    (BAG_WIN_TMHM_INFO_BASE + 4 * 6)
+#define BAG_WIN_MSG_BASE       (BAG_WIN_POCKET_BASE + 8 * 2)
+#define BAG_WIN_CTX_BASE       (BAG_WIN_MSG_BASE + BAG_MSG_WIDTH * 4)
+#define BAG_WIN_MONEY_BASE     (BAG_WIN_CTX_BASE + 14 * 6)
+#define BAG_WIN_QTY_WIDE_BASE  (BAG_WIN_MONEY_BASE + 10 * 2)
+#else
+#define BAG_WIN_DESC_BASE      0x117
+#define BAG_WIN_TMHM_ICON_BASE 0x16B
+#define BAG_WIN_TMHM_INFO_BASE 0x189
+#define BAG_WIN_POCKET_BASE    0x1A1
+#define BAG_WIN_MSG_BASE       0x1B1
+#define BAG_WIN_CTX_BASE       0x21D
+#define BAG_WIN_MONEY_BASE     0x231
+#define BAG_WIN_QTY_WIDE_BASE  0x245
+#endif
+
 static const struct WindowTemplate sDefaultBagWindows[] =
 {
     [WIN_ITEM_LIST] = {
         .bg = 0,
-        .tilemapLeft = 14,
-        .tilemapTop = 2,
-        .width = 15,
-        .height = 16,
+        .tilemapLeft = BAG_LIST_LEFT,
+        .tilemapTop = BAG_LIST_TOP,
+        .width = BAG_LIST_WIDTH,
+        .height = BAG_LIST_HEIGHT,
         .paletteNum = 1,
         .baseBlock = 0x27,
     },
     [WIN_DESCRIPTION] = {
         .bg = 0,
         .tilemapLeft = 0,
-        .tilemapTop = 13,
-        .width = 14,
+        .tilemapTop = BAG_DESC_TOP,
+        .width = BAG_DESC_WIDTH,
         .height = 6,
         .paletteNum = 1,
-        .baseBlock = 0x117,
+        .baseBlock = BAG_WIN_DESC_BASE,
     },
     [WIN_POCKET_NAME] = {
         .bg = 0,
-        .tilemapLeft = 4,
+        .tilemapLeft = 4 + BAG_POCKET_BANNER_OFFSET_X,
         .tilemapTop = 1,
         .width = 8,
         .height = 2,
         .paletteNum = 1,
-        .baseBlock = 0x1A1,
+        .baseBlock = BAG_WIN_POCKET_BASE,
     },
     [WIN_TMHM_INFO_ICONS] = {
         .bg = 0,
         .tilemapLeft = 1,
-        .tilemapTop = 13,
+        .tilemapTop = BAG_DESC_TOP,
         .width = 5,
         .height = 6,
         .paletteNum = 12,
-        .baseBlock = 0x16B,
+        .baseBlock = BAG_WIN_TMHM_ICON_BASE,
     },
     [WIN_TMHM_INFO] = {
         .bg = 0,
         .tilemapLeft = 7,
-        .tilemapTop = 13,
+        .tilemapTop = BAG_DESC_TOP,
         .width = 4,
         .height = 6,
         .paletteNum = 12,
-        .baseBlock = 0x189,
+        .baseBlock = BAG_WIN_TMHM_INFO_BASE,
     },
     [WIN_MESSAGE] = {
         .bg = 1,
         .tilemapLeft = 2,
-        .tilemapTop = 15,
-        .width = 27,
+        .tilemapTop = BAG_MSG_TOP,
+        .width = BAG_MSG_WIDTH,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 0x1B1,
+        .baseBlock = BAG_WIN_MSG_BASE,
     },
     DUMMY_WIN_TEMPLATE,
 };
@@ -469,84 +489,84 @@ static const struct WindowTemplate sContextMenuWindowTemplates[] =
 {
     [ITEMWIN_1x1] = {
         .bg = 1,
-        .tilemapLeft = 22,
-        .tilemapTop = 17,
+        .tilemapLeft = 22 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 17 + BAG_POPUP_OFFSET_Y,
         .width = 7,
         .height = 2,
         .paletteNum = 15,
-        .baseBlock = 0x21D,
+        .baseBlock = BAG_WIN_CTX_BASE,
     },
     [ITEMWIN_1x2] = {
         .bg = 1,
-        .tilemapLeft = 22,
-        .tilemapTop = 15,
+        .tilemapLeft = 22 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 15 + BAG_POPUP_OFFSET_Y,
         .width = 7,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 0x21D,
+        .baseBlock = BAG_WIN_CTX_BASE,
     },
     [ITEMWIN_2x2] = {
         .bg = 1,
-        .tilemapLeft = 15,
-        .tilemapTop = 15,
+        .tilemapLeft = 15 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 15 + BAG_POPUP_OFFSET_Y,
         .width = 14,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 0x21D,
+        .baseBlock = BAG_WIN_CTX_BASE,
     },
     [ITEMWIN_2x3] = {
         .bg = 1,
-        .tilemapLeft = 15,
-        .tilemapTop = 13,
+        .tilemapLeft = 15 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 13 + BAG_POPUP_OFFSET_Y,
         .width = 14,
         .height = 6,
         .paletteNum = 15,
-        .baseBlock = 0x21D,
+        .baseBlock = BAG_WIN_CTX_BASE,
     },
     [ITEMWIN_MESSAGE] = {
         .bg = 1,
         .tilemapLeft = 2,
-        .tilemapTop = 15,
-        .width = 27,
+        .tilemapTop = BAG_MSG_TOP,
+        .width = BAG_MSG_WIDTH,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 0x1B1,
+        .baseBlock = BAG_WIN_MSG_BASE,
     },
     [ITEMWIN_YESNO_LOW] = { // Yes/No tucked in corner, for toss confirm
         .bg = 1,
-        .tilemapLeft = 24,
-        .tilemapTop = 15,
+        .tilemapLeft = 24 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 15 + BAG_POPUP_OFFSET_Y,
         .width = 5,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 0x21D,
+        .baseBlock = BAG_WIN_CTX_BASE,
     },
     [ITEMWIN_YESNO_HIGH] = { // Yes/No higher up, positioned above a lower message box
         .bg = 1,
-        .tilemapLeft = 21,
-        .tilemapTop = 9,
+        .tilemapLeft = 21 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 9 + BAG_POPUP_OFFSET_Y,
         .width = 5,
         .height = 4,
         .paletteNum = 15,
-        .baseBlock = 0x21D,
+        .baseBlock = BAG_WIN_CTX_BASE,
     },
     [ITEMWIN_QUANTITY] = { // Used for quantity of items to Toss/Deposit
         .bg = 1,
-        .tilemapLeft = 24,
-        .tilemapTop = 17,
+        .tilemapLeft = 24 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 17 + BAG_POPUP_OFFSET_Y,
         .width = 5,
         .height = 2,
         .paletteNum = 15,
-        .baseBlock = 0x21D,
+        .baseBlock = BAG_WIN_CTX_BASE,
     },
     [ITEMWIN_QUANTITY_WIDE] = { // Used for quantity and price of items to Sell
         .bg = 1,
-        .tilemapLeft = 18,
-        .tilemapTop = 11,
+        .tilemapLeft = 18 + BAG_POPUP_OFFSET_X,
+        .tilemapTop = 11 + BAG_POPUP_OFFSET_Y,
         .width = 10,
         .height = 2,
         .paletteNum = 15,
-        .baseBlock = 0x245,
+        .baseBlock = BAG_WIN_QTY_WIDE_BASE,
     },
     [ITEMWIN_MONEY] = {
         .bg = 1,
@@ -555,7 +575,7 @@ static const struct WindowTemplate sContextMenuWindowTemplates[] =
         .width = 10,
         .height = 2,
         .paletteNum = 15,
-        .baseBlock = 0x231,
+        .baseBlock = BAG_WIN_MONEY_BASE,
     },
 };
 
@@ -804,28 +824,102 @@ static void BagMenu_InitBGs(void)
     InitBagBgs(gBagMenu->tilemapBuffer);
 }
 
+#ifdef PLATFORM_SDL2
+#define BAG_TILE_OFFSET(x, y) ((((x) >> 5) << 10) | ((y) << 5) | ((x) & 31))
+
+static void FillBagTilemapRect(u16 *map, u8 left, u8 top, u8 width, u8 height, u16 tile)
+{
+    u8 x, y;
+    for (y = top; y < top + height; y++)
+    {
+        for (x = left; x < left + width; x++)
+            map[BAG_TILE_OFFSET(x, y)] = tile;
+    }
+}
+
+void InitBagWideTilemap(void *tilemap, bool8 isPyramidBag)
+{
+    u16 *map = tilemap;
+    u8 x, y;
+    u8 seamX = BAG_LIST_LEFT - 1;
+    u8 rightX = BAG_LIST_LEFT + BAG_LIST_WIDTH;
+    u8 bannerLeft = 1 + BAG_POCKET_BANNER_OFFSET_X;
+
+    FillBagTilemapRect(map, 0, 0, 40, 23, 0x0002);
+
+    map[BAG_TILE_OFFSET(0, 0)] = 0x0001;
+    map[BAG_TILE_OFFSET(seamX, 0)] = 0x0003;
+    FillBagTilemapRect(map, BAG_LIST_LEFT, 0, BAG_LIST_WIDTH, 1, 0x0004);
+    map[BAG_TILE_OFFSET(rightX, 0)] = 0x0403;
+
+    if (!isPyramidBag)
+    {
+        static const u16 sBannerTop[] = {0x0005, 0x0006, 0x0007, 0x0008, 0x0008, 0x0008, 0x0008, 0x0008, 0x0008, 0x0008, 0x0008, 0x0009};
+        static const u16 sBannerBot[] = {0x000C, 0x000D, 0x000E, 0x0808, 0x0808, 0x0808, 0x0808, 0x0808, 0x0808, 0x0808, 0x0808, 0x000F};
+        for (x = 0; x < ARRAY_COUNT(sBannerTop); x++)
+        {
+            map[BAG_TILE_OFFSET(bannerLeft + x, 1)] = sBannerTop[x];
+            map[BAG_TILE_OFFSET(bannerLeft + x, 2)] = sBannerBot[x];
+        }
+        FillBagTilemapRect(map, 5 + BAG_POCKET_BANNER_OFFSET_X, 3, POCKETS_COUNT, 1, 0x1017);
+    }
+
+    map[BAG_TILE_OFFSET(seamX, 1)] = 0x0012;
+    FillBagTilemapRect(map, BAG_LIST_LEFT, 1, BAG_LIST_WIDTH, 1, 0x000B);
+    map[BAG_TILE_OFFSET(rightX, 1)] = 0x0412;
+
+    FillBagTilemapRect(map, seamX, BAG_LIST_TOP, 1, BAG_LIST_HEIGHT, 0x0012);
+    FillBagTilemapRect(map, BAG_LIST_LEFT, BAG_LIST_TOP, BAG_LIST_WIDTH, BAG_LIST_HEIGHT, 0x0011);
+    FillBagTilemapRect(map, rightX, BAG_LIST_TOP, 1, BAG_LIST_HEIGHT, 0x0412);
+
+    FillBagTilemapRect(map, BAG_LIST_LEFT, BAG_LIST_TOP + BAG_LIST_HEIGHT, BAG_LIST_WIDTH, 1, 0x000B);
+    map[BAG_TILE_OFFSET(rightX, BAG_LIST_TOP + BAG_LIST_HEIGHT)] = 0x0412;
+
+    y = BAG_DESC_TOP - 5;
+    map[BAG_TILE_OFFSET(0, y)] = 0x0013;
+    FillBagTilemapRect(map, 1, y, 3, 1, 0x0014);
+    map[BAG_TILE_OFFSET(4, y)] = 0x0413;
+    for (y = BAG_DESC_TOP - 4; y < BAG_DESC_TOP - 1; y++)
+    {
+        map[BAG_TILE_OFFSET(0, y)] = 0x0015;
+        FillBagTilemapRect(map, 1, y, 3, 1, 0x0016);
+        map[BAG_TILE_OFFSET(4, y)] = 0x0415;
+    }
+
+    y = BAG_DESC_TOP - 1;
+    map[BAG_TILE_OFFSET(0, y)] = 0x0018;
+    map[BAG_TILE_OFFSET(1, y)] = 0x0019;
+    map[BAG_TILE_OFFSET(2, y)] = 0x001A;
+    map[BAG_TILE_OFFSET(3, y)] = 0x001A;
+    map[BAG_TILE_OFFSET(4, y)] = 0x001B;
+    FillBagTilemapRect(map, 5, y, seamX - 5, 1, 0x001C);
+    map[BAG_TILE_OFFSET(seamX, y)] = 0x001D;
+
+    map[BAG_TILE_OFFSET(0, BAG_DESC_TOP)] = 0x001E;
+    FillBagTilemapRect(map, 0, BAG_DESC_TOP + 1, 1, 4, 0x0027);
+    map[BAG_TILE_OFFSET(0, BAG_DESC_TOP + 5)] = 0x0025;
+    FillBagTilemapRect(map, 1, BAG_DESC_TOP, seamX - 1, 6, 0x0016);
+    FillBagTilemapRect(map, seamX, BAG_DESC_TOP, 1, 6, 0x001F);
+
+    y = BAG_DESC_TOP + 6;
+    map[BAG_TILE_OFFSET(0, y)] = 0x0026;
+    FillBagTilemapRect(map, 1, y, seamX - 1, 1, 0x0028);
+    map[BAG_TILE_OFFSET(seamX, y)] = 0x0029;
+    FillBagTilemapRect(map, BAG_LIST_LEFT, y, BAG_LIST_WIDTH, 1, 0x0804);
+    map[BAG_TILE_OFFSET(rightX, y)] = 0x002A;
+}
+#endif
+
 void InitBagBgs(void *tilemap)
 {
-    u8 bg;
-
     ResetVramOamAndBgCntRegs();
     memset(tilemap, 0, BAG_TILEMAP_SIZE);
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sBgTemplates_ItemMenu, ARRAY_COUNT(sBgTemplates_ItemMenu));
     SetBgTilemapBuffer(2, tilemap);
     ResetAllBgsCoordinates();
-    for (bg = 0; bg <= 2; bg++)
-    {
-        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
-        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
-    }
     ScheduleBgCopyTilemapToVram(2);
-#ifdef PLATFORM_SDL2
-    SetCenteredGbaWindow0();
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_WIN0_ON);
-#else
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
-#endif
     ShowBg(0);
     ShowBg(1);
     ShowBg(2);
@@ -845,6 +939,9 @@ static bool8 LoadBagMenu_Graphics(void)
         if (FreeTempTileDataBuffersIfPossible() != TRUE)
         {
             LZDecompressWram(gBagScreen_GfxTileMap, gBagMenu->tilemapBuffer);
+#ifdef PLATFORM_SDL2
+            InitBagWideTilemap(gBagMenu->tilemapBuffer, FALSE);
+#endif
             gBagMenu->graphicsLoadState++;
         }
         break;
@@ -1062,9 +1159,9 @@ static void CreatePocketScrollArrowPair(void)
     if (gBagMenu->pocketScrollArrowsTask == TASK_NONE)
         gBagMenu->pocketScrollArrowsTask = AddScrollIndicatorArrowPairParameterized(
             SCROLL_ARROW_UP,
-            172 + GBA_VIEW_X,
-            12 + GBA_VIEW_Y,
-            148 + GBA_VIEW_Y,
+            BAG_SCROLL_ARROW_X,
+            BAG_SCROLL_ARROW_TOP_Y,
+            BAG_SCROLL_ARROW_BOTTOM_Y,
             gBagMenu->numItemStacks[gBagPosition.pocket] - gBagMenu->numShownItems[gBagPosition.pocket],
             TAG_POCKET_SCROLL_ARROW,
             TAG_POCKET_SCROLL_ARROW,
@@ -1385,7 +1482,7 @@ static void SwitchBagPocket(u8 taskId, s16 deltaBagPocketId, bool16 skipEraseLis
     }
     DrawPocketIndicatorSquare(gBagPosition.pocket, FALSE);
     DrawPocketIndicatorSquare(newPocket, TRUE);
-    FillBgTilemapBufferRect_Palette0(2, 11, 14, 2, 15, 16);
+    FillBgTilemapBufferRect_Palette0(2, 11, BAG_LIST_LEFT, BAG_LIST_TOP, BAG_LIST_WIDTH, BAG_LIST_HEIGHT);
     ScheduleBgCopyTilemapToVram(2);
     SetBagVisualPocketId(newPocket, TRUE);
     RemoveBagSprite(ITEMMENUSPRITE_BALL);
@@ -1424,7 +1521,7 @@ static void Task_SwitchBagPocket(u8 taskId)
             else
                 CopyPocketNameToWindow((u8)(8 - (tPocketSwitchTimer >> 1)));
         }
-        if (tPocketSwitchTimer == 16)
+        if (tPocketSwitchTimer == BAG_LIST_HEIGHT)
             tPocketSwitchState++;
         break;
     case 1:
@@ -1444,16 +1541,16 @@ static void Task_SwitchBagPocket(u8 taskId)
 // When the pocket is switched this lighter background is redrawn row by row
 static void DrawItemListBgRow(u8 y)
 {
-    FillBgTilemapBufferRect_Palette0(2, 17, 14, y + 2, 15, 1);
+    FillBgTilemapBufferRect_Palette0(2, 17, BAG_LIST_LEFT, y + BAG_LIST_TOP, BAG_LIST_WIDTH, 1);
     ScheduleBgCopyTilemapToVram(2);
 }
 
 static void DrawPocketIndicatorSquare(u8 x, bool8 isCurrentPocket)
 {
     if (!isCurrentPocket)
-        FillBgTilemapBufferRect_Palette0(2, 0x1017, x + 5, 3, 1, 1);
+        FillBgTilemapBufferRect_Palette0(2, 0x1017, x + 5 + BAG_POCKET_BANNER_OFFSET_X, 3, 1, 1);
     else
-        FillBgTilemapBufferRect_Palette0(2, 0x102B, x + 5, 3, 1, 1);
+        FillBgTilemapBufferRect_Palette0(2, 0x102B, x + 5 + BAG_POCKET_BANNER_OFFSET_X, 3, 1, 1);
     ScheduleBgCopyTilemapToVram(2);
 }
 

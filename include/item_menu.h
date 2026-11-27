@@ -6,9 +6,54 @@
 #include "menu_helpers.h"
 
 #ifdef PLATFORM_SDL2
-#define BAG_TILEMAP_SIZE (2 * BG_SCREEN_SIZE)
+#define BAG_TILEMAP_SIZE            (2 * BG_SCREEN_SIZE)
+#define BAG_MAX_ITEMS_SHOWN         9
+#define BAG_LIST_LEFT               24
+#define BAG_LIST_TOP                2
+#define BAG_LIST_WIDTH              15
+#define BAG_LIST_HEIGHT             (BAG_MAX_ITEMS_SHOWN * 2)
+#define BAG_DESC_TOP                15
+#define BAG_DESC_WIDTH              22
+#define BAG_POCKET_BANNER_OFFSET_X  5
+#define BAG_SPRITE_X                98
+#define BAG_SPRITE_Y                68
+#define BAG_PYRAMID_SPRITE_X        92
+#define BAG_PYRAMID_SPRITE_Y        64
+#define BAG_ICON_X                  24
+#define BAG_ICON_Y                  104
+#define BAG_SCROLL_ARROW_X          (BAG_LIST_LEFT * 8 + BAG_LIST_WIDTH * 8 / 2)
+#define BAG_SCROLL_ARROW_TOP_Y      12
+#define BAG_SCROLL_ARROW_BOTTOM_Y   (16 + BAG_LIST_HEIGHT * 8 + 4)
+#define BAG_SWAP_LINE_X             ((BAG_LIST_LEFT + 1) * 8)
+#define BAG_MSG_TOP                 17
+#define BAG_MSG_WIDTH               36
+#define BAG_POPUP_OFFSET_X          10
+#define BAG_POPUP_OFFSET_Y          2
+void InitBagWideTilemap(void *tilemap, bool8 isPyramidBag);
 #else
-#define BAG_TILEMAP_SIZE BG_SCREEN_SIZE
+#define BAG_TILEMAP_SIZE            BG_SCREEN_SIZE
+#define BAG_MAX_ITEMS_SHOWN         8
+#define BAG_LIST_LEFT               14
+#define BAG_LIST_TOP                2
+#define BAG_LIST_WIDTH              15
+#define BAG_LIST_HEIGHT             (BAG_MAX_ITEMS_SHOWN * 2)
+#define BAG_DESC_TOP                13
+#define BAG_DESC_WIDTH              14
+#define BAG_POCKET_BANNER_OFFSET_X  0
+#define BAG_SPRITE_X                68
+#define BAG_SPRITE_Y                66
+#define BAG_PYRAMID_SPRITE_X        68
+#define BAG_PYRAMID_SPRITE_Y        56
+#define BAG_ICON_X                  24
+#define BAG_ICON_Y                  88
+#define BAG_SCROLL_ARROW_X          172
+#define BAG_SCROLL_ARROW_TOP_Y      12
+#define BAG_SCROLL_ARROW_BOTTOM_Y   148
+#define BAG_SWAP_LINE_X             120
+#define BAG_MSG_TOP                 15
+#define BAG_MSG_WIDTH               27
+#define BAG_POPUP_OFFSET_X          0
+#define BAG_POPUP_OFFSET_Y          0
 #endif
 
 void InitBagBgs(void *tilemap);
