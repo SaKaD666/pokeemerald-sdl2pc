@@ -1968,12 +1968,26 @@ void CopyToBufferFromBgTilemap(u8 bgId, u16 *dest, u8 left, u8 top, u8 width, u8
     u8 i;
     u8 j;
     const u16 *src = GetBgTilemapBuffer(bgId);
+#ifdef PLATFORM_SDL2
+    u16 screenSize = GetBgAttribute(bgId, BG_ATTR_SCREENSIZE);
+    u16 screenWidth = GetBgMetricTextMode(bgId, 1) * 32;
+    u16 screenHeight = GetBgMetricTextMode(bgId, 2) * 32;
 
+    if (src == NULL || GetBgAttribute(bgId, BG_ATTR_TYPE) != BG_TYPE_NORMAL)
+        return;
+
+    for (i = 0; i < height; i++)
+    {
+        for (j = 0; j < width; j++)
+            dest[(i * width) + j] = src[GetTileMapIndexFromCoords(left + j, top + i, screenSize, screenWidth, screenHeight)];
+    }
+#else
     for (i = 0; i < height; i++)
     {
         for (j = 0; j < width; j++)
             dest[(i * width) + j] = src[(i + top) * 32 + j + left];
     }
+#endif
 }
 
 void AddValToTilemapBuffer(void *ptr, int delta, int width, int height, bool32 isAffine)

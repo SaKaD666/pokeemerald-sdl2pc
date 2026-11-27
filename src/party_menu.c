@@ -291,9 +291,9 @@ static void CreatePartyMonHeldItemSprite(struct Pokemon *, struct PartyMenuBox *
 static void CreatePartyMonPokeballSprite(struct Pokemon *, struct PartyMenuBox *);
 static void CreatePartyMonIconSprite(struct Pokemon *, struct PartyMenuBox *, u32);
 static void CreatePartyMonStatusSprite(struct Pokemon *, struct PartyMenuBox *);
-static u8 CreateSmallPokeballButtonSprite(u8, u8);
+static u8 CreateSmallPokeballButtonSprite(u16, u16);
 static void DrawCancelConfirmButtons(void);
-static u8 CreatePokeballButtonSprite(u8, u8);
+static u8 CreatePokeballButtonSprite(u16, u16);
 static void AnimateSelectedPartyIcon(u8, u8);
 static void PartyMenuStartSpriteAnim(u8, u8);
 static u8 GetPartyBoxPaletteFlags(u8, u8);
@@ -713,9 +713,6 @@ static void ResetPartyMenu(void)
 
 static bool8 AllocPartyMenuBg(void)
 {
-    u8 bg;
-    u16 display = DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP;
-
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sPartyMenuBgTemplates, ARRAY_COUNT(sPartyMenuBgTemplates));
     sPartyBgTilemapBuffer = AllocZeroed(GetBgAttribute(1, BG_ATTR_METRIC));
@@ -724,25 +721,35 @@ static bool8 AllocPartyMenuBg(void)
 
     SetBgTilemapBuffer(1, sPartyBgTilemapBuffer);
     ResetAllBgsCoordinates();
-#ifdef PLATFORM_SDL2
-    SetCenteredGbaWindow0();
-    display |= DISPCNT_WIN0_ON;
-#endif
-    for (bg = 0; bg <= 2; bg++)
-    {
-        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
-        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
-    }
-    gSpriteCoordOffsetX = GBA_VIEW_X;
-    gSpriteCoordOffsetY = GBA_VIEW_Y;
+    gSpriteCoordOffsetX = 0;
+    gSpriteCoordOffsetY = 0;
     ScheduleBgCopyTilemapToVram(1);
-    SetGpuReg(REG_OFFSET_DISPCNT, display);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
     ShowBg(0);
     ShowBg(1);
     ShowBg(2);
     return TRUE;
 }
+
+#ifdef PLATFORM_SDL2
+static void InitPartyWideBgTilemap(void)
+{
+    FillBgTilemapBufferRect(1, 0x0002, 0, 0, 40, 23, 1);
+
+    FillBgTilemapBufferRect(1, 0x0004, 2, 0, 1, 1, 1);
+    FillBgTilemapBufferRect(1, 0x0005, 3, 0, 37, 1, 1);
+    FillBgTilemapBufferRect(1, 0x0006, 2, 1, 1, 1, 1);
+    FillBgTilemapBufferRect(1, 0x000E, 3, 1, 37, 1, 1);
+    FillBgTilemapBufferRect(1, 0x000E, 2, 2, 38, 18, 1);
+    FillBgTilemapBufferRect(1, 0x0009, 2, 20, 1, 1, 1);
+    FillBgTilemapBufferRect(1, 0x000E, 3, 20, 37, 1, 1);
+    FillBgTilemapBufferRect(1, 0x0007, 2, 21, 1, 1, 1);
+    FillBgTilemapBufferRect(1, 0x0008, 3, 21, 37, 1, 1);
+
+    CopyToBgTilemapBufferRect_ChangePalette(1, sCancelButton_Tilemap, PARTY_BTN_LEFT, PARTY_CANCEL_TOP, 7, 2, 17);
+}
+#endif
 
 static bool8 AllocPartyMenuBgGfx(void)
 {
@@ -759,6 +766,9 @@ static bool8 AllocPartyMenuBgGfx(void)
         if (!IsDma3ManagerBusyWithBgCopy())
         {
             LZDecompressWram(gPartyMenuBg_Tilemap, sPartyBgTilemapBuffer);
+#ifdef PLATFORM_SDL2
+            InitPartyWideBgTilemap();
+#endif
             sPartyMenuInternal->data[0]++;
         }
         break;
@@ -807,9 +817,6 @@ static void FreePartyPointers(void)
         ClearScheduledBgCopiesToVram();
         ClearDma3Requests();
         ResetAllBgsCoordinates();
-#ifdef PLATFORM_SDL2
-        ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
-#endif
         SetBgTilemapBuffer(0, NULL);
         SetBgTilemapBuffer(1, NULL);
         SetBgTilemapBuffer(2, NULL);
@@ -1126,19 +1133,19 @@ static void CreateCancelConfirmPokeballSprites(void)
     if (gPartyMenu.menuType == PARTY_MENU_TYPE_MULTI_SHOWCASE)
     {
         // The showcase has no Cancel/Confirm buttons
-        FillBgTilemapBufferRect(1, 14, 23, 17, 7, 2, 1);
+        FillBgTilemapBufferRect(1, 14, PARTY_BTN_LEFT, PARTY_CANCEL_TOP, 7, 2, 1);
     }
     else
     {
         if (sPartyMenuInternal->chooseHalf)
         {
-            sPartyMenuInternal->spriteIdConfirmPokeball = CreateSmallPokeballButtonSprite(0xBF, 0x88);
+            sPartyMenuInternal->spriteIdConfirmPokeball = CreateSmallPokeballButtonSprite(PARTY_HALF_BALL_X, PARTY_CONFIRM_BALL_Y);
             DrawCancelConfirmButtons();
-            sPartyMenuInternal->spriteIdCancelPokeball = CreateSmallPokeballButtonSprite(0xBF, 0x98);
+            sPartyMenuInternal->spriteIdCancelPokeball = CreateSmallPokeballButtonSprite(PARTY_HALF_BALL_X, PARTY_MULTI_CANCEL_BALL_Y);
         }
         else
         {
-            sPartyMenuInternal->spriteIdCancelPokeball = CreatePokeballButtonSprite(198, 148);
+            sPartyMenuInternal->spriteIdCancelPokeball = CreatePokeballButtonSprite(PARTY_CANCEL_BALL_X, PARTY_CANCEL_BALL_Y);
         }
         AnimatePartySlot(gPartyMenu.slotId, 1);
     }
@@ -1160,9 +1167,9 @@ void AnimatePartySlot(u8 slot, u8 animNum)
         return;
     case PARTY_SIZE: // Confirm
         if (animNum == 0)
-            SetBgTilemapPalette(1, 23, 16, 7, 2, 1);
+            SetBgTilemapPalette(1, PARTY_BTN_LEFT, PARTY_CONFIRM_TOP, 7, 2, 1);
         else
-            SetBgTilemapPalette(1, 23, 16, 7, 2, 2);
+            SetBgTilemapPalette(1, PARTY_BTN_LEFT, PARTY_CONFIRM_TOP, 7, 2, 2);
         spriteId = sPartyMenuInternal->spriteIdConfirmPokeball;
         break;
     case PARTY_SIZE + 1: // Cancel
@@ -1170,17 +1177,17 @@ void AnimatePartySlot(u8 slot, u8 animNum)
         if (!sPartyMenuInternal->chooseHalf)
         {
             if (animNum == 0)
-                SetBgTilemapPalette(1, 23, 17, 7, 2, 1);
+                SetBgTilemapPalette(1, PARTY_BTN_LEFT, PARTY_CANCEL_TOP, 7, 2, 1);
             else
-                SetBgTilemapPalette(1, 23, 17, 7, 2, 2);
+                SetBgTilemapPalette(1, PARTY_BTN_LEFT, PARTY_CANCEL_TOP, 7, 2, 2);
         }
         else if (animNum == 0)
         {
-            SetBgTilemapPalette(1, 23, 18, 7, 2, 1);
+            SetBgTilemapPalette(1, PARTY_BTN_LEFT, PARTY_MULTI_CANCEL_TOP, 7, 2, 1);
         }
         else
         {
-            SetBgTilemapPalette(1, 23, 18, 7, 2, 2);
+            SetBgTilemapPalette(1, PARTY_BTN_LEFT, PARTY_MULTI_CANCEL_TOP, 7, 2, 2);
         }
         spriteId = sPartyMenuInternal->spriteIdCancelPokeball;
         break;
@@ -1225,8 +1232,8 @@ static bool8 PartyBoxPal_ParnterOrDisqualifiedInArena(u8 slot)
 
 static void DrawCancelConfirmButtons(void)
 {
-    CopyToBgTilemapBufferRect_ChangePalette(1, sConfirmButton_Tilemap, 23, 16, 7, 2, 17);
-    CopyToBgTilemapBufferRect_ChangePalette(1, sCancelButton_Tilemap, 23, 18, 7, 2, 17);
+    CopyToBgTilemapBufferRect_ChangePalette(1, sConfirmButton_Tilemap, PARTY_BTN_LEFT, PARTY_CONFIRM_TOP, 7, 2, 17);
+    CopyToBgTilemapBufferRect_ChangePalette(1, sCancelButton_Tilemap, PARTY_BTN_LEFT, PARTY_MULTI_CANCEL_TOP, 7, 2, 17);
     ScheduleBgCopyTilemapToVram(1);
 }
 
@@ -2560,7 +2567,7 @@ static u8 DisplaySelectionWindow(u8 windowType)
     switch (windowType)
     {
     case SELECTWINDOW_ACTIONS:
-        SetWindowTemplateFields(&window, 2, 19, 19 - (sPartyMenuInternal->numActions * 2), 10, sPartyMenuInternal->numActions * 2, 14, 0x2E9);
+        SetWindowTemplateFields(&window, 2, PARTY_POPUP_RIGHT - 10, PARTY_ACTION_BOTTOM - (sPartyMenuInternal->numActions * 2), 10, sPartyMenuInternal->numActions * 2, 14, PARTY_WIN_ACTION_BASE);
         break;
     case SELECTWINDOW_ITEM:
         window = sItemGiveTakeWindowTemplate;
@@ -2905,7 +2912,7 @@ static bool8 TryMovePartySlot(s16 x, s16 width, u8 *leftMove, u8 *newX, u8 *newW
 {
     if (x + width < 0)
         return FALSE;
-    if (x >= 32)
+    if (x >= PARTY_SLIDE_CLIP_X)
         return FALSE;
 
     if (x < 0)
@@ -2918,8 +2925,8 @@ static bool8 TryMovePartySlot(s16 x, s16 width, u8 *leftMove, u8 *newX, u8 *newW
     {
         *leftMove = 0;
         *newX = x;
-        if (x + width >= 32)
-            *newWidth = 32 - x;
+        if (x + width >= PARTY_SLIDE_CLIP_X)
+            *newWidth = PARTY_SLIDE_CLIP_X - x;
         else
             *newWidth = width;
 
@@ -2981,7 +2988,7 @@ static void Task_SlideSelectedSlotsOffscreen(u8 taskId)
     slidingSlotPositions[1] = tSlot2Left + tSlot2Offset;
 
     // Both slots have slid offscreen
-    if (slidingSlotPositions[0] > 33 && slidingSlotPositions[1] > 33)
+    if (slidingSlotPositions[0] > PARTY_SLIDE_CLIP_X + 1 && slidingSlotPositions[1] > PARTY_SLIDE_CLIP_X + 1)
     {
         tSlot1SlideDir *= -1;
         tSlot2SlideDir *= -1;
@@ -4184,7 +4191,7 @@ static void CreatePartyMonPokeballSpriteParameterized(u16 species, struct PartyM
 }
 
 // For Cancel when Confirm isnt present
-static u8 CreatePokeballButtonSprite(u8 x, u8 y)
+static u8 CreatePokeballButtonSprite(u16 x, u16 y)
 {
     u8 spriteId = UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeball, x, y, 8));
 
@@ -4193,7 +4200,7 @@ static u8 CreatePokeballButtonSprite(u8 x, u8 y)
 }
 
 // For Confirm and Cancel when both are present
-static u8 CreateSmallPokeballButtonSprite(u8 x, u8 y)
+static u8 CreateSmallPokeballButtonSprite(u16 x, u16 y)
 {
     return UsePartySpriteOffset(CreateSprite(&sSpriteTemplate_MenuPokeballSmall, x, y, 8));
 }
@@ -6180,9 +6187,9 @@ void ShowPartyMenuToShowcaseMultiBattleParty(void)
 static void Task_InitMultiPartnerPartySlideIn(u8 taskId)
 {
     // The first slide step also sets the sprites offscreen
-    gTasks[taskId].tXPos = 256;
+    gTasks[taskId].tXPos = PARTY_SHOWCASE_SLIDE_X;
     SlideMultiPartyMenuBoxSpritesOneStep(taskId);
-    ChangeBgX(2, GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
+    ChangeBgX(2, PARTY_SHOWCASE_BG2_START_X, BG_COORD_SET);
     gTasks[taskId].func = Task_MultiPartnerPartySlideIn;
 }
 
