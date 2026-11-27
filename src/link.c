@@ -1,5 +1,4 @@
 #include "global.h"
-#include "platform/framedraw.h"
 #include "m4a.h"
 #include "malloc.h"
 #include "reload_save.h"
@@ -195,12 +194,20 @@ static const struct BgTemplate sLinkErrorBgTemplates[] = {
     {
         .bg = 0,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
+#endif
         .priority = 0
     }, {
         .bg = 1,
         .charBaseIndex = 0,
         .mapBaseIndex = 8,
+#ifdef PLATFORM_SDL2
+        .screenSize = 1,
+#endif
         .priority = 1
     }
 };
@@ -208,8 +215,13 @@ static const struct BgTemplate sLinkErrorBgTemplates[] = {
 static const struct WindowTemplate sLinkErrorWindowTemplates[] = {
     [WIN_LINK_ERROR_TOP] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 5,
+        .tilemapTop = 1,
+#else
         .tilemapLeft = 0,
         .tilemapTop = 0,
+#endif
         .width = DISPLAY_TILE_WIDTH,
         .height = 5,
         .paletteNum = 15,
@@ -217,8 +229,13 @@ static const struct WindowTemplate sLinkErrorWindowTemplates[] = {
     },
     [WIN_LINK_ERROR_MID] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 5,
+        .tilemapTop = 7,
+#else
         .tilemapLeft = 0,
         .tilemapTop = 6,
+#endif
         .width = DISPLAY_TILE_WIDTH,
         .height = 7,
         .paletteNum = 15,
@@ -226,8 +243,13 @@ static const struct WindowTemplate sLinkErrorWindowTemplates[] = {
     },
     [WIN_LINK_ERROR_BOTTOM] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 5,
+        .tilemapTop = 14,
+#else
         .tilemapLeft = 0,
         .tilemapTop = 13,
+#endif
         .width = DISPLAY_TILE_WIDTH,
         .height = 7,
         .paletteNum = 15,
@@ -1603,10 +1625,6 @@ void CB2_LinkError(void)
 {
     u8 *tilemapBuffer;
 
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
-
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
     m4aMPlayStop(&gMPlayInfo_SE1);
     m4aMPlayStop(&gMPlayInfo_SE2);
@@ -1633,10 +1651,17 @@ void CB2_LinkError(void)
     SetVBlankCallback(VBlankCB_LinkError);
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sLinkErrorBgTemplates, ARRAY_COUNT(sLinkErrorBgTemplates));
+#ifdef PLATFORM_SDL2
+    sLinkErrorBgTilemapBuffer = tilemapBuffer = Alloc(BG_SCREEN_SIZE * 2);
+#else
     sLinkErrorBgTilemapBuffer = tilemapBuffer = Alloc(BG_SCREEN_SIZE);
+#endif
     SetBgTilemapBuffer(1, tilemapBuffer);
     if (InitWindows(sLinkErrorWindowTemplates))
     {
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 64, 32);
+#endif
         DeactivateAllTextPrinters();
         SetGpuReg(REG_OFFSET_BLDCNT, 0);
         SetGpuReg(REG_OFFSET_BLDALPHA, 0);
@@ -1662,7 +1687,13 @@ static void ErrorMsg_MoveCloserToPartner(void)
 {
     LoadBgTiles(0, sCommErrorBg_Gfx, 0x20, 0);
     DecompressAndLoadBgGfxUsingHeap(1, sWirelessLinkDisplayGfx, FALSE, 0, 0);
+#ifdef PLATFORM_SDL2
+    LZ77UnCompWram(sWirelessLinkDisplayTilemap, gDecompressionBuffer);
+    FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 64, 32);
+    CopyRectToBgTilemapBufferRect(1, gDecompressionBuffer, 0, 0, 32, 20, 5, 1, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 17, 0, 0);
+#else
     CopyToBgTilemapBuffer(1, sWirelessLinkDisplayTilemap, 0, 0);
+#endif
     CopyBgTilemapBufferToVram(1);
     LoadPalette(sWirelessLinkDisplayPal, BG_PLTT_ID(0), sizeof(sWirelessLinkDisplayPal));
     FillWindowPixelBuffer(WIN_LINK_ERROR_TOP, PIXEL_FILL(0));
@@ -1729,9 +1760,6 @@ static void CB2_PrintErrorMessage(void)
                 PlaySE(SE_PIN);
                 gWirelessCommType = 0;
                 sLinkErrorBuffer.disconnected = FALSE;
-#ifdef PLATFORM_SDL2
-                SetFrameViewToGbaSize(FALSE);
-#endif
                 ReloadSave();
             }
         }
@@ -1741,9 +1769,6 @@ static void CB2_PrintErrorMessage(void)
             {
                 rfu_REQ_stopMode();
                 rfu_waitREQComplete();
-#ifdef PLATFORM_SDL2
-                SetFrameViewToGbaSize(FALSE);
-#endif
                 DoSoftReset();
             }
         }
