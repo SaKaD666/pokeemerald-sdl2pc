@@ -94,14 +94,26 @@ static bool8 sFieldTilemapCopyPending;
 static u64 sFieldTilemapTilesGeneration;
 #endif
 
+enum
+{
+    MAX_CACHED_FIELD_TILE_SOURCES = 8,
+};
+
 static struct FieldTileSourceCacheEntry *FindFieldTileSource(const struct Tileset *tileset)
 {
-    struct FieldTileSourceCacheEntry *entry;
+    struct FieldTileSourceCacheEntry **cursor;
 
-    for (entry = sFieldTileSourceCache; entry != NULL; entry = entry->next)
+    for (cursor = &sFieldTileSourceCache; *cursor != NULL; cursor = &(*cursor)->next)
     {
+        struct FieldTileSourceCacheEntry *entry = *cursor;
+
         if (entry->source.tileset == tileset)
+        {
+            *cursor = entry->next;
+            entry->next = sFieldTileSourceCache;
+            sFieldTileSourceCache = entry;
             return entry;
+        }
     }
 
     return NULL;
@@ -144,6 +156,47 @@ static const struct FieldTileSource *GetFieldTileSource(const struct MapLayout *
 
     entry = GetOrCreateFieldTileSource(tileset);
     return entry != NULL ? &entry->source : NULL;
+}
+
+static bool32 IsFieldTileSourceReferenced(const struct FieldTileSourceCacheEntry *entry)
+{
+    u32 i;
+
+    if (entry == sPendingActiveFieldTileset)
+        return TRUE;
+    if (gMapHeader.mapLayout != NULL
+     && entry->source.tileset == gMapHeader.mapLayout->secondaryTileset)
+        return TRUE;
+
+    for (i = 0; i < WIDE_FIELD_METATILE_COUNT; i++)
+    {
+        if (sPendingFieldSources[i] == &entry->source || sDisplayedFieldSources[i] == &entry->source)
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static void PruneUnusedFieldTileSources(u32 maxEntries)
+{
+    struct FieldTileSourceCacheEntry **cursor = &sFieldTileSourceCache;
+    u32 count = 0;
+
+    while (*cursor != NULL)
+    {
+        struct FieldTileSourceCacheEntry *entry = *cursor;
+
+        if (count >= maxEntries && (maxEntries == 0 || !IsFieldTileSourceReferenced(entry)))
+        {
+            *cursor = entry->next;
+            free(entry);
+        }
+        else
+        {
+            count++;
+            cursor = &entry->next;
+        }
+    }
 }
 
 void CacheActiveFieldTileset(void)
@@ -285,6 +338,7 @@ void TransferFieldTilemaps(void)
 
     memcpy(sDisplayedFieldSources, sPendingFieldSources, sizeof(sDisplayedFieldSources));
     sFieldTilemapCopyPending = FALSE;
+    PruneUnusedFieldTileSources(MAX_CACHED_FIELD_TILE_SOURCES);
 }
 
 const struct FieldTileSource *const *GetDisplayedFieldTileSources(u8 bg, u8 base)
@@ -320,6 +374,7 @@ void ResetFieldCamera(void)
     memset(sPendingFieldSources, 0, sizeof(sPendingFieldSources));
     memset(sDisplayedFieldSources, 0, sizeof(sDisplayedFieldSources));
     CancelPendingFieldTilemapCopy();
+    PruneUnusedFieldTileSources(0);
 }
 
 void FieldUpdateBgTilemapScroll(void)

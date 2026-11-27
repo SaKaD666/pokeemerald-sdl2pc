@@ -554,6 +554,7 @@ bool8 Rain_Finish(void)
 #define tState   data[4]
 #define tActive  data[5]
 #define tWaiting data[6]
+#define RAIN_TILE_GRID_SIZE ((DISPLAY_WIDTH / TILE_WIDTH) * ((DISPLAY_HEIGHT + TILE_HEIGHT - 1) / TILE_HEIGHT))
 
 static void StartRainSpriteFall(struct Sprite *sprite)
 {
@@ -566,8 +567,7 @@ static void StartRainSpriteFall(struct Sprite *sprite)
         sprite->tRandom = 361;
 
     rand = ISO_RANDOMIZE2(sprite->tRandom);
-    sprite->tRandom = ((rand & 0x7FFF0000) >> 16)
-                    % ((DISPLAY_WIDTH / TILE_WIDTH) * ((DISPLAY_HEIGHT + TILE_HEIGHT - 1) / TILE_HEIGHT));
+    sprite->tRandom = ((rand & 0x7FFF0000) >> 16) % RAIN_TILE_GRID_SIZE;
 
     numFallingFrames = sRainSpriteFallingDurations[gWeatherPtr->isDownpour][0];
 
@@ -687,7 +687,7 @@ static struct Sprite *TryCreateRainSprite(u8 spriteIndex)
 
     sprite = &gSprites[spriteId];
     sprite->tActive = FALSE;
-    sprite->tRandom = (spriteIndex * 145) % 600;
+    sprite->tRandom = (spriteIndex * 145) % RAIN_TILE_GRID_SIZE;
     StartRainSpriteFall(sprite);
     InitRainSpriteMovement(sprite, spriteIndex * 9);
     sprite->invisible = TRUE;
