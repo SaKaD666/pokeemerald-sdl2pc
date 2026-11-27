@@ -1,6 +1,7 @@
 #include "global.h"
 #include "battle_pyramid.h"
 #include "bg.h"
+#include "decompress.h"
 #include "event_object_movement.h"
 #include "fieldmap.h"
 #include "fldeff.h"
@@ -382,6 +383,22 @@ static u16 GetLayoutMetatileAttributes(const struct MapLayout *layout, u16 metat
 
     return MB_INVALID;
 }
+
+#ifdef PLATFORM_SDL2
+void MapGridGetMetatileDrawInfoAt(s32 x, s32 y, const struct MapLayout **layout, s32 *metatileId, u8 *layerType)
+{
+    const u16 *entry = GetMapGridEntry(x, y);
+    const struct MapConnection *connection = GetMapGridSourceConnection(entry);
+    u16 block = entry != NULL ? *entry : MAPGRID_UNDEFINED;
+
+    *layout = connection != NULL ? GetMapHeaderFromConnection(connection)->mapLayout : gMapHeader.mapLayout;
+    if (block == MAPGRID_UNDEFINED)
+        block = GetBorderBlockAt(x, y);
+
+    *metatileId = UNPACK_METATILE(block);
+    *layerType = UNPACK_LAYER_TYPE(GetLayoutMetatileAttributes(*layout, *metatileId));
+}
+#endif
 
 s32 MapGridGetMetatileBehaviorAt(s32 x, s32 y)
 {
@@ -808,7 +825,12 @@ static void CopyTilesetToVram(struct Tileset const *tileset, u16 numTiles, u16 o
         if (!tileset->isCompressed)
             LoadBgTiles(2, tileset->tiles, numTiles * 32, offset);
         else
-            DecompressAndCopyTileDataToVram(2, tileset->tiles, numTiles * 32, offset, 0);
+        {
+            u32 size = min(GetDecompressedDataSize(tileset->tiles), numTiles * TILE_SIZE_4BPP);
+
+            if (size != 0)
+                DecompressAndCopyTileDataToVram(2, tileset->tiles, size, offset, 0);
+        }
     }
 }
 
@@ -819,7 +841,12 @@ static void CopyTilesetToVramUsingHeap(struct Tileset const *tileset, u16 numTil
         if (!tileset->isCompressed)
             LoadBgTiles(2, tileset->tiles, numTiles * 32, offset);
         else
-            DecompressAndLoadBgGfxUsingHeap(2, tileset->tiles, numTiles * 32, offset, 0);
+        {
+            u32 size = min(GetDecompressedDataSize(tileset->tiles), numTiles * TILE_SIZE_4BPP);
+
+            if (size != 0)
+                DecompressAndLoadBgGfxUsingHeap(2, tileset->tiles, size, offset, 0);
+        }
     }
 }
 

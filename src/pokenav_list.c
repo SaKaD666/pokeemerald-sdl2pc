@@ -696,6 +696,10 @@ static void SetListMarginTile(struct PokenavListMenuWindow *listWindow, bool32 d
 
     tilemapBuffer[0] = var;
     tilemapBuffer[0x20] = var;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapRamRange(&tilemapBuffer[0], sizeof(*tilemapBuffer));
+    InvalidateBgTilemapRamRange(&tilemapBuffer[0x20], sizeof(*tilemapBuffer));
+#endif
 }
 
 // Print the trainer's name and title at the top of their check page

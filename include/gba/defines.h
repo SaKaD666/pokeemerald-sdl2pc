@@ -60,7 +60,11 @@ extern unsigned char PLTT[PLTT_SIZE] __attribute__ ((aligned (4)));
 
 #define BG_PLTT       PLTT
 
+#ifdef PLATFORM_SDL2
+#define VRAM_SIZE 0x30000
+#else
 #define VRAM_SIZE 0x18000
+#endif
 #ifndef PORTABLE
 #define VRAM      0x6000000
 #else
@@ -84,10 +88,18 @@ extern unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
 #define OBJ_VRAM0      (VRAM + 0x10000)
 #define OBJ_VRAM0_SIZE 0x8000
 
+#ifdef PLATFORM_SDL2
+#define OBJ_VRAM_EXT     (OBJ_VRAM0 + OBJ_VRAM0_SIZE)
+#define OBJ_VRAM_EXT_SIZE OBJ_VRAM0_SIZE
+#define BG_VRAM_EXT      (OBJ_VRAM_EXT + OBJ_VRAM_EXT_SIZE)
+#define BG_VRAM_EXT_SIZE BG_VRAM_SIZE
+#endif
+
 // bitmap-mode BG
 #define OBJ_VRAM1      (VRAM + 0x14000)
 #define OBJ_VRAM1_SIZE 0x4000
 
+#define OAM_ENTRY_COUNT 128
 #define OAM_SIZE 0x400
 #ifndef PORTABLE
 #define OAM      0x7000000

@@ -272,6 +272,8 @@ void FreeRegionMapSubstruct2(void)
     FreeRegionMapIconResources();
     FreeCityZoomViewGfx();
     RemoveWindow(state->infoWindowId);
+    if (GetBgTilemapBuffer(1) == state->tilemapBuffer)
+        UnsetBgTilemapBuffer(1);
     FreePokenavSubstruct(POKENAV_SUBSTRUCT_REGION_MAP);
     FreePokenavSubstruct(POKENAV_SUBSTRUCT_REGION_MAP_ZOOM);
     SetPokenavVBlankCallback();
@@ -477,6 +479,12 @@ static u32 LoopedTask_ExitRegionMap(s32 taskState)
         HideBg(2);
         HideBg(3);
         return LT_INC_AND_PAUSE;
+#ifdef PLATFORM_SDL2
+    case 3:
+        if (IsDma3ManagerBusyWithBgCopy())
+            return LT_PAUSE;
+        break;
+#endif
     }
 
     return LT_FINISH;

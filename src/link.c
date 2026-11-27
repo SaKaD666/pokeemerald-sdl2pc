@@ -1140,6 +1140,9 @@ static void LinkTest_PrintNumChar(char val, u8 x, u8 y)
 
     vAddr = (u16 *)BG_SCREEN_ADDR(gLinkTestBGInfo.screenBaseBlock);
     vAddr[y * 32 + x] = (gLinkTestBGInfo.paletteNum << 12) | (val + 1 + gLinkTestBGInfo.baseChar);
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange(&vAddr[y * 32 + x], sizeof(*vAddr));
+#endif
 }
 
 static void LinkTest_PrintChar(char val, u8 x, u8 y)
@@ -1148,6 +1151,9 @@ static void LinkTest_PrintChar(char val, u8 x, u8 y)
 
     vAddr = (u16 *)BG_SCREEN_ADDR(gLinkTestBGInfo.screenBaseBlock);
     vAddr[y * 32 + x] = (gLinkTestBGInfo.paletteNum << 12) | (val + gLinkTestBGInfo.baseChar);
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange(&vAddr[y * 32 + x], sizeof(*vAddr));
+#endif
 }
 
 static void LinkTest_PrintHex(u32 num, u8 x, u8 y, u8 length)

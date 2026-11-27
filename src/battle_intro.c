@@ -608,6 +608,9 @@ void DrawBattlerOnBg(int bgId, u8 x, u8 y, u8 battlerPosition, u8 paletteId, u8 
             tilemap[i * 32 + j] = offset | (paletteId << 12);
             offset++;
         }
+#ifdef PLATFORM_SDL2
+        InvalidateBgTilemapRamRange(&tilemap[i * 32 + x], 8 * sizeof(*tilemap));
+#endif
     }
     LoadBgTilemap(bgId, tilemap, BG_SCREEN_SIZE, 0);
 }

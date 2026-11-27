@@ -90,6 +90,9 @@ struct FieldTileSourceCacheEntry
 static struct FieldTileSourceCacheEntry *sFieldTileSourceCache;
 static const struct FieldTileSourceCacheEntry *sPendingActiveFieldTileset;
 static bool8 sFieldTilemapCopyPending;
+#ifdef PLATFORM_SDL2
+static u64 sFieldTilemapTilesGeneration;
+#endif
 
 static struct FieldTileSourceCacheEntry *FindFieldTileSource(const struct Tileset *tileset)
 {
@@ -215,11 +218,21 @@ bool32 QueueFieldTilemapCopy(u8 bg, const void *buffer, u16 size)
         return FALSE;
 
     sFieldTilemapCopyPending = TRUE;
+#ifdef PLATFORM_SDL2
+    sFieldTilemapTilesGeneration = GetBgExtendedTilesGeneration();
+#endif
     return TRUE;
+}
+
+void CancelPendingFieldTilemapCopy(void)
+{
+    sFieldTilemapCopyPending = FALSE;
+    sPendingActiveFieldTileset = NULL;
 }
 
 void TransferFieldTilemaps(void)
 {
+    void *secondaryTiles = (void *)(BG_VRAM + NUM_TILES_IN_PRIMARY * TILE_SIZE_4BPP);
     u8 bg;
 
     if (!sFieldTilemapCopyPending)
@@ -229,27 +242,46 @@ void TransferFieldTilemaps(void)
     {
         if (!IsFieldTilemapBuffer(bg, GetBgTilemapBuffer(bg)) || GetBgAttribute(bg, BG_ATTR_METRIC) != WIDE_FIELD_TILEMAP_SIZE)
         {
-            sFieldTilemapCopyPending = FALSE;
-            sPendingActiveFieldTileset = NULL;
+            CancelPendingFieldTilemapCopy();
             return;
         }
     }
 
     // Publish the wide field as a unit before SDL2 renders the next frame.
+#ifdef PLATFORM_SDL2
+    enum Dma3TransferState state;
+
+    if (sPendingActiveFieldTileset != NULL && HasPendingDma3Write(secondaryTiles, SECONDARY_TILESET_BYTES))
+        return;
+
+    state = PublishFieldBgTilemaps(sFieldTilemapTilesGeneration);
+    if (state == DMA3_TRANSFER_PENDING)
+        return;
+    if (state != DMA3_TRANSFER_COMPLETED)
+    {
+        CancelPendingFieldTilemapCopy();
+        return;
+    }
+#endif
     if (sPendingActiveFieldTileset != NULL)
     {
-        void *vram = (void *)(BG_VRAM + NUM_TILES_IN_PRIMARY * TILE_SIZE_4BPP);
-
-        memcpy(vram, sPendingActiveFieldTileset->tiles, SECONDARY_TILESET_BYTES);
+        memcpy(secondaryTiles, sPendingActiveFieldTileset->tiles, SECONDARY_TILESET_BYTES);
+#ifdef PLATFORM_SDL2
+        InvalidateBgTilemapVramRange(secondaryTiles, SECONDARY_TILESET_BYTES);
+#endif
         SetSecondaryTilesetAnimation(&sPendingActiveFieldTileset->animation);
         sPendingActiveFieldTileset = NULL;
     }
 
+#ifndef PLATFORM_SDL2
     for (bg = 1; bg <= 3; bg++)
     {
         u16 base = GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX);
-        memcpy((void *)BG_SCREEN_ADDR(base), GetBgTilemapBuffer(bg), WIDE_FIELD_TILEMAP_SIZE);
+        void *map = (void *)BG_SCREEN_ADDR(base);
+
+        memcpy(map, GetBgTilemapBuffer(bg), WIDE_FIELD_TILEMAP_SIZE);
     }
+#endif
 
     memcpy(sDisplayedFieldSources, sPendingFieldSources, sizeof(sDisplayedFieldSources));
     sFieldTilemapCopyPending = FALSE;
@@ -287,8 +319,7 @@ void ResetFieldCamera(void)
     ResetCameraOffset(&sFieldCameraOffset);
     memset(sPendingFieldSources, 0, sizeof(sPendingFieldSources));
     memset(sDisplayedFieldSources, 0, sizeof(sDisplayedFieldSources));
-    sFieldTilemapCopyPending = FALSE;
-    sPendingActiveFieldTileset = NULL;
+    CancelPendingFieldTilemapCopy();
 }
 
 void FieldUpdateBgTilemapScroll(void)
@@ -420,7 +451,7 @@ void FillFieldTilemapForBattleTransition(void)
     GetWideMapViewOrigin(&sFieldCameraOffset, &left, &top);
     DrawMapViewRect(&sFieldCameraOffset, left - (width - MAP_VIEW_WIDTH) / 2,
                     top - (height - MAP_VIEW_HEIGHT) / 2, width, height);
-    sFieldTilemapCopyPending = TRUE;
+    QueueFieldTilemapCopy(1, GetBgTilemapBuffer(1), WIDE_FIELD_TILEMAP_SIZE);
 }
 #endif
 
@@ -473,9 +504,18 @@ void DrawDoorMetatileAt(int x, int y, u16 *tiles)
 
 static void DrawMetatileAt(u16 offset, int x, int y)
 {
-    const struct MapLayout *mapLayout = MapGridGetSourceLayoutAt(x, y);
-    u16 metatileId = MapGridGetMetatileIdAt(x, y);
+    const struct MapLayout *mapLayout;
+    s32 metatileId;
+    u8 metatileLayerType;
     const u16 *metatiles;
+
+#ifdef PLATFORM_SDL2
+    MapGridGetMetatileDrawInfoAt(x, y, &mapLayout, &metatileId, &metatileLayerType);
+#else
+    mapLayout = MapGridGetSourceLayoutAt(x, y);
+    metatileId = MapGridGetMetatileIdAt(x, y);
+    metatileLayerType = MapGridGetMetatileLayerTypeAt(x, y);
+#endif
 
     if (metatileId > NUM_METATILES_TOTAL)
         metatileId = 0;
@@ -491,7 +531,7 @@ static void DrawMetatileAt(u16 offset, int x, int y)
     if (GetFieldTilemapWidth() == WIDE_FIELD_TILEMAP_WIDTH)
         sPendingFieldSources[GetFieldTileSourceIndex(offset)] = GetFieldTileSource(mapLayout);
 
-    DrawMetatile(MapGridGetMetatileLayerTypeAt(x, y), metatiles + metatileId * NUM_TILES_PER_METATILE, offset);
+    DrawMetatile(metatileLayerType, metatiles + metatileId * NUM_TILES_PER_METATILE, offset);
 }
 
 static void DrawMetatile(s32 metatileLayerType, const u16 *tiles, u16 offset)
@@ -556,6 +596,23 @@ static void DrawMetatile(s32 metatileLayerType, const u16 *tiles, u16 offset)
         gOverworldTilemapBuffer_Bg1[offset + 0x21] = tiles[7];
         break;
     }
+#ifdef PLATFORM_SDL2
+    if (metatileLayerType >= METATILE_LAYER_TYPE_NORMAL && metatileLayerType <= METATILE_LAYER_TYPE_SPLIT)
+    {
+        const u16 *const maps[] = {
+            gOverworldTilemapBuffer_Bg1,
+            gOverworldTilemapBuffer_Bg2,
+            gOverworldTilemapBuffer_Bg3,
+        };
+        u8 i;
+
+        for (i = 0; i < ARRAY_COUNT(maps); i++)
+        {
+            InvalidateBgTilemapRamRange(maps[i] + offset, 2 * sizeof(u16));
+            InvalidateBgTilemapRamRange(maps[i] + offset + 0x20, 2 * sizeof(u16));
+        }
+    }
+#endif
     ScheduleBgCopyTilemapToVram(1);
     ScheduleBgCopyTilemapToVram(2);
     ScheduleBgCopyTilemapToVram(3);

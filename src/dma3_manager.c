@@ -3,6 +3,10 @@
 #endif
 #include "global.h"
 #include "dma3.h"
+#ifdef PLATFORM_SDL2
+#include "bg.h"
+#include "field_camera.h"
+#endif
 
 #define MAX_DMA_REQUESTS 128
 #define DMA3_VBLANK_BUDGET (40u * 1024)
@@ -161,6 +165,10 @@ void ClearDma3Requests(void)
 
     sDma3ManagerLocked = TRUE;
     sDma3RequestCursor = 0;
+#ifdef PLATFORM_SDL2
+    ClearPendingBgTilemapPublications();
+    CancelPendingFieldTilemapCopy();
+#endif
 
     for (i = 0; i < MAX_DMA_REQUESTS; i++)
     {
@@ -290,6 +298,7 @@ static s16 QueueDma3Copy(const void *src, void *dest, u16 size, u8 mode
             sDma3Requests[cursor].transfer = transfer;
             if (transfer != NULL)
                 transfer->state = DMA3_TRANSFER_PENDING;
+            NotifyBgDma3WriteQueued(dest, size & (mode == 1 ? ~3u : ~1u), transfer);
 #endif
             sDma3ManagerLocked = FALSE;
             return cursor;
@@ -396,6 +405,9 @@ s16 RequestDma3Fill(s32 value, void *dest, u16 size, u8 mode)
             else
                 sDma3Requests[cursor].mode = DMA_REQUEST_FILL16;
 
+#ifdef PLATFORM_SDL2
+            NotifyBgDma3WriteQueued(dest, size & (mode == 1 ? ~3u : ~1u), NULL);
+#endif
             sDma3ManagerLocked = FALSE;
             return cursor;
         }

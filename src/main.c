@@ -382,6 +382,9 @@ static void VBlankIntr(void)
 
     CopyBufferedValuesToGpuRegs();
     ProcessDma3Requests();
+#ifdef PLATFORM_SDL2
+    ProcessPendingBgTilemapPublications();
+#endif
 #ifdef PORTABLE
     TransferFieldTilemaps();
 #endif

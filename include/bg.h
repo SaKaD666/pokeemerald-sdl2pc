@@ -71,11 +71,29 @@ void HideBg(u8 bg);
 void SetBgAttribute(u8 bg, u8 attributeId, u8 value);
 u16 GetBgAttribute(u8 bg, u8 attributeId);
 #ifdef PLATFORM_SDL2
+#include "dma3.h"
+
+// Keep the source alive while GetBgExtendedTilesTransferState returns PENDING.
+bool8 QueueBgExtendedTiles(const void *src, u32 size);
+enum Dma3TransferState GetBgExtendedTilesTransferState(void);
+u64 GetBgExtendedTilesGeneration(void);
+enum Dma3TransferState PublishFieldBgTilemaps(u64 generation);
+
 #define FIELD_UI_MAP_BASE 30
 #define FIELD_UI_CHAR_BASE 2
 #define FIELD_UI_SCREEN_SIZE 1
 extern u8 gFieldUiUpperTiles[BG_CHAR_SIZE];
 bool32 IsWideFieldUi(void);
+#define BG_TILEMAP_TILE_BANK (1 << 0)
+#define BG_TILEMAP_PALETTE_BANK (1 << 1)
+bool8 SetBgTilemapEntryBanks(u8 bg, u32 entry, u8 banks);
+u8 GetBgTilemapEntryBanks(u8 bg, u32 entry);
+void InvalidateBgTilemapRamRange(const volatile void *dest, u32 size);
+void InvalidateBgTilemapVramRange(const volatile void *dest, u32 size);
+void ProcessPendingBgTilemapPublications(void);
+void ClearPendingBgTilemapPublications(void);
+void NotifyBgDma3WriteQueued(const void *dest, u32 size, const struct Dma3Transfer *transfer);
+u8 GetPublishedBgTilemapEntryBanks(u8 bg, u16 control, u8 entrySize, u32 entry);
 #endif
 s32 ChangeBgX(u8 bg, s32 value, u8 op);
 s32 GetBgX(u8 bg);

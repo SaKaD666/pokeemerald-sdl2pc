@@ -104,7 +104,9 @@ static void CB2_LoadMap2(void);
 static void VBlankCB_Field(void);
 static void SpriteCB_LinkPlayer(struct Sprite *);
 static void ChooseAmbientCrySpecies(void);
+#ifndef PLATFORM_SDL2
 static void DoMapLoadLoop(u8 *);
+#endif
 static bool32 LoadMapInStepsLocal(u8 *, bool32);
 static bool32 LoadMapInStepsLink(u8 *);
 static bool32 ReturnToFieldLocal(u8 *);
@@ -1354,8 +1356,13 @@ u8 GetMapMusicFadeoutSpeed(void)
     const struct MapHeader *mapHeader = GetDestinationWarpMapHeader();
     if (IsMapTypeIndoors(mapHeader->mapType) == TRUE)
         return 2;
-    else
-        return 4;
+#ifdef PLATFORM_SDL2
+    if ((gMapHeader.mapType == MAP_TYPE_ROUTE && mapHeader->mapType == MAP_TYPE_ROUTE)
+     || gMapHeader.mapType == MAP_TYPE_UNDERGROUND
+     || mapHeader->mapType == MAP_TYPE_UNDERGROUND)
+        return 2;
+#endif
+    return 4;
 }
 
 void TryFadeOutOldMapMusic(void)
@@ -1686,15 +1693,22 @@ void CB2_NewGame(void)
     UnlockPlayerFieldControls();
     gFieldCallback = ExecuteTruckSequence;
     gFieldCallback2 = NULL;
+#ifdef PLATFORM_SDL2
+    SetMainCallback1(NULL);
+    SetMainCallback2(CB2_LoadMap2);
+#else
     DoMapLoadLoop(&gMain.state);
     SetFieldVBlankCallback();
     SetMainCallback1(CB1_Overworld);
     SetMainCallback2(CB2_Overworld);
+#endif
 }
 
 void CB2_WhiteOut(void)
 {
+#ifndef PLATFORM_SDL2
     u8 state;
+#endif
 
     if (++gMain.state >= 120)
     {
@@ -1706,11 +1720,16 @@ void CB2_WhiteOut(void)
         ScriptContext_Init();
         UnlockPlayerFieldControls();
         gFieldCallback = FieldCB_WarpExitFadeFromBlack;
+#ifdef PLATFORM_SDL2
+        SetMainCallback1(NULL);
+        SetMainCallback2(CB2_LoadMap2);
+#else
         state = 0;
         DoMapLoadLoop(&state);
         SetFieldVBlankCallback();
         SetMainCallback1(CB1_Overworld);
         SetMainCallback2(CB2_Overworld);
+#endif
     }
 }
 
@@ -1726,7 +1745,37 @@ void CB2_LoadMap(void)
 
 static void CB2_LoadMap2(void)
 {
+#ifdef PLATFORM_SDL2
+    u8 steps;
+    bool32 done = FALSE;
+
+    for (steps = 0; steps < 4; steps++)
+    {
+        u8 currentState = gMain.state;
+
+        if (LoadMapInStepsLocal(&gMain.state, FALSE))
+        {
+            done = TRUE;
+            break;
+        }
+
+        // A blocked load step must yield so the next frame can service DMA.
+        if (gMain.state == currentState)
+            return;
+
+        // Keep the DMA wait and the full map draw isolated between frames.
+        if (currentState == 8 || currentState == 9)
+            break;
+    }
+
+    if (!done && gMain.state == 13)
+        done = LoadMapInStepsLocal(&gMain.state, FALSE);
+
+    if (!done)
+        return;
+#else
     DoMapLoadLoop(&gMain.state);
+#endif
     SetFieldVBlankCallback();
     SetMainCallback1(CB1_Overworld);
     SetMainCallback2(CB2_Overworld);
@@ -2221,10 +2270,12 @@ static bool32 ReturnToFieldLink(u8 *state)
     return FALSE;
 }
 
+#ifndef PLATFORM_SDL2
 static void DoMapLoadLoop(u8 *state)
 {
     while (!LoadMapInStepsLocal(state, FALSE));
 }
+#endif
 
 static void ResetMirageTowerAndSaveBlockPtrs(void)
 {
@@ -2238,8 +2289,12 @@ static void ResetScreenForMapLoad(void)
     ScanlineEffect_Stop();
 
     DmaClear16(3, PLTT + 2, PLTT_SIZE - 2);
+#ifdef PLATFORM_SDL2
+    CpuFastFill16(0, (void *)VRAM, VRAM_SIZE);
+#else
     DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
-    ResetOamRange(0, 128);
+#endif
+    ResetOamRange(0, OAM_ENTRY_COUNT);
     LoadOam();
 }
 

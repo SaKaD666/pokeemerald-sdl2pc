@@ -473,12 +473,23 @@ void CB2_InitEReader(void)
 
 void MainCB_FreeAllBuffersAndReturnToInitTitleScreen(void)
 {
+    u8 bg;
+
+#ifdef PLATFORM_SDL2
+    SetVBlankCallback(NULL);
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+    ClearScheduledBgCopiesToVram();
+#endif
     gGiftIsFromEReader = FALSE;
     FreeAllWindowBuffers();
-    Free(GetBgTilemapBuffer(0));
-    Free(GetBgTilemapBuffer(1));
-    Free(GetBgTilemapBuffer(2));
-    Free(GetBgTilemapBuffer(3));
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+    {
+        void *tilemap = GetBgTilemapBuffer(bg);
+
+        UnsetBgTilemapBuffer(bg);
+        Free(tilemap);
+    }
     SetMainCallback2(CB2_InitTitleScreen);
 }
 

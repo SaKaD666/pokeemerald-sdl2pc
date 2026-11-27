@@ -43,6 +43,7 @@ bool32 RestoreCachedFieldTileset(void);
 void TransferNeighborTilesetAnimations(void);
 bool32 QueueFieldTilemapCopy(u8 bg, const void *buffer, u16 size);
 void TransferFieldTilemaps(void);
+void CancelPendingFieldTilemapCopy(void);
 const struct FieldTileSource *const *GetDisplayedFieldTileSources(u8 bg, u8 base);
 const struct FieldTileSource *GetDisplayedFieldTileSource(const struct FieldTileSource *const *sources, u16 tileIndex);
 

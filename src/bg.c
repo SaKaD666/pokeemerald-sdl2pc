@@ -1,8 +1,16 @@
 #include <limits.h>
+#ifdef PLATFORM_SDL2
+#include <stdlib.h>
+#endif
 #include "global.h"
 #include "bg.h"
 #include "dma3.h"
 #include "gpu_regs.h"
+#ifdef PLATFORM_SDL2
+#include "palette.h"
+#include "battle_bg.h"
+#include "main.h"
+#endif
 #ifdef PORTABLE
 #include "field_camera.h"
 #include "platform/system.h"
@@ -52,6 +60,608 @@ static const struct BgConfig sZeroedBgControlStruct = { 0 };
 
 static u32 GetBgType(u8 bg);
 
+#ifdef PLATFORM_SDL2
+static struct Dma3Transfer sBgExtendedTilesTransfers[2];
+static bool8 sBgExtendedTilesInvalidated;
+static u64 sBgExtendedTilesGeneration;
+static struct Dma3Transfer sBattleMessageTilesTransfer;
+
+#define BATTLE_MESSAGE_TILE_OFFSET (BATTLE_MESSAGE_WINDOW_BASE_BLOCK * TILE_SIZE_4BPP)
+#define BATTLE_MESSAGE_TILE_BYTES (BATTLE_MESSAGE_TILE_COUNT * TILE_SIZE_4BPP)
+
+static bool8 UsesBattleMessageTileBank(u8 bg)
+{
+    return gMain.inBattle && bg == 0 && GetBgType(bg) == BG_TYPE_NORMAL
+        && GetBgAttribute(bg, BG_ATTR_CHARBASEINDEX) == 0
+        && GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX) == 24
+        && GetBgAttribute(bg, BG_ATTR_SCREENSIZE) == 3
+        && GetBgAttribute(bg, BG_ATTR_PALETTEMODE) == 0;
+}
+
+static bool8 IsBattleMessageTileRange(uintptr_t start, u32 size)
+{
+    uintptr_t base = BG_VRAM_EXT + BATTLE_MESSAGE_TILE_OFFSET;
+    uintptr_t offset = start - base;
+
+    return start >= base && offset < BATTLE_MESSAGE_TILE_BYTES
+        && size <= BATTLE_MESSAGE_TILE_BYTES - offset;
+}
+
+
+enum Dma3TransferState GetBgExtendedTilesTransferState(void)
+{
+    enum Dma3TransferState first = sBgExtendedTilesTransfers[0].state;
+    enum Dma3TransferState second = sBgExtendedTilesTransfers[1].state;
+
+    if (first == DMA3_TRANSFER_PENDING || second == DMA3_TRANSFER_PENDING)
+        return DMA3_TRANSFER_PENDING;
+    if (first == DMA3_TRANSFER_CANCELLED || second == DMA3_TRANSFER_CANCELLED
+     || (second == DMA3_TRANSFER_COMPLETED && sBgExtendedTilesInvalidated))
+        return DMA3_TRANSFER_CANCELLED;
+
+    return second;
+}
+
+// Indexed by physical tilemap entry (16-bit text or 8-bit affine).
+static u8 *sBgTilemapBanks[NUM_BACKGROUNDS];
+static u8 sPendingBgTilemapPublications[NUM_BACKGROUNDS];
+static u64 sPendingBgTilemapTilesGeneration[NUM_BACKGROUNDS];
+static u8 sPendingBgTilemapPublicationCount;
+
+static void RemovePendingBgTilemapPublication(u8 index)
+{
+    sPendingBgTilemapPublicationCount--;
+    for (; index < sPendingBgTilemapPublicationCount; index++)
+        sPendingBgTilemapPublications[index] = sPendingBgTilemapPublications[index + 1];
+}
+
+static void CancelPendingBgTilemapPublication(u8 bg)
+{
+    u8 i;
+
+    for (i = 0; i < sPendingBgTilemapPublicationCount; i++)
+    {
+        if (sPendingBgTilemapPublications[i] == bg)
+        {
+            RemovePendingBgTilemapPublication(i);
+            return;
+        }
+    }
+}
+
+struct PublishedBgTilemapBanks
+{
+    u8 *packed;
+    const void *map;
+    u32 count;
+    u16 control;
+    u8 entrySize;
+};
+
+static struct PublishedBgTilemapBanks sPublishedBgTilemapBanks[NUM_BACKGROUNDS];
+
+static bool8 TilemapUsesBank(const u8 *packed, u32 count, u8 bank)
+{
+    u32 i;
+
+    if (packed == NULL)
+        return FALSE;
+
+    for (i = 0; i < (count + 3) / 4; i++)
+    {
+        if (packed[i] & (bank * 0x55))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+bool8 QueueBgExtendedTiles(const void *src, u32 size)
+{
+    struct Dma3Transfer previousFirst = sBgExtendedTilesTransfers[0];
+    struct Dma3Transfer previousSecond = sBgExtendedTilesTransfers[1];
+    u8 bg;
+
+    if (size != BG_VRAM_EXT_SIZE || UsesBattleMessageTileBank(0))
+        return FALSE;
+
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+    {
+        const struct PublishedBgTilemapBanks *published = &sPublishedBgTilemapBanks[bg];
+
+        if (TilemapUsesBank(published->packed, published->count, BG_TILEMAP_TILE_BANK))
+            return FALSE;
+    }
+
+    if (!RequestDma3TrackedCopyPair(src, (void *)BG_VRAM_EXT, BG_VRAM_EXT_SIZE / 2, 1, sBgExtendedTilesTransfers))
+    {
+        sBgExtendedTilesTransfers[0] = previousFirst;
+        sBgExtendedTilesTransfers[1] = previousSecond;
+        return FALSE;
+    }
+
+    sBgExtendedTilesGeneration++;
+    sBgExtendedTilesInvalidated = FALSE;
+    return TRUE;
+}
+
+
+static void ResetBgTilemapRamBanks(u8 bg)
+{
+    CancelPendingBgTilemapPublication(bg);
+    if (bg == 0)
+    {
+        CancelDma3TrackedCopy(&sBattleMessageTilesTransfer);
+        sBattleMessageTilesTransfer.state = DMA3_TRANSFER_IDLE;
+    }
+    free(sBgTilemapBanks[bg]);
+    sBgTilemapBanks[bg] = NULL;
+}
+
+static void ResetBgTilemapBanks(u8 bg)
+{
+    ResetBgTilemapRamBanks(bg);
+    free(sPublishedBgTilemapBanks[bg].packed);
+    sPublishedBgTilemapBanks[bg] = (struct PublishedBgTilemapBanks){0};
+}
+
+static u32 GetBgTilemapEntryCount(u8 bg)
+{
+    if (GetBgTilemapBuffer(bg) == NULL)
+        return 0;
+
+    switch (GetBgType(bg))
+    {
+    case BG_TYPE_NORMAL:
+        return GetBgMetricTextMode(bg, 0) * (BG_SCREEN_SIZE / sizeof(u16));
+    case BG_TYPE_AFFINE:
+        return GetBgMetricAffineMode(bg, 0) * 0x100;
+    default:
+        return 0;
+    }
+}
+
+static void ClearPackedBgTilemapBanks(u8 *packed, u32 first, u32 end)
+{
+    for (; first < end; first++)
+        packed[first / 4] &= ~(3u << ((first % 4) * 2));
+}
+
+static void ClearBgTilemapEntryBanks(u8 bg, u32 first, u32 count)
+{
+    if (sBgTilemapBanks[bg] != NULL)
+        ClearPackedBgTilemapBanks(sBgTilemapBanks[bg], first, min(first + count, GetBgTilemapEntryCount(bg)));
+}
+
+static void UpdateBgTilemapBanksAfterTextWrite(u8 bg, u32 entry, bool8 keepsPalette)
+{
+    if (sBgTilemapBanks[bg] == NULL)
+        return;
+
+    if (keepsPalette)
+        SetBgTilemapEntryBanks(bg, entry, GetBgTilemapEntryBanks(bg, entry) & BG_TILEMAP_PALETTE_BANK);
+    else
+        ClearBgTilemapEntryBanks(bg, entry, 1);
+}
+
+static bool8 OverlapsBgExtendedTiles(uintptr_t start, u32 size)
+{
+    return size != 0 && start < BG_VRAM_EXT + BG_VRAM_EXT_SIZE && start + size > BG_VRAM_EXT;
+}
+
+static void InvalidateBgExtendedTiles(void)
+{
+    u8 bg;
+
+    if (IsDma3TransferWriting(&sBgExtendedTilesTransfers[0])
+     || IsDma3TransferWriting(&sBgExtendedTilesTransfers[1]))
+        return;
+
+    // An older queued write runs before either part of the replacement.
+    if (IsDma3RequestWriting() && GetBgExtendedTilesTransferState() == DMA3_TRANSFER_PENDING)
+        return;
+
+    CancelDma3TrackedCopy(&sBgExtendedTilesTransfers[0]);
+    CancelDma3TrackedCopy(&sBgExtendedTilesTransfers[1]);
+    sBgExtendedTilesInvalidated = TRUE;
+    CancelDma3TrackedCopy(&sBattleMessageTilesTransfer);
+    sBattleMessageTilesTransfer.state = DMA3_TRANSFER_IDLE;
+
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+    {
+        struct PublishedBgTilemapBanks *published = &sPublishedBgTilemapBanks[bg];
+        u32 i;
+
+        if (published->packed == NULL)
+            continue;
+
+        for (i = 0; i < (published->count + 3) / 4; i++)
+            published->packed[i] &= 0xAA; // Keep the palette bits.
+    }
+}
+
+static void InvalidatePublishedBgTilemapVramRange(const volatile void *dest, u32 size)
+{
+    uintptr_t start = (uintptr_t)dest;
+    u8 bg;
+
+    if (size == 0)
+        return;
+
+    if (OverlapsBgExtendedTiles(start, size)
+     && !(UsesBattleMessageTileBank(0) && IsBattleMessageTileRange(start, size)))
+        InvalidateBgExtendedTiles();
+
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+    {
+        const struct PublishedBgTilemapBanks *published = &sPublishedBgTilemapBanks[bg];
+        uintptr_t map = (uintptr_t)published->map;
+        uintptr_t firstByte, endByte;
+        u32 entrySize = published->entrySize;
+
+        if (published->packed == NULL)
+            continue;
+
+        firstByte = max(start, map);
+        endByte = min(start + size, map + published->count * entrySize);
+        if (firstByte < endByte)
+            ClearPackedBgTilemapBanks(published->packed, (firstByte - map) / entrySize,
+                                      (endByte - map + entrySize - 1) / entrySize);
+    }
+}
+
+static void CancelPendingBgTilemapPublicationsInRange(const volatile void *dest, u32 size);
+
+void NotifyBgDma3WriteQueued(const void *dest, u32 size, const struct Dma3Transfer *transfer)
+{
+    CancelPendingBgTilemapPublicationsInRange(dest, size);
+
+    if (transfer != &sBgExtendedTilesTransfers[0] && transfer != &sBgExtendedTilesTransfers[1]
+     && OverlapsBgExtendedTiles((uintptr_t)dest, size))
+    {
+        CancelDma3TrackedCopy(&sBgExtendedTilesTransfers[0]);
+        CancelDma3TrackedCopy(&sBgExtendedTilesTransfers[1]);
+    }
+}
+
+void InvalidateBgTilemapVramRange(const volatile void *dest, u32 size)
+{
+    if (!IsDma3RequestWriting())
+        CancelPendingBgTilemapPublicationsInRange(dest, size);
+
+    InvalidatePublishedBgTilemapVramRange(dest, size);
+}
+
+// Character base, color depth, screen base and map dimensions.
+#define BG_TILEMAP_CONTROL_MASK (BGCNT_CHARBASE(3) | BGCNT_256COLOR | BGCNT_SCREENBASE(31) | BGCNT_TXT512x512)
+
+enum BgTilemapPublicationResult
+{
+    BG_TILEMAP_PUBLICATION_INVALID,
+    BG_TILEMAP_PUBLICATION_NO_MEMORY,
+    BG_TILEMAP_PUBLICATION_READY,
+};
+
+static enum BgTilemapPublicationResult PrepareBgTilemapPublication(u8 bg, struct PublishedBgTilemapBanks *publication)
+{
+    u32 count = GetBgTilemapEntryCount(bg);
+    u32 entrySize, size, offset;
+    u8 *packed = NULL;
+
+    if (count == 0)
+        return BG_TILEMAP_PUBLICATION_INVALID;
+
+    entrySize = GetBgType(bg) == BG_TYPE_AFFINE ? 1 : sizeof(u16);
+    size = count * entrySize;
+    offset = GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX) * BG_SCREEN_SIZE;
+    if (offset >= BG_VRAM_SIZE || size > BG_VRAM_SIZE - offset)
+        return BG_TILEMAP_PUBLICATION_INVALID;
+
+    if (sBgTilemapBanks[bg] != NULL)
+    {
+        u32 packedSize = (count + 3) / 4;
+
+        packed = malloc(packedSize);
+        if (packed == NULL)
+            return BG_TILEMAP_PUBLICATION_NO_MEMORY;
+        memcpy(packed, sBgTilemapBanks[bg], packedSize);
+    }
+
+    *publication = (struct PublishedBgTilemapBanks){
+        .packed = packed,
+        .map = (const void *)(BG_VRAM + offset),
+        .count = count,
+        .control = BGCNT_CHARBASE(GetBgAttribute(bg, BG_ATTR_CHARBASEINDEX))
+                 | BGCNT_SCREENBASE(GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX))
+                 | (GetBgAttribute(bg, BG_ATTR_PALETTEMODE) << 7)
+                 | (GetBgAttribute(bg, BG_ATTR_SCREENSIZE) << 14),
+        .entrySize = entrySize,
+    };
+    return BG_TILEMAP_PUBLICATION_READY;
+}
+
+static void CommitBgTilemapPublication(u8 bg, const struct PublishedBgTilemapBanks *publication)
+{
+    void *map = (void *)publication->map;
+    u32 size = publication->count * publication->entrySize;
+
+    InvalidatePublishedBgTilemapVramRange(map, size);
+    memcpy(map, GetBgTilemapBuffer(bg), size);
+    free(sPublishedBgTilemapBanks[bg].packed);
+    sPublishedBgTilemapBanks[bg] = *publication;
+}
+
+void ClearPendingBgTilemapPublications(void)
+{
+    sPendingBgTilemapPublicationCount = 0;
+}
+
+static bool8 PendingBgTilemapPublicationOverlaps(u8 index, uintptr_t start, u32 size)
+{
+    u8 bg = sPendingBgTilemapPublications[index];
+    uintptr_t map = BG_SCREEN_ADDR(GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX));
+    u32 mapSize = GetBgAttribute(bg, BG_ATTR_METRIC);
+
+    return mapSize != 0 && size != 0 && start < map + mapSize && map < start + size;
+}
+
+static void CancelPendingBgTilemapPublicationsInRange(const volatile void *dest, u32 size)
+{
+    uintptr_t start = (uintptr_t)dest;
+    u8 i = 0;
+
+    if (size == 0 || start >= BG_VRAM + BG_VRAM_SIZE || start + size <= BG_VRAM)
+        return;
+
+    while (i < sPendingBgTilemapPublicationCount)
+    {
+        if (PendingBgTilemapPublicationOverlaps(i, start, size))
+            RemovePendingBgTilemapPublication(i);
+        else
+            i++;
+    }
+}
+
+static bool8 HasEarlierOverlappingBgPublication(u8 index, uintptr_t start, u32 size)
+{
+    u8 i;
+
+    for (i = 0; i < index; i++)
+    {
+        if (PendingBgTilemapPublicationOverlaps(i, start, size))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static enum Dma3TransferState GetBgTilemapDependencies(u8 bg, u32 count, u64 generation, enum Dma3TransferState tiles)
+{
+    if (TilemapUsesBank(sBgTilemapBanks[bg], count, BG_TILEMAP_TILE_BANK))
+    {
+        if (UsesBattleMessageTileBank(bg))
+        {
+            if (HasPendingDma3Write((const void *)(BG_VRAM_EXT + BATTLE_MESSAGE_TILE_OFFSET), BATTLE_MESSAGE_TILE_BYTES))
+                return DMA3_TRANSFER_PENDING;
+            if (sBattleMessageTilesTransfer.state != DMA3_TRANSFER_COMPLETED)
+                return DMA3_TRANSFER_CANCELLED;
+        }
+        else
+        {
+            if (generation != sBgExtendedTilesGeneration)
+                return DMA3_TRANSFER_CANCELLED;
+            if (tiles == DMA3_TRANSFER_PENDING
+             || HasPendingDma3Write((const void *)BG_VRAM_EXT, BG_VRAM_EXT_SIZE))
+                return DMA3_TRANSFER_PENDING;
+            if (tiles != DMA3_TRANSFER_COMPLETED)
+                return DMA3_TRANSFER_CANCELLED;
+        }
+    }
+
+    if (TilemapUsesBank(sBgTilemapBanks[bg], count, BG_TILEMAP_PALETTE_BANK))
+    {
+        const void *palette = (const void *)(PLTT + BG_PLTT_SIZE);
+
+        if (HasPendingDma3Write(palette, BG_PLTT_SIZE)
+         || memcmp(palette, gPlttBufferFaded + BG_PLTT_SIZE / sizeof(u16), BG_PLTT_SIZE) != 0)
+            return DMA3_TRANSFER_PENDING;
+    }
+
+    return DMA3_TRANSFER_COMPLETED;
+}
+
+u64 GetBgExtendedTilesGeneration(void)
+{
+    return sBgExtendedTilesGeneration;
+}
+
+enum Dma3TransferState PublishFieldBgTilemaps(u64 generation)
+{
+    struct PublishedBgTilemapBanks publications[NUM_BACKGROUNDS] = {0};
+    enum Dma3TransferState tiles = GetBgExtendedTilesTransferState();
+    enum Dma3TransferState state = DMA3_TRANSFER_COMPLETED;
+    u32 totalSize = 0;
+    bool8 usesBanks = FALSE;
+    u8 bg;
+
+    for (bg = 1; bg < NUM_BACKGROUNDS; bg++)
+    {
+        u32 count = GetBgTilemapEntryCount(bg);
+        u32 size = GetBgAttribute(bg, BG_ATTR_METRIC);
+        const void *map = (const void *)BG_SCREEN_ADDR(GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX));
+
+        if (count == 0)
+            return DMA3_TRANSFER_CANCELLED;
+        usesBanks |= TilemapUsesBank(sBgTilemapBanks[bg], count, BG_TILEMAP_TILE_BANK | BG_TILEMAP_PALETTE_BANK);
+        totalSize += size;
+        state = GetBgTilemapDependencies(bg, count, generation, tiles);
+        if (state != DMA3_TRANSFER_COMPLETED)
+            return state;
+        if (HasPendingDma3Write(map, size))
+            return DMA3_TRANSFER_PENDING;
+    }
+
+    for (bg = 1; bg < NUM_BACKGROUNDS; bg++)
+    {
+        enum BgTilemapPublicationResult preparation = PrepareBgTilemapPublication(bg, &publications[bg]);
+
+        if (preparation != BG_TILEMAP_PUBLICATION_READY)
+        {
+            state = preparation == BG_TILEMAP_PUBLICATION_NO_MEMORY
+                  ? DMA3_TRANSFER_PENDING
+                  : DMA3_TRANSFER_REJECTED;
+            break;
+        }
+    }
+
+    if (state == DMA3_TRANSFER_COMPLETED && usesBanks && !ReserveDma3FrameBytes(totalSize))
+        state = DMA3_TRANSFER_PENDING;
+
+    for (bg = 1; bg < NUM_BACKGROUNDS; bg++)
+    {
+        struct PublishedBgTilemapBanks *publication = &publications[bg];
+
+        if (state == DMA3_TRANSFER_COMPLETED)
+        {
+            CancelPendingBgTilemapPublicationsInRange(publication->map, publication->count * publication->entrySize);
+            CommitBgTilemapPublication(bg, publication);
+        }
+        else
+        {
+            free(publication->packed);
+        }
+    }
+    return state;
+}
+
+// Return TRUE when the request has been published or discarded.
+static bool8 TryPublishPendingBgTilemap(u8 index, enum Dma3TransferState tiles)
+{
+    u8 bg = sPendingBgTilemapPublications[index];
+    u32 count = GetBgTilemapEntryCount(bg);
+    uintptr_t map;
+    u32 size;
+
+    if (count == 0)
+        return TRUE;
+
+    enum Dma3TransferState state = GetBgTilemapDependencies(bg, count, sPendingBgTilemapTilesGeneration[bg], tiles);
+
+    if (state != DMA3_TRANSFER_COMPLETED)
+        return state != DMA3_TRANSFER_PENDING;
+
+    map = BG_SCREEN_ADDR(GetBgAttribute(bg, BG_ATTR_MAPBASEINDEX));
+    size = GetBgAttribute(bg, BG_ATTR_METRIC);
+    if (HasEarlierOverlappingBgPublication(index, map, size)
+     || HasPendingDma3Write((const void *)map, size))
+        return FALSE;
+
+    struct PublishedBgTilemapBanks publication;
+    enum BgTilemapPublicationResult preparation = PrepareBgTilemapPublication(bg, &publication);
+
+    if (preparation == BG_TILEMAP_PUBLICATION_NO_MEMORY)
+        return FALSE;
+    if (preparation == BG_TILEMAP_PUBLICATION_INVALID)
+        return TRUE;
+    if (!ReserveDma3FrameBytes(size))
+    {
+        free(publication.packed);
+        return FALSE;
+    }
+
+    CommitBgTilemapPublication(bg, &publication);
+    return TRUE;
+}
+
+void ProcessPendingBgTilemapPublications(void)
+{
+    enum Dma3TransferState tiles = GetBgExtendedTilesTransferState();
+    u8 i = 0;
+
+    while (i < sPendingBgTilemapPublicationCount)
+    {
+        if (TryPublishPendingBgTilemap(i, tiles))
+            RemovePendingBgTilemapPublication(i);
+        else
+            i++;
+    }
+}
+
+u8 GetPublishedBgTilemapEntryBanks(u8 bg, u16 control, u8 entrySize, u32 entry)
+{
+    const struct PublishedBgTilemapBanks *published;
+
+    if (IsInvalidBg(bg))
+        return 0;
+
+    published = &sPublishedBgTilemapBanks[bg];
+    if (published->packed == NULL || published->control != (control & BG_TILEMAP_CONTROL_MASK)
+     || published->entrySize != entrySize || entry >= published->count)
+        return 0;
+
+    return (published->packed[entry / 4] >> ((entry % 4) * 2)) & 3;
+}
+
+void InvalidateBgTilemapRamRange(const volatile void *dest, u32 size)
+{
+    uintptr_t start = (uintptr_t)dest;
+    u8 bg;
+
+    if (size == 0)
+        return;
+
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+    {
+        uintptr_t map;
+        uintptr_t firstByte, endByte;
+        u32 entrySize, firstEntry, endEntry;
+
+        if (sBgTilemapBanks[bg] == NULL)
+            continue;
+
+        map = (uintptr_t)GetBgTilemapBuffer(bg);
+        entrySize = GetBgType(bg) == BG_TYPE_AFFINE ? 1 : sizeof(u16);
+        firstByte = max(start, map);
+        endByte = min(start + size, map + GetBgTilemapEntryCount(bg) * entrySize);
+        if (firstByte >= endByte)
+            continue;
+
+        firstEntry = (firstByte - map) / entrySize;
+        endEntry = (endByte - map + entrySize - 1) / entrySize;
+        ClearBgTilemapEntryBanks(bg, firstEntry, endEntry - firstEntry);
+    }
+}
+
+bool8 SetBgTilemapEntryBanks(u8 bg, u32 entry, u8 banks)
+{
+    u32 count = GetBgTilemapEntryCount(bg);
+    u32 shift = (entry % 4) * 2;
+    u8 *packed;
+
+    if (entry >= count || banks > (BG_TILEMAP_TILE_BANK | BG_TILEMAP_PALETTE_BANK))
+        return FALSE;
+
+    if (sBgTilemapBanks[bg] == NULL)
+    {
+        if (banks == 0)
+            return TRUE;
+        sBgTilemapBanks[bg] = calloc((count + 3) / 4, sizeof(u8));
+        if (sBgTilemapBanks[bg] == NULL)
+            return FALSE;
+    }
+
+    packed = &sBgTilemapBanks[bg][entry / 4];
+    *packed = (*packed & ~(3u << shift)) | (banks << shift);
+    return TRUE;
+}
+
+u8 GetBgTilemapEntryBanks(u8 bg, u32 entry)
+{
+    if (entry >= GetBgTilemapEntryCount(bg) || sBgTilemapBanks[bg] == NULL)
+        return 0;
+
+    return (sBgTilemapBanks[bg][entry / 4] >> ((entry % 4) * 2)) & 3;
+}
+#endif
+
 void ResetBgs(void)
 {
     ResetBgControlStructs();
@@ -61,6 +671,15 @@ void ResetBgs(void)
 
 static void SetBgModeInternal(u8 bgMode)
 {
+#ifdef PLATFORM_SDL2
+    if (GetBgMode() != bgMode)
+    {
+        u8 bg;
+
+        for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+            ResetBgTilemapBanks(bg);
+    }
+#endif
     sGpuBgConfigs.bgVisibilityAndMode &= ~0x7;
     sGpuBgConfigs.bgVisibilityAndMode |= bgMode;
 }
@@ -76,6 +695,9 @@ void ResetBgControlStructs(void)
 
     for (i = 0; i < NUM_BACKGROUNDS; i++)
     {
+#ifdef PLATFORM_SDL2
+        ResetBgTilemapBanks(i);
+#endif
         sGpuBgConfigs.configs[i] = sZeroedBgControlStruct;
     }
 }
@@ -84,6 +706,9 @@ void Unused_ResetBgControlStruct(u8 bg)
 {
     if (!IsInvalidBg(bg))
     {
+#ifdef PLATFORM_SDL2
+        ResetBgTilemapBanks(bg);
+#endif
         sGpuBgConfigs.configs[bg] = sZeroedBgControlStruct;
     }
 }
@@ -104,6 +729,15 @@ static void SetBgControlAttributes(u8 bg, u8 charBaseIndex, u8 mapBaseIndex, u8 
 {
     if (!IsInvalidBg(bg))
     {
+#ifdef PLATFORM_SDL2
+        const struct BgConfig *config = &sGpuBgConfigs.configs[bg];
+
+        if ((charBaseIndex != 0xFF && charBaseIndex != config->charBaseIndex)
+         || (mapBaseIndex != 0xFF && mapBaseIndex != config->mapBaseIndex)
+         || (screenSize != 0xFF && screenSize != config->screenSize)
+         || (paletteMode != 0xFF && paletteMode != config->paletteMode))
+            ResetBgTilemapBanks(bg);
+#endif
         if (charBaseIndex != 0xFF)
         {
             sGpuBgConfigs.configs[bg].charBaseIndex = charBaseIndex;
@@ -199,6 +833,18 @@ u8 LoadBgVram(u8 bg, const void *src, u16 size, u16 destOffset, u8 mode)
     {
     case 0x1:
 #ifdef PLATFORM_SDL2
+        if (UsesBattleMessageTileBank(bg)
+         && IsBattleMessageTileRange(BG_VRAM_EXT + destOffset, size))
+        {
+            void *dest = (void *)(BG_VRAM_EXT + destOffset);
+
+            if (destOffset != BATTLE_MESSAGE_TILE_OFFSET || size != BATTLE_MESSAGE_TILE_BYTES)
+                return RequestDma3Copy(src, dest, size, 0);
+
+            CancelDma3TrackedCopy(&sBattleMessageTilesTransfer);
+            return RequestDma3TrackedCopyWithSlot(src, dest, size, 0, &sBattleMessageTilesTransfer);
+        }
+
         if (bg == 0 && IsWideFieldUi() && (u32)destOffset + size > BG_CHAR_SIZE)
         {
             if (destOffset < BG_CHAR_SIZE || (u32)destOffset + size > 2 * BG_CHAR_SIZE)
@@ -323,13 +969,17 @@ int BgTileAllocOp(int bg, int offset, int count, int mode)
 
 void ResetBgsAndClearDma3BusyFlags(u32 leftoverFireRedLeafGreenVariable)
 {
+#ifndef PLATFORM_SDL2
     int i;
+#endif
     ResetBgs();
 
+#ifndef PLATFORM_SDL2
     for (i = 0; i < NUM_BACKGROUNDS; i++)
     {
         sDmaBusyBitfield[i] = 0;
     }
+#endif
 
     gWindowTileAutoAllocEnabled = leftoverFireRedLeafGreenVariable;
 }
@@ -373,6 +1023,9 @@ void InitBgFromTemplate(const struct BgTemplate *template)
 
     if (bg < NUM_BACKGROUNDS)
     {
+#ifdef PLATFORM_SDL2
+        ResetBgTilemapBanks(bg);
+#endif
         SetBgControlAttributes(bg,
                                template->charBaseIndex,
                                template->mapBaseIndex,
@@ -418,7 +1071,7 @@ u16 LoadBgTiles(u8 bg, const void *src, u16 size, u16 destOffset)
         return -1;
     }
 
-    sDmaBusyBitfield[cursor / 0x20] |= (1 << (cursor % 0x20));
+    sDmaBusyBitfield[cursor / 0x20] |= (1u << (cursor % 0x20));
 
     if (gWindowTileAutoAllocEnabled == TRUE)
         BgTileAllocOp(bg, tileOffset / 0x20, size / 0x20, 1);
@@ -435,7 +1088,7 @@ u16 LoadBgTilemap(u8 bg, const void *src, u16 size, u16 destOffset)
         return -1;
     }
 
-    sDmaBusyBitfield[cursor / 0x20] |= (1 << (cursor % 0x20));
+    sDmaBusyBitfield[cursor / 0x20] |= (1u << (cursor % 0x20));
 
     return cursor;
 }
@@ -457,7 +1110,7 @@ u16 Unused_LoadBgPalette(u8 bg, const void *src, u16 size, u16 destOffset)
         return -1;
     }
 
-    sDmaBusyBitfield[cursor / 0x20] |= (1 << (cursor % 0x20));
+    sDmaBusyBitfield[cursor / 0x20] |= (1u << (cursor % 0x20));
 
     return (u8)cursor;
 }
@@ -465,29 +1118,33 @@ u16 Unused_LoadBgPalette(u8 bg, const void *src, u16 size, u16 destOffset)
 bool8 IsDma3ManagerBusyWithBgCopy(void)
 {
     int i;
+    bool8 busy = FALSE;
 
 #ifdef PORTABLE
-	RunDMAsAndVBlank();
+    RunDMAsAndVBlank();
+#ifndef PLATFORM_SDL2
     return FALSE;
+#endif
 #endif
     for (i = 0; i < 0x80; i++)
     {
         u8 div = i / 0x20;
         u8 mod = i % 0x20;
 
-        if ((sDmaBusyBitfield[div] & (1 << mod)))
+        if (sDmaBusyBitfield[div] & (1u << mod))
         {
             s8 reqSpace = CheckForSpaceForDma3Request(i);
             if (reqSpace == -1)
-            {
-                return TRUE;
-            }
-
-            sDmaBusyBitfield[div] &= ~(1 << mod);
+                busy = TRUE;
+            else
+                sDmaBusyBitfield[div] &= ~(1u << mod);
         }
     }
 
-    return FALSE;
+#ifdef PLATFORM_SDL2
+    busy |= sPendingBgTilemapPublicationCount != 0;
+#endif
+    return busy;
 }
 
 void ShowBg(u8 bg)
@@ -878,16 +1535,18 @@ void SetBgTilemapBuffer(u8 bg, void *tilemap)
 {
     if (!IsInvalidBg32(bg) && GetBgControlAttribute(bg, BG_CTRL_ATTR_VISIBLE))
     {
+#ifdef PLATFORM_SDL2
+        // The previous map remains visible until its VRAM entries are replaced.
+        if (sGpuBgConfigs2[bg].tilemap != tilemap)
+            ResetBgTilemapRamBanks(bg);
+#endif
         sGpuBgConfigs2[bg].tilemap = tilemap;
     }
 }
 
 void UnsetBgTilemapBuffer(u8 bg)
 {
-    if (!IsInvalidBg32(bg) && GetBgControlAttribute(bg, BG_CTRL_ATTR_VISIBLE))
-    {
-        sGpuBgConfigs2[bg].tilemap = NULL;
-    }
+    SetBgTilemapBuffer(bg, NULL);
 }
 
 void *GetBgTilemapBuffer(u8 bg)
@@ -933,7 +1592,18 @@ void CopyBgTilemapBufferToVram(u8 bg)
         if (QueueFieldTilemapCopy(bg, sGpuBgConfigs2[bg].tilemap, sizeToLoad))
             return;
 #endif
+#ifdef PLATFORM_SDL2
+        if (sBgTilemapBanks[bg] != NULL)
+        {
+            CancelPendingBgTilemapPublication(bg);
+            sPendingBgTilemapTilesGeneration[bg] = sBgExtendedTilesGeneration;
+            sPendingBgTilemapPublications[sPendingBgTilemapPublicationCount++] = bg;
+            return;
+        }
+        LoadBgTilemap(bg, sGpuBgConfigs2[bg].tilemap, sizeToLoad, 0);
+#else
         LoadBgVram(bg, sGpuBgConfigs2[bg].tilemap, sizeToLoad, 0, 2);
+#endif
     }
 }
 
@@ -952,6 +1622,9 @@ void CopyToBgTilemapBufferRect(u8 bg, const void *src, u8 destX, u8 destY, u8 wi
             const u16 *srcCopy = src;
             for (destY16 = destY; destY16 < (destY + height); destY16++)
             {
+#ifdef PLATFORM_SDL2
+                ClearBgTilemapEntryBanks(bg, destY16 * 0x20 + destX, width);
+#endif
                 for (destX16 = destX; destX16 < (destX + width); destX16++)
                 {
                     ((u16 *)sGpuBgConfigs2[bg].tilemap)[((destY16 * 0x20) + destX16)] = *srcCopy++;
@@ -965,6 +1638,9 @@ void CopyToBgTilemapBufferRect(u8 bg, const void *src, u8 destX, u8 destY, u8 wi
             mode = GetBgMetricAffineMode(bg, 0x1);
             for (destY16 = destY; destY16 < (destY + height); destY16++)
             {
+#ifdef PLATFORM_SDL2
+                ClearBgTilemapEntryBanks(bg, destY16 * mode + destX, width);
+#endif
                 for (destX16 = destX; destX16 < (destX + width); destX16++)
                 {
                     ((u8 *)sGpuBgConfigs2[bg].tilemap)[((destY16 * mode) + destX16)] = *srcCopy++;
@@ -1003,6 +1679,9 @@ void CopyRectToBgTilemapBufferRect(u8 bg, const void *src, u8 srcX, u8 srcY, u8 
                 {
                     u16 index = GetTileMapIndexFromCoords(j, i, screenSize, screenWidth, screenHeight);
                     CopyTileMapEntry(srcPtr, sGpuBgConfigs2[bg].tilemap + (index * 2), palette1, tileOffset, palette2);
+#ifdef PLATFORM_SDL2
+                    UpdateBgTilemapBanksAfterTextWrite(bg, index, palette1 == 16 && palette2 == 0);
+#endif
                     srcPtr += 2;
                 }
                 srcPtr += (srcWidth - rectWidth) * 2;
@@ -1013,6 +1692,9 @@ void CopyRectToBgTilemapBufferRect(u8 bg, const void *src, u8 srcX, u8 srcY, u8 
             var = GetBgMetricAffineMode(bg, 0x1);
             for (i = destY; i < (destY + rectHeight); i++)
             {
+#ifdef PLATFORM_SDL2
+                ClearBgTilemapEntryBanks(bg, i * var + destX, rectWidth);
+#endif
                 for (j = destX; j < (destX + rectWidth); j++)
                 {
                     *(u8 *)(sGpuBgConfigs2[bg].tilemap + ((var * i) + j)) = *(u8 *)(srcPtr) + tileOffset;
@@ -1038,6 +1720,9 @@ void FillBgTilemapBufferRect_Palette0(u8 bg, u16 tileNum, u8 x, u8 y, u8 width, 
         case BG_TYPE_NORMAL:
             for (y16 = y; y16 < (y + height); y16++)
             {
+#ifdef PLATFORM_SDL2
+                ClearBgTilemapEntryBanks(bg, y16 * 0x20 + x, width);
+#endif
                 for (x16 = x; x16 < (x + width); x16++)
                 {
                     ((u16 *)sGpuBgConfigs2[bg].tilemap)[((y16 * 0x20) + x16)] = tileNum;
@@ -1048,6 +1733,9 @@ void FillBgTilemapBufferRect_Palette0(u8 bg, u16 tileNum, u8 x, u8 y, u8 width, 
             mode = GetBgMetricAffineMode(bg, 0x1);
             for (y16 = y; y16 < (y + height); y16++)
             {
+#ifdef PLATFORM_SDL2
+                ClearBgTilemapEntryBanks(bg, y16 * mode + x, width);
+#endif
                 for (x16 = x; x16 < (x + width); x16++)
                 {
                     ((u8 *)sGpuBgConfigs2[bg].tilemap)[((y16 * mode) + x16)] = tileNum;
@@ -1083,7 +1771,18 @@ void WriteSequenceToBgTilemapBuffer(u8 bg, u16 firstTileNum, u8 x, u8 y, u8 widt
             {
                 for (x16 = x; x16 < (x + width); x16++)
                 {
-                    CopyTileMapEntry(&firstTileNum, &((u16 *)sGpuBgConfigs2[bg].tilemap)[(u16)GetTileMapIndexFromCoords(x16, y16, attribute, mode, mode2)], paletteSlot, 0, 0);
+                    u16 index = GetTileMapIndexFromCoords(x16, y16, attribute, mode, mode2);
+
+                    CopyTileMapEntry(&firstTileNum, &((u16 *)sGpuBgConfigs2[bg].tilemap)[index], paletteSlot, 0, 0);
+#ifdef PLATFORM_SDL2
+                    UpdateBgTilemapBanksAfterTextWrite(bg, index, paletteSlot == 16);
+                    if (UsesBattleMessageTileBank(bg)
+                     && (firstTileNum & 0x3FF) >= BATTLE_MESSAGE_WINDOW_BASE_BLOCK
+                     && (firstTileNum & 0x3FF) < BATTLE_MESSAGE_WINDOW_BASE_BLOCK + BATTLE_MESSAGE_TILE_COUNT)
+                    {
+                        SetBgTilemapEntryBanks(bg, index, GetBgTilemapEntryBanks(bg, index) | BG_TILEMAP_TILE_BANK);
+                    }
+#endif
                     firstTileNum = (firstTileNum & 0xFC00) + ((firstTileNum + tileNumDelta) & 0x3FF);
                 }
             }
@@ -1092,6 +1791,9 @@ void WriteSequenceToBgTilemapBuffer(u8 bg, u16 firstTileNum, u8 x, u8 y, u8 widt
             mode3 = GetBgMetricAffineMode(bg, 0x1);
             for (y16 = y; y16 < (y + height); y16++)
             {
+#ifdef PLATFORM_SDL2
+                ClearBgTilemapEntryBanks(bg, y16 * mode3 + x, width);
+#endif
                 for (x16 = x; x16 < (x + width); x16++)
                 {
                     ((u8 *)sGpuBgConfigs2[bg].tilemap)[(y16 * mode3) + x16] = firstTileNum;

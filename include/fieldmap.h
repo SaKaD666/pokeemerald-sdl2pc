@@ -33,6 +33,7 @@ s32 MapGridGetMetatileIdAt(s32 x, s32 y);
 const struct MapLayout *MapGridGetSourceLayoutAt(s32 x, s32 y);
 #ifdef PLATFORM_SDL2
 bool8 MapGridIsFromMap(s32 x, s32 y, u8 mapGroup, u8 mapNum);
+void MapGridGetMetatileDrawInfoAt(s32 x, s32 y, const struct MapLayout **layout, s32 *metatileId, u8 *layerType);
 #endif
 s32 MapGridGetMetatileBehaviorAt(s32 x, s32 y);
 void MapGridSetMetatileIdAt(s32 x, s32 y, u16 metatile);
