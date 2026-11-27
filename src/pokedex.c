@@ -931,6 +931,41 @@ static const struct BgTemplate sInfoScreen_BgTemplate[] =
     }
 };
 
+#ifdef PLATFORM_SDL2
+static const struct BgTemplate sInfoScreen_BgTemplate_SDL2[] =
+{
+    { .bg = 0, .charBaseIndex = 2, .mapBaseIndex = 8,  .screenSize = 1, .paletteMode = 0, .priority = 3, .baseTile = 0 },
+    { .bg = 1, .charBaseIndex = 0, .mapBaseIndex = 10, .screenSize = 1, .paletteMode = 0, .priority = 0, .baseTile = 0 },
+    { .bg = 2, .charBaseIndex = 2, .mapBaseIndex = 12, .screenSize = 1, .paletteMode = 0, .priority = 1, .baseTile = 0 },
+    { .bg = 3, .charBaseIndex = 0, .mapBaseIndex = 14, .screenSize = 1, .paletteMode = 0, .priority = 2, .baseTile = 0 },
+};
+
+static const struct WindowTemplate sInfoScreenPage_WindowTemplates_SDL2[] =
+{
+    [WIN_INFO] =
+    {
+        .bg = 2,
+        .tilemapLeft = 0,
+        .tilemapTop = 0,
+        .width = 40,
+        .height = 21,
+        .paletteNum = 0,
+        .baseBlock = 1,
+    },
+    [WIN_FOOTPRINT] =
+    {
+        .bg = 2,
+        .tilemapLeft = 35,
+        .tilemapTop = 8,
+        .width = 2,
+        .height = 2,
+        .paletteNum = 15,
+        .baseBlock = 841,
+    },
+    DUMMY_WIN_TEMPLATE
+};
+#endif
+
 static const struct WindowTemplate sInfoScreen_WindowTemplates[] =
 {
     [WIN_INFO] =
@@ -981,8 +1016,13 @@ static const struct BgTemplate sNewEntryInfoScreen_BgTemplate[] =
     {
         .bg = 2,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 12,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 14,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
@@ -990,8 +1030,13 @@ static const struct BgTemplate sNewEntryInfoScreen_BgTemplate[] =
     {
         .bg = 3,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 14,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 15,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -1005,20 +1050,34 @@ static const struct WindowTemplate sNewEntryInfoScreen_WindowTemplates[] =
         .bg = 2,
         .tilemapLeft = 0,
         .tilemapTop = 0,
+#ifdef PLATFORM_SDL2
+        .width = 40,
+        .height = 21,
+#else
         .width = 32,
         .height = 20,
+#endif
         .paletteNum = 0,
         .baseBlock = 1,
     },
     [WIN_FOOTPRINT] =
     {
         .bg = 2,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 35,
+        .tilemapTop = 8,
+        .width = 2,
+        .height = 2,
+        .paletteNum = 15,
+        .baseBlock = 841,
+#else
         .tilemapLeft = 25,
         .tilemapTop = 8,
         .width = 2,
         .height = 2,
         .paletteNum = 15,
         .baseBlock = 641,
+#endif
     },
     DUMMY_WIN_TEMPLATE
 };
@@ -3461,6 +3520,126 @@ static void PrintInfoScreenText(const u8 *str, u8 left, u8 top)
 #define tSizeMatricesReserved data[6]
 #endif
 
+#ifdef PLATFORM_SDL2
+static void ConfigureInfoScreenBgs_SDL2(bool8 wide)
+{
+    const struct BgTemplate *tpls = wide ? sInfoScreen_BgTemplate_SDL2 : sInfoScreen_BgTemplate;
+    u8 i;
+
+    SetFrameViewToGbaSize(!wide);
+    for (i = 0; i < 4; i++)
+    {
+        SetBgAttribute(tpls[i].bg, BG_ATTR_MAPBASEINDEX, tpls[i].mapBaseIndex);
+        SetBgAttribute(tpls[i].bg, BG_ATTR_SCREENSIZE, tpls[i].screenSize);
+        if (GetBgTilemapBuffer(tpls[i].bg) != NULL)
+            CpuFastFill16(0, GetBgTilemapBuffer(tpls[i].bg), BG_SCREEN_SIZE * 2);
+    }
+    FreeAllWindowBuffers();
+    InitWindows(wide ? sInfoScreenPage_WindowTemplates_SDL2 : sInfoScreen_WindowTemplates);
+    DeactivateAllTextPrinters();
+}
+
+static void LoadPokedexInfoScreenBgTilemap_SDL2(void)
+{
+    u16 *src = Alloc(20 * 32 * sizeof(u16));
+    u16 *bg3 = GetBgTilemapBuffer(3);
+    u16 x, y;
+
+    LZ77UnCompWram(gPokedexInfoScreen_Tilemap, src);
+    for (y = 0; y < 23; y++)
+    {
+        if (y <= 1)
+        {
+            WritePokedexListTilemapEntry(bg3, 0, y, src[y * 32 + 0]);
+            for (x = 1; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + 1]);
+            WritePokedexListTilemapEntry(bg3, 38, y, src[y * 32 + 28]);
+            WritePokedexListTilemapEntry(bg3, 39, y, src[y * 32 + 29]);
+        }
+        else if (y == 2)
+        {
+            WritePokedexListTilemapEntry(bg3, 0, y, 0x0001);
+            WritePokedexListTilemapEntry(bg3, 1, y, 0x0c1f);
+            for (x = 2; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0808);
+            WritePokedexListTilemapEntry(bg3, 38, y, 0x081f);
+            WritePokedexListTilemapEntry(bg3, 39, y, 0x0001);
+        }
+        else if (y <= 10)
+        {
+            // Keep portrait card + left padding, widen divider/stats across 12..33, align footprint/ball at 34..38.
+            for (x = 0; x <= 10; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + x]);
+            WritePokedexListTilemapEntry(bg3, 11, y, src[y * 32 + 3]);
+            for (x = 12; x <= 14; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + x - 1]);
+            for (x = 15; x <= 32; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + 22]);
+            WritePokedexListTilemapEntry(bg3, 33, y, src[y * 32 + 23]);
+            for (x = 34; x <= 38; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + x - 10]);
+            WritePokedexListTilemapEntry(bg3, 39, y, 0x0001);
+        }
+        else if (y == 11)
+        {
+            WritePokedexListTilemapEntry(bg3, 0, y, 0x30ec);
+            WritePokedexListTilemapEntry(bg3, 1, y, 0x00cc);
+            for (x = 2; x <= 35; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x00ed);
+            for (x = 36; x <= 39; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[11 * 32 + x - 10]);
+        }
+        else if (y <= 20)
+        {
+            u16 sr = (y == 12) ? 12 : 13;
+            WritePokedexListTilemapEntry(bg3, 0, y, 0x30fb);
+            WritePokedexListTilemapEntry(bg3, 1, y, 0x30dd);
+            for (x = 2; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[sr * 32 + 2]);
+            WritePokedexListTilemapEntry(bg3, 38, y, 0x34dd);
+            WritePokedexListTilemapEntry(bg3, 39, y, 0x34fb);
+        }
+        else if (y == 21)
+        {
+            WritePokedexListTilemapEntry(bg3, 0, y, 0x38eb);
+            for (x = 1; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x38dc);
+            WritePokedexListTilemapEntry(bg3, 38, y, 0x3cdc);
+            WritePokedexListTilemapEntry(bg3, 39, y, 0x3ceb);
+        }
+        else
+        {
+            for (x = 0; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0001);
+        }
+    }
+    Free(src);
+}
+
+static void LoadScreenSelectBarMain_SDL2(void)
+{
+    static const u8 sDestCols[SCREEN_COUNT] = { 1, 10, 19, 32 };
+    u16 *src = Alloc(3 * 32 * sizeof(u16));
+    u16 *bg1 = GetBgTilemapBuffer(1);
+    u16 x, y, i, c;
+
+    LZ77UnCompWram(gPokedexScreenSelectBarMain_Tilemap, src);
+    for (y = 0; y < 2; y++)
+    {
+        for (x = 0; x < 40; x++)
+            WritePokedexListTilemapEntry(bg1, x, y, 0x204f);
+        for (i = 0; i < SCREEN_COUNT; i++)
+        {
+            for (c = 0; c < 7; c++)
+                WritePokedexListTilemapEntry(bg1, sDestCols[i] + c, y, src[y * 32 + 1 + i * 7 + c]);
+        }
+    }
+    for (x = 0; x < 40; x++)
+        WritePokedexListTilemapEntry(bg1, x, 2, 0x205f);
+    Free(src);
+}
+#endif
+
 static u8 LoadInfoScreen(struct PokedexListItem *item, u8 monSpriteId)
 {
     u8 taskId;
@@ -3474,12 +3653,21 @@ static u8 LoadInfoScreen(struct PokedexListItem *item, u8 monSpriteId)
     gTasks[taskId].tMonSpriteId = monSpriteId;
     gTasks[taskId].tTrainerSpriteId = SPRITE_NONE;
     ResetBgsAndClearDma3BusyFlags(0);
+#ifdef PLATFORM_SDL2
+    InitBgsFromTemplates(0, sInfoScreen_BgTemplate_SDL2, ARRAY_COUNT(sInfoScreen_BgTemplate_SDL2));
+    SetBgTilemapBuffer(3, AllocZeroed(BG_SCREEN_SIZE * 2));
+    SetBgTilemapBuffer(2, AllocZeroed(BG_SCREEN_SIZE * 2));
+    SetBgTilemapBuffer(1, AllocZeroed(BG_SCREEN_SIZE * 2));
+    SetBgTilemapBuffer(0, AllocZeroed(BG_SCREEN_SIZE * 2));
+    InitWindows(sInfoScreenPage_WindowTemplates_SDL2);
+#else
     InitBgsFromTemplates(0, sInfoScreen_BgTemplate, ARRAY_COUNT(sInfoScreen_BgTemplate));
     SetBgTilemapBuffer(3, AllocZeroed(BG_SCREEN_SIZE));
     SetBgTilemapBuffer(2, AllocZeroed(BG_SCREEN_SIZE));
     SetBgTilemapBuffer(1, AllocZeroed(BG_SCREEN_SIZE));
     SetBgTilemapBuffer(0, AllocZeroed(BG_SCREEN_SIZE));
     InitWindows(sInfoScreen_WindowTemplates);
+#endif
     DeactivateAllTextPrinters();
 
     return taskId;
@@ -3513,9 +3701,6 @@ static void Task_LoadInfoScreen(u8 taskId)
         {
             u16 r2;
 
-#ifdef PLATFORM_SDL2
-            SetFrameViewToGbaSize(TRUE);
-#endif
             sPokedexView->currentPage = PAGE_INFO;
             gPokedexVBlankCB = gMain.vblankCallback;
             SetVBlankCallback(NULL);
@@ -3525,12 +3710,19 @@ static void Task_LoadInfoScreen(u8 taskId)
             if (gTasks[taskId].tBgLoaded)
                 r2 |= DISPCNT_BG1_ON;
             ResetOtherVideoRegisters(r2);
+#ifdef PLATFORM_SDL2
+            ConfigureInfoScreenBgs_SDL2(TRUE);
+#endif
             gMain.state = 1;
         }
         break;
     case 1:
         DecompressAndLoadBgGfxUsingHeap(3, gPokedexMenu_Gfx, 0x2000, 0, 0);
+#ifdef PLATFORM_SDL2
+        LoadPokedexInfoScreenBgTilemap_SDL2();
+#else
         CopyToBgTilemapBuffer(3, gPokedexInfoScreen_Tilemap, 0, 0);
+#endif
         FillWindowPixelBuffer(WIN_INFO, PIXEL_FILL(0));
         PutWindowTilemap(WIN_INFO);
         PutWindowTilemap(WIN_FOOTPRINT);
@@ -3764,6 +3956,9 @@ static void Task_LoadAreaScreen(u8 taskId)
             gPokedexVBlankCB = gMain.vblankCallback;
             SetVBlankCallback(NULL);
             ResetOtherVideoRegisters(DISPCNT_BG1_ON);
+#ifdef PLATFORM_SDL2
+            ConfigureInfoScreenBgs_SDL2(FALSE);
+#endif
             sPokedexView->selectedScreen = AREA_SCREEN;
             gMain.state = 1;
         }
@@ -3822,6 +4017,9 @@ static void Task_LoadCryScreen(u8 taskId)
             gPokedexVBlankCB = gMain.vblankCallback;
             SetVBlankCallback(NULL);
             ResetOtherVideoRegisters(DISPCNT_BG1_ON);
+#ifdef PLATFORM_SDL2
+            ConfigureInfoScreenBgs_SDL2(FALSE);
+#endif
             sPokedexView->selectedScreen = CRY_SCREEN;
             gMain.state = 1;
         }
@@ -4016,6 +4214,9 @@ static void Task_LoadSizeScreen(u8 taskId)
             gPokedexVBlankCB = gMain.vblankCallback;
             SetVBlankCallback(NULL);
             ResetOtherVideoRegisters(DISPCNT_BG1_ON);
+#ifdef PLATFORM_SDL2
+            ConfigureInfoScreenBgs_SDL2(FALSE);
+#endif
             sPokedexView->selectedScreen = SIZE_SCREEN;
             gMain.state = 1;
         }
@@ -4180,7 +4381,11 @@ static void Task_SwitchScreensFromSizeScreen(u8 taskId)
 
 static void LoadScreenSelectBarMain(u16 unused)
 {
+#ifdef PLATFORM_SDL2
+    LoadScreenSelectBarMain_SDL2();
+#else
     CopyToBgTilemapBuffer(1, gPokedexScreenSelectBarMain_Tilemap, 0, 0);
+#endif
 }
 
 static void LoadScreenSelectBarSubmenu(u16 unused)
@@ -4190,11 +4395,18 @@ static void LoadScreenSelectBarSubmenu(u16 unused)
 
 static void HighlightScreenSelectBarItem(u8 selectedScreen, u16 unused)
 {
+#ifdef PLATFORM_SDL2
+    static const u8 sDestCols[SCREEN_COUNT] = { 1, 10, 19, 32 };
+#endif
     u8 i;
 
     for (i = 0; i < SCREEN_COUNT; i++)
     {
+#ifdef PLATFORM_SDL2
+        u8 row = sDestCols[i];
+#else
         u8 row = (i * 7) + 1;
+#endif
         u8 palette = i == selectedScreen ? 2 : 4;
 
         SetBgTilemapPalette(1, row, 0, 7, 2, palette);
@@ -4251,14 +4463,16 @@ static void Task_DisplayCaughtMonDexPage(u8 taskId)
         {
             gPokedexVBlankCB = gMain.vblankCallback;
             SetVBlankCallback(NULL);
-#ifdef PLATFORM_SDL2
-            SetFrameViewToGbaSize(TRUE);
-#endif
             ResetOtherVideoRegisters(DISPCNT_BG0_ON);
             ResetBgsAndClearDma3BusyFlags(0);
             InitBgsFromTemplates(0, sNewEntryInfoScreen_BgTemplate, ARRAY_COUNT(sNewEntryInfoScreen_BgTemplate));
+#ifdef PLATFORM_SDL2
+            SetBgTilemapBuffer(3, AllocZeroed(BG_SCREEN_SIZE * 2));
+            SetBgTilemapBuffer(2, AllocZeroed(BG_SCREEN_SIZE * 2));
+#else
             SetBgTilemapBuffer(3, AllocZeroed(BG_SCREEN_SIZE));
             SetBgTilemapBuffer(2, AllocZeroed(BG_SCREEN_SIZE));
+#endif
             InitWindows(sNewEntryInfoScreen_WindowTemplates);
             DeactivateAllTextPrinters();
             gTasks[taskId].tState = 1;
@@ -4266,7 +4480,11 @@ static void Task_DisplayCaughtMonDexPage(u8 taskId)
         break;
     case 1:
         DecompressAndLoadBgGfxUsingHeap(3, gPokedexMenu_Gfx, 0x2000, 0, 0);
+#ifdef PLATFORM_SDL2
+        LoadPokedexInfoScreenBgTilemap_SDL2();
+#else
         CopyToBgTilemapBuffer(3, gPokedexInfoScreen_Tilemap, 0, 0);
+#endif
         FillWindowPixelBuffer(WIN_INFO, PIXEL_FILL(0));
         PutWindowTilemap(WIN_INFO);
         PutWindowTilemap(WIN_FOOTPRINT);
@@ -4361,10 +4579,7 @@ static void Task_ExitCaughtMonPage(u8 taskId)
         if (ObjPaletteMask(paletteNum) != 0)
             LoadCompressedPalette(lzPaletteData, OBJ_PLTT_ID(paletteNum), PLTT_SIZE_4BPP);
 #ifdef PLATFORM_SDL2
-        gSprites[gTasks[taskId].tMonSpriteId].x += GBA_VIEW_X;
-        gSprites[gTasks[taskId].tMonSpriteId].y += GBA_VIEW_Y;
         gSprites[gTasks[taskId].tMonSpriteId].callback = SpriteCallbackDummy;
-        SetFrameViewToGbaSize(FALSE);
 #endif
         DestroyTask(taskId);
     }
@@ -4372,6 +4587,17 @@ static void Task_ExitCaughtMonPage(u8 taskId)
 
 static void SpriteCB_SlideCaughtMonToCenter(struct Sprite *sprite)
 {
+#ifdef PLATFORM_SDL2
+    if (sprite->x < DISPLAY_WIDTH / 2)
+        sprite->x += 2;
+    if (sprite->x > DISPLAY_WIDTH / 2)
+        sprite->x -= 2;
+
+    if (sprite->y < DISPLAY_HEIGHT / 2)
+        sprite->y += 1;
+    if (sprite->y > DISPLAY_HEIGHT / 2)
+        sprite->y -= 1;
+#else
     if (sprite->x < GBA_DISPLAY_WIDTH / 2)
         sprite->x += 2;
     if (sprite->x > GBA_DISPLAY_WIDTH / 2)
@@ -4381,6 +4607,7 @@ static void SpriteCB_SlideCaughtMonToCenter(struct Sprite *sprite)
         sprite->y += 1;
     if (sprite->y > GBA_DISPLAY_HEIGHT / 2)
         sprite->y -= 1;
+#endif
 }
 
 #undef tState
@@ -4402,6 +4629,49 @@ static void PrintMonInfo(u32 num, u32 value, u32 owned, u32 newEntry)
     const u8 *category;
     const u8 *description;
 
+#ifdef PLATFORM_SDL2
+    if (newEntry)
+        PrintInfoScreenText(gText_PokedexRegistration, GetStringCenterAlignXOffset(FONT_NORMAL, gText_PokedexRegistration, DISPLAY_WIDTH), 0);
+    if (value == 0)
+        value = NationalToHoennOrder(num);
+    else
+        value = num;
+    ConvertIntToDecimalStringN(StringCopy(str, gText_NumberClear01), value, STR_CONV_MODE_LEADING_ZEROS, 3);
+    PrintInfoScreenText(str, 0x70, 0x19);
+    natNum = NationalPokedexNumToSpecies(num);
+    if (natNum)
+        name = gSpeciesNames[natNum];
+    else
+        name = sText_TenDashes2;
+    PrintInfoScreenText(name, 0x94, 0x19);
+    if (owned)
+    {
+        CopyMonCategoryText(num, str2);
+        category = str2;
+    }
+    else
+    {
+        category = gText_5MarksPokemon;
+    }
+    PrintInfoScreenText(category, 0x74, 0x29);
+    PrintInfoScreenText(gText_HTHeight, 0x70, 0x39);
+    PrintInfoScreenText(gText_WTWeight, 0x70, 0x49);
+    if (owned)
+    {
+        PrintMonHeight(gPokedexEntries[num].height, 0x91, 0x39);
+        PrintMonWeight(gPokedexEntries[num].weight, 0x91, 0x49);
+    }
+    else
+    {
+        PrintInfoScreenText(gText_UnkHeight, 0x91, 0x39);
+        PrintInfoScreenText(gText_UnkWeight, 0x91, 0x49);
+    }
+    if (owned)
+        description = gPokedexEntries[num].description;
+    else
+        description = sExpandedPlaceholder_PokedexDescription;
+    PrintInfoScreenText(description, GetStringCenterAlignXOffset(FONT_NORMAL, description, DISPLAY_WIDTH), 103);
+#else
     if (newEntry)
         PrintInfoScreenText(gText_PokedexRegistration, GetStringCenterAlignXOffset(FONT_NORMAL, gText_PokedexRegistration, GBA_DISPLAY_WIDTH), 0);
     if (value == 0)
@@ -4443,6 +4713,7 @@ static void PrintMonInfo(u32 num, u32 value, u32 owned, u32 newEntry)
     else
         description = sExpandedPlaceholder_PokedexDescription;
     PrintInfoScreenText(description, GetStringCenterAlignXOffset(FONT_NORMAL, description, GBA_DISPLAY_WIDTH), 95);
+#endif
 }
 
 static void PrintMonHeight(u16 height, u8 left, u8 top)
