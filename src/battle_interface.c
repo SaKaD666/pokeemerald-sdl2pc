@@ -1118,17 +1118,18 @@ void InitBattlerHealthboxCoords(u8 battler)
 
 #ifdef PLATFORM_SDL2
     // Keep the healthboxes on the side opposite their battler.
-    x += GetBattlerSide(battler) == B_SIDE_PLAYER ? BATTLE_OPPONENT_PLATFORM_SHIFT : BATTLE_PLAYER_PLATFORM_SHIFT;
-    if (!IsContest() && !IsDoubleBattle() && GetBattlerSide(battler) == B_SIDE_PLAYER)
-        x += BATTLE_PLAYER_HEALTHBOX_X_SHIFT;
-    if (!IsContest() && !IsDoubleBattle() && GetBattlerSide(battler) != B_SIDE_PLAYER)
-        x += BATTLE_OPPONENT_HEALTHBOX_X_SHIFT;
     if (!IsContest())
     {
         if (GetBattlerSide(battler) == B_SIDE_PLAYER)
+        {
+            x += BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_PLAYER_HEALTHBOX_X_SHIFT;
             y += BATTLE_PLAYER_HEALTHBOX_Y_SHIFT;
-        else
-            y += IsDoubleBattle() ? BATTLE_OPPONENT_MON_Y_SHIFT : BATTLE_OPPONENT_HEALTHBOX_Y_SHIFT;
+        }
+        else if (!IsDoubleBattle())
+        {
+            x += BATTLE_PLAYER_PLATFORM_SHIFT + BATTLE_OPPONENT_HEALTHBOX_X_SHIFT;
+            y += BATTLE_OPPONENT_HEALTHBOX_Y_SHIFT;
+        }
     }
 #endif
     UpdateSpritePos(gHealthboxSpriteIds[battler], x, y);

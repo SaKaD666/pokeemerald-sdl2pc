@@ -2588,6 +2588,16 @@ void AnimTask_DoomDesireLightBeam(u8 taskId)
             u8 position = GetBattlerPosition(gBattleAnimTarget);
             if (IsDoubleBattle() == TRUE)
             {
+#ifdef PLATFORM_SDL2
+                if (position == B_POSITION_OPPONENT_LEFT)
+                    gBattle_BG1_X = -155 - (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_OPPONENT_MON_X_FINE_SHIFT);
+                if (position == B_POSITION_OPPONENT_RIGHT)
+                    gBattle_BG1_X = -115 - (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_OPPONENT_MON_X_FINE_SHIFT);
+                if (position == B_POSITION_PLAYER_LEFT)
+                    gBattle_BG1_X = 14 - BATTLE_PLAYER_PLATFORM_SHIFT;
+                if (position == B_POSITION_PLAYER_RIGHT)
+                    gBattle_BG1_X = -20 - BATTLE_PLAYER_PLATFORM_SHIFT;
+#else
                 if (position == B_POSITION_OPPONENT_LEFT)
                     gBattle_BG1_X = -155;
                 if (position == B_POSITION_OPPONENT_RIGHT)
@@ -2596,6 +2606,7 @@ void AnimTask_DoomDesireLightBeam(u8 taskId)
                     gBattle_BG1_X = 14;
                 if (position == B_POSITION_PLAYER_RIGHT)
                     gBattle_BG1_X = -20;
+#endif
             }
             else
             {

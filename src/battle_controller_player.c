@@ -2327,11 +2327,11 @@ static void PlayerHandleDrawTrainerPic(void)
         else
         {
             yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
-#ifdef PLATFORM_SDL2
-            if (!IsDoubleBattle() && !(gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER))
-                yPos += BATTLE_PLAYER_MON_Y_SHIFT;
-#endif
         }
+#ifdef PLATFORM_SDL2
+        xPos += BATTLE_PLAYER_PLATFORM_SHIFT;
+        yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+#endif
 
     }
     else

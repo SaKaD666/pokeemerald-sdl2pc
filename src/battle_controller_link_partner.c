@@ -1117,6 +1117,9 @@ static void LinkPartnerHandleDrawTrainerPic(void)
             xPos = 90;
         else // first mon
             xPos = 32;
+#ifdef PLATFORM_SDL2
+        xPos += BATTLE_PLAYER_PLATFORM_SHIFT;
+#endif
     }
     else
     {
@@ -1140,7 +1143,11 @@ static void LinkPartnerHandleDrawTrainerPic(void)
 
     DecompressTrainerBackPic(trainerPicId, gActiveBattler);
     SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
+#ifdef PLATFORM_SDL2
+    gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, xPos, (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80 + BATTLE_PLAYER_MON_Y_SHIFT, GetBattlerSpriteSubpriority(gActiveBattler));
+#else
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, xPos, (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80, GetBattlerSpriteSubpriority(gActiveBattler));
+#endif
 
     SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;

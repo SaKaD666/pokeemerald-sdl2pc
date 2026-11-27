@@ -143,14 +143,9 @@ u8 GetBattlerSpriteCoord(u8 battler, u8 coordType)
         if (!IsContest())
         {
             if (GetBattlerSide(battler) == B_SIDE_PLAYER)
-            {
-                if (!IS_DOUBLE_BATTLE())
-                    retVal += BATTLE_PLAYER_MON_Y_SHIFT;
-            }
+                retVal += BATTLE_PLAYER_MON_Y_SHIFT;
             else
-            {
                 retVal += BATTLE_OPPONENT_MON_Y_FINE_SHIFT;
-            }
         }
 #endif
         break;
@@ -306,7 +301,7 @@ u8 GetBattlerSpriteFinal_Y(u8 battler, u16 species, bool8 a3)
     }
     y = offset + sBattlerCoords[IS_DOUBLE_BATTLE()][GetBattlerPosition(battler)].y;
 #ifdef PLATFORM_SDL2
-    if (!IsContest() && !IS_DOUBLE_BATTLE() && GetBattlerSide(battler) == B_SIDE_PLAYER)
+    if (!IsContest() && GetBattlerSide(battler) == B_SIDE_PLAYER)
         y += BATTLE_PLAYER_MON_Y_SHIFT;
     else if (!IsContest() && GetBattlerSide(battler) != B_SIDE_PLAYER)
         y += BATTLE_OPPONENT_MON_Y_FINE_SHIFT;
@@ -2015,7 +2010,7 @@ void InitPrioritiesForVisibleBattlers(void)
 
             gSprites[gBattlerSpriteIds[i]].subpriority = GetBattlerSpriteSubpriority(i);
 #ifdef PLATFORM_SDL2
-            if (!IsContest() && !IS_DOUBLE_BATTLE() && GetBattlerSide(i) == B_SIDE_PLAYER)
+            if (!IsContest() && GetBattlerSide(i) == B_SIDE_PLAYER)
                 priority = 1;
 #endif
             gSprites[gBattlerSpriteIds[i]].oam.priority = priority;

@@ -1214,9 +1214,11 @@ static void RecordedPlayerHandleDrawTrainerPic(void)
         else
         {
             yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
-            if (!IsDoubleBattle() && !(gBattleTypeFlags & BATTLE_TYPE_INGAME_PARTNER))
-                yPos += BATTLE_PLAYER_MON_Y_SHIFT;
         }
+#ifdef PLATFORM_SDL2
+        xPos += BATTLE_PLAYER_PLATFORM_SHIFT;
+        yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+#endif
 
     }
     else

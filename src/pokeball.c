@@ -384,7 +384,7 @@ static void Task_DoPokeballSendOutAnim(u8 taskId)
         gBattlerTarget = battler;
         gSprites[ballSpriteId].x = 24;
 #ifdef PLATFORM_SDL2
-        gSprites[ballSpriteId].y = 68 + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0);
+        gSprites[ballSpriteId].y = 68 + BATTLE_PLAYER_MON_Y_SHIFT;
 #else
         gSprites[ballSpriteId].y = 68;
 #endif

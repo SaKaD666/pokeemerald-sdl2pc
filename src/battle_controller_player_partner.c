@@ -1310,6 +1310,10 @@ static void PlayerPartnerHandleDrawTrainerPic(void)
         xPos = 32;
         yPos = (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 80;
     }
+#ifdef PLATFORM_SDL2
+    xPos += BATTLE_PLAYER_PLATFORM_SHIFT;
+    yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+#endif
 
     // Use back pic only if the partner is Steven
     if (gPartnerTrainerId == TRAINER_STEVEN_PARTNER)

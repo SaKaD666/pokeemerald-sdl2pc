@@ -782,7 +782,7 @@ static void LoadBattleTerrainTilemap(const void *source)
     // Block 27 contains the same neutral terrain without either platform.
     // Read each platform row before writing a destination that overlaps it.
     u16 playerPlatform[2][16];
-    u8 playerPlatformTileRowShift = (gBattleTypeFlags & BATTLE_TYPE_DOUBLE) ? 0 : BATTLE_PLAYER_PLATFORM_Y_TILE_SHIFT;
+    u8 playerPlatformTileRowShift = BATTLE_PLAYER_PLATFORM_Y_TILE_SHIFT;
     u16 y;
 
     CpuCopy16(tilemap + 12 * 32, playerPlatform[0], sizeof(playerPlatform[0]));
