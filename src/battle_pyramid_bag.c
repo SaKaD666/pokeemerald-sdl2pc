@@ -659,7 +659,7 @@ static void AddScrollArrows(void)
 {
     if (gPyramidBagMenu->scrollIndicatorsTaskId == TASK_NONE)
         gPyramidBagMenu->scrollIndicatorsTaskId = AddScrollIndicatorArrowPairParameterized(SCROLL_ARROW_UP,
-                                                                                            172 + BAG_VIEW_X, 12 + BAG_VIEW_Y, 148 + BAG_VIEW_Y,
+                                                                                            172 + GBA_VIEW_X, 12 + GBA_VIEW_Y, 148 + GBA_VIEW_Y,
                                                                                             gPyramidBagMenu->listMenuCount - gPyramidBagMenu->listMenuMaxShown,
                                                                                             TAG_SCROLL_ARROW, TAG_SCROLL_ARROW,
                                                                                             &gPyramidBagMenuState.scrollPosition);
@@ -1511,7 +1511,7 @@ static void LoadPyramidBagPalette(void)
 static void CreatePyramidBagSprite(void)
 {
     u8 *spriteId = &gPyramidBagMenu->spriteIds[PBAG_SPRITE_BAG];
-    *spriteId = CreateSprite(&sSpriteTemplate_PyramidBag, 68 + BAG_VIEW_X, 56 + BAG_VIEW_Y, 0);
+    *spriteId = CreateSprite(&sSpriteTemplate_PyramidBag, 68 + GBA_VIEW_X, 56 + GBA_VIEW_Y, 0);
 }
 
 static void ShakePyramidBag(void)
@@ -1545,8 +1545,8 @@ static void ShowItemIcon(u16 itemId, bool8 isAlt)
         if (itemSpriteId != MAX_SPRITES)
         {
             *spriteId = itemSpriteId;
-            gSprites[itemSpriteId].x2 = 24 + BAG_VIEW_X;
-            gSprites[itemSpriteId].y2 = 88 + BAG_VIEW_Y;
+            gSprites[itemSpriteId].x2 = 24 + GBA_VIEW_X;
+            gSprites[itemSpriteId].y2 = 88 + GBA_VIEW_Y;
         }
     }
 }
@@ -1568,5 +1568,5 @@ static void SetSwapLineInvisibility(bool8 invisible)
 
 static void UpdateSwapLinePos(u8 y)
 {
-    UpdateSwapLineSpritesPos(&gPyramidBagMenu->spriteIds[PBAG_SPRITE_SWAP_LINE_START], NUM_SWAP_LINE_SPRITES | SWAP_LINE_HAS_MARGIN, 120 + BAG_VIEW_X, (y + 1) * 16 + BAG_VIEW_Y);
+    UpdateSwapLineSpritesPos(&gPyramidBagMenu->spriteIds[PBAG_SPRITE_SWAP_LINE_START], NUM_SWAP_LINE_SPRITES | SWAP_LINE_HAS_MARGIN, 120 + GBA_VIEW_X, (y + 1) * 16 + GBA_VIEW_Y);
 }

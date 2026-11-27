@@ -711,11 +711,6 @@ static void ResetPartyMenu(void)
     sPartyBgGfxTilemap = NULL;
 }
 
-#define PARTY_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
-#define PARTY_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
-#define PARTY_VIEW_BG_X (-PARTY_VIEW_X * 256)
-#define PARTY_VIEW_BG_Y (-PARTY_VIEW_Y * 256)
-
 static bool8 AllocPartyMenuBg(void)
 {
     u8 bg;
@@ -730,19 +725,16 @@ static bool8 AllocPartyMenuBg(void)
     SetBgTilemapBuffer(1, sPartyBgTilemapBuffer);
     ResetAllBgsCoordinates();
 #ifdef PLATFORM_SDL2
-    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, PARTY_VIEW_X, PARTY_VIEW_X + GBA_DISPLAY_WIDTH);
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(PARTY_VIEW_Y, PARTY_VIEW_Y + GBA_DISPLAY_HEIGHT));
-    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
-    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    SetCenteredGbaWindow0();
     display |= DISPCNT_WIN0_ON;
 #endif
     for (bg = 0; bg <= 2; bg++)
     {
-        ChangeBgX(bg, PARTY_VIEW_BG_X, BG_COORD_SET);
-        ChangeBgY(bg, PARTY_VIEW_BG_Y, BG_COORD_SET);
+        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
     }
-    gSpriteCoordOffsetX = PARTY_VIEW_X;
-    gSpriteCoordOffsetY = PARTY_VIEW_Y;
+    gSpriteCoordOffsetX = GBA_VIEW_X;
+    gSpriteCoordOffsetY = GBA_VIEW_Y;
     ScheduleBgCopyTilemapToVram(1);
     SetGpuReg(REG_OFFSET_DISPCNT, display);
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
@@ -6190,7 +6182,7 @@ static void Task_InitMultiPartnerPartySlideIn(u8 taskId)
     // The first slide step also sets the sprites offscreen
     gTasks[taskId].tXPos = 256;
     SlideMultiPartyMenuBoxSpritesOneStep(taskId);
-    ChangeBgX(2, PARTY_VIEW_BG_X + 0x10000, BG_COORD_SET);
+    ChangeBgX(2, GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
     gTasks[taskId].func = Task_MultiPartnerPartySlideIn;
 }
 

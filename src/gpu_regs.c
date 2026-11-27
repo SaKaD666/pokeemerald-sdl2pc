@@ -72,6 +72,14 @@ void ResetGpuWindowHorizontalBounds(u8 window)
 {
     sGpuWindowHorizontalBounds[window] = GPU_WINDOW_H_LEGACY;
 }
+
+void SetCenteredGbaWindow0(void)
+{
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, GBA_VIEW_X, GBA_VIEW_X + GBA_DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(GBA_VIEW_Y, GBA_VIEW_Y + GBA_DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
+    SetGpuReg(REG_OFFSET_WINOUT, 0);
+}
 #endif
 
 static void CopyBufferedValueToGpuReg(u8 regOffset);

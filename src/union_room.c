@@ -3662,7 +3662,7 @@ static u8 AddUnionRoomTradeBoardWindow(const struct WindowTemplate *template)
     if (IsWideFieldUi())
     {
         struct WindowTemplate centered = *template;
-        centered.tilemapLeft += (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / (2 * TILE_WIDTH);
+        centered.tilemapLeft += GBA_VIEW_X / TILE_WIDTH;
         return AddWindow(&centered);
     }
 #endif

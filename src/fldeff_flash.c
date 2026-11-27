@@ -221,7 +221,7 @@ static void LoadCaveTransitionBg(void)
     LZ77UnCompVram(sCaveTransitionTiles, (void *)BG_CHAR_ADDR(3));
 #ifdef PLATFORM_SDL2
     u16 *tilemap = (u16 *)BG_SCREEN_ADDR(30);
-    const u16 margin = (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / (2 * TILE_WIDTH);
+    const u16 margin = GBA_VIEW_X / TILE_WIDTH;
     u16 y, x;
 
     LZ77UnCompVram(sCaveTransitionTilemap, tilemap);

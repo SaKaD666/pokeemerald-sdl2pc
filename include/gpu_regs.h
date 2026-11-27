@@ -34,6 +34,7 @@ vu32 *GetGpuWindowHorizontalDmaDest(u8 window);
 u32 GetGpuWindowHorizontalBounds(u8 window);
 void SetGpuWindowHorizontalBounds(u8 window, u16 left, u16 right);
 void ResetGpuWindowHorizontalBounds(u8 window);
+void SetCenteredGbaWindow0(void);
 #endif
 
 #endif //GUARD_GPU_REGS_H

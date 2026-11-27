@@ -1005,11 +1005,6 @@ static const struct WindowTemplate sWindowTemplates[] =
     DUMMY_WIN_TEMPLATE
 };
 
-#define STORAGE_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
-#define STORAGE_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
-#define STORAGE_VIEW_BG_X (-STORAGE_VIEW_X * 256)
-#define STORAGE_VIEW_BG_Y (-STORAGE_VIEW_Y * 256)
-
 static u8 UseStorageSpriteOffset(u8 spriteId)
 {
     if (spriteId < MAX_SPRITES)
@@ -1999,7 +1994,7 @@ static void VBlankCB_PokeStorage(void)
     ProcessSpriteCopyRequests();
     UnkUtil_Run();
     TransferPlttBuffer();
-    SetGpuReg(REG_OFFSET_BG2HOFS, sStorage->bg2_X - STORAGE_VIEW_X);
+    SetGpuReg(REG_OFFSET_BG2HOFS, sStorage->bg2_X - GBA_VIEW_X);
 }
 
 static void CB2_PokeStorage(void)
@@ -2057,11 +2052,11 @@ static void SetStorageViewOffsets(void)
 
     for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
     {
-        ChangeBgX(bg, STORAGE_VIEW_BG_X, BG_COORD_SET);
-        ChangeBgY(bg, STORAGE_VIEW_BG_Y, BG_COORD_SET);
+        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
     }
-    gSpriteCoordOffsetX = STORAGE_VIEW_X;
-    gSpriteCoordOffsetY = STORAGE_VIEW_Y;
+    gSpriteCoordOffsetX = GBA_VIEW_X;
+    gSpriteCoordOffsetY = GBA_VIEW_Y;
 }
 
 static void ResetForPokeStorage(void)
@@ -2098,10 +2093,7 @@ static void SetMonIconTransparency(void)
         SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(7, 11));
     }
 #ifdef PLATFORM_SDL2
-    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, STORAGE_VIEW_X, STORAGE_VIEW_X + GBA_DISPLAY_WIDTH);
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(STORAGE_VIEW_Y, STORAGE_VIEW_Y + GBA_DISPLAY_HEIGHT));
-    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
-    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    SetCenteredGbaWindow0();
     display |= DISPCNT_WIN0_ON;
 #endif
     SetGpuReg(REG_OFFSET_DISPCNT, display);
@@ -3074,7 +3066,7 @@ static void Task_ShowMarkMenu(u8 taskId)
     case 0:
         PrintMessage(MSG_MARK_POKE);
         sStorage->markMenu.markings = sStorage->displayMonMarkings;
-        OpenMonMarkingsMenu(sStorage->displayMonMarkings, 0xb0 + STORAGE_VIEW_X, 0x10 + STORAGE_VIEW_Y);
+        OpenMonMarkingsMenu(sStorage->displayMonMarkings, 0xb0 + GBA_VIEW_X, 0x10 + GBA_VIEW_Y);
         sStorage->state++;
         break;
     case 1:
@@ -8270,8 +8262,8 @@ static bool8 MultiMove_Start(void)
         GetCursorBoxColumnAndRow(&sMultiMove->fromColumn, &sMultiMove->fromRow);
         sMultiMove->toColumn = sMultiMove->fromColumn;
         sMultiMove->toRow = sMultiMove->fromRow;
-        ChangeBgX(0, STORAGE_VIEW_BG_X - 1024, BG_COORD_SET);
-        ChangeBgY(0, STORAGE_VIEW_BG_Y - 1024, BG_COORD_SET);
+        ChangeBgX(0, GBA_VIEW_BG_X - 1024, BG_COORD_SET);
+        ChangeBgY(0, GBA_VIEW_BG_Y - 1024, BG_COORD_SET);
         FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 0x20, 0x20);
         FillWindowPixelBuffer8Bit(sStorage->multiMoveWindowId, PIXEL_FILL(0));
         MultiMove_SetIconToBg(sMultiMove->fromColumn, sMultiMove->fromRow);
@@ -8691,8 +8683,8 @@ static void MultiMove_SetPlacedMonData(void)
 
 static void MultiMove_ResetBg(void)
 {
-    ChangeBgX(0, STORAGE_VIEW_BG_X, BG_COORD_SET);
-    ChangeBgY(0, STORAGE_VIEW_BG_Y, BG_COORD_SET);
+    ChangeBgX(0, GBA_VIEW_BG_X, BG_COORD_SET);
+    ChangeBgY(0, GBA_VIEW_BG_Y, BG_COORD_SET);
     SetBgAttribute(0, BG_ATTR_PALETTEMODE, 0);
     ClearGpuRegBits(REG_OFFSET_BG0CNT, BGCNT_256COLOR);
     FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 32, 32);

@@ -368,7 +368,7 @@ static s16 GetMirageViewOffsetX(void)
 {
 #ifdef PLATFORM_SDL2
     if (IsWideFieldUi())
-        return (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
+        return GBA_VIEW_X;
 #endif
     return 0;
 }
@@ -377,7 +377,7 @@ static s16 GetMirageViewOffsetY(void)
 {
 #ifdef PLATFORM_SDL2
     if (IsWideFieldUi())
-        return (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
+        return GBA_VIEW_Y;
 #endif
     return 0;
 }

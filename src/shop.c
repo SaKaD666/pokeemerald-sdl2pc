@@ -221,9 +221,6 @@ static const struct ListMenuTemplate sShopBuyMenuListTemplate =
     .cursorKind = CURSOR_BLACK_ARROW
 };
 
-#define SHOP_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
-#define SHOP_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
-
 static const struct BgTemplate sShopBuyMenuBgTemplates[] =
 {
     {
@@ -664,9 +661,9 @@ static void BuyMenuAddScrollIndicatorArrows(void)
     {
         sShopData->scrollIndicatorsTaskId = AddScrollIndicatorArrowPairParameterized(
             SCROLL_ARROW_UP,
-            172 + SHOP_VIEW_X,
-            12 + SHOP_VIEW_Y,
-            148 + SHOP_VIEW_Y,
+            172 + GBA_VIEW_X,
+            12 + GBA_VIEW_Y,
+            148 + GBA_VIEW_Y,
             sMartInfo.itemCount - (MAX_ITEMS_SHOWN - 1),
             TAG_SCROLL_ARROW,
             TAG_SCROLL_ARROW,
@@ -702,13 +699,13 @@ static void BuyMenuAddItemIcon(u16 item, u8 iconSlot)
         if (spriteId != MAX_SPRITES)
         {
             *spriteIdPtr = spriteId;
-            gSprites[spriteId].x2 = 24 + SHOP_VIEW_X;
-            gSprites[spriteId].y2 = 88 + SHOP_VIEW_Y;
+            gSprites[spriteId].x2 = 24 + GBA_VIEW_X;
+            gSprites[spriteId].y2 = 88 + GBA_VIEW_Y;
         }
     }
     else
     {
-        spriteId = AddDecorationIconObject(item, 20 + SHOP_VIEW_X, 84 + SHOP_VIEW_Y, 1, iconSlot + TAG_ITEM_ICON_BASE, iconSlot + TAG_ITEM_ICON_BASE);
+        spriteId = AddDecorationIconObject(item, 20 + GBA_VIEW_X, 84 + GBA_VIEW_Y, 1, iconSlot + TAG_ITEM_ICON_BASE, iconSlot + TAG_ITEM_ICON_BASE);
         if (spriteId != MAX_SPRITES)
             *spriteIdPtr = spriteId;
     }
@@ -738,14 +735,11 @@ static void BuyMenuInitBgs(void)
     SetBgTilemapBuffer(3, sShopData->tilemapBuffers[2]);
     for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
     {
-        ChangeBgX(bg, -SHOP_VIEW_X * 256, BG_COORD_SET);
-        ChangeBgY(bg, -SHOP_VIEW_Y * 256, BG_COORD_SET);
+        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
     }
 #ifdef PLATFORM_SDL2
-    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, SHOP_VIEW_X, SHOP_VIEW_X + GBA_DISPLAY_WIDTH);
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(SHOP_VIEW_Y, SHOP_VIEW_Y + GBA_DISPLAY_HEIGHT));
-    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
-    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    SetCenteredGbaWindow0();
     display |= DISPCNT_WIN0_ON;
 #endif
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
@@ -789,7 +783,7 @@ static void BuyMenuDrawGraphics(void)
 {
     BuyMenuDrawMapGraphics();
     BuyMenuCopyMenuBgToBg1TilemapBuffer();
-    AddMoneyLabelObject(19 + SHOP_VIEW_X, 11 + SHOP_VIEW_Y);
+    AddMoneyLabelObject(19 + GBA_VIEW_X, 11 + GBA_VIEW_Y);
     PrintMoneyAmountInMoneyBoxWithBorder(WIN_MONEY, 1, 13, GetMoney(&gSaveBlock1Ptr->money));
     ScheduleBgCopyTilemapToVram(0);
     ScheduleBgCopyTilemapToVram(1);
@@ -930,8 +924,8 @@ static void BuyMenuDrawObjectEvents(void)
         spriteId = CreateObjectGraphicsSprite(
             gObjectEvents[sShopData->viewportObjects[i][OBJ_EVENT_ID]].graphicsId,
             SpriteCallbackDummy,
-            sShopData->viewportObjects[i][X_COORD] * 16 + 8 + SHOP_VIEW_X,
-            sShopData->viewportObjects[i][Y_COORD] * 16 + 48 - graphicsInfo->height / 2 + SHOP_VIEW_Y,
+            sShopData->viewportObjects[i][X_COORD] * 16 + 8 + GBA_VIEW_X,
+            sShopData->viewportObjects[i][Y_COORD] * 16 + 48 - graphicsInfo->height / 2 + GBA_VIEW_Y,
             2);
         if (spriteId == MAX_SPRITES)
             continue;

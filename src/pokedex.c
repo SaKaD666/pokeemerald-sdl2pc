@@ -4133,8 +4133,8 @@ static void Task_ExitCaughtMonPage(u8 taskId)
         if (ObjPaletteMask(paletteNum) != 0)
             LoadCompressedPalette(lzPaletteData, OBJ_PLTT_ID(paletteNum), PLTT_SIZE_4BPP);
 #ifdef PLATFORM_SDL2
-        gSprites[gTasks[taskId].tMonSpriteId].x += (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
-        gSprites[gTasks[taskId].tMonSpriteId].y += (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
+        gSprites[gTasks[taskId].tMonSpriteId].x += GBA_VIEW_X;
+        gSprites[gTasks[taskId].tMonSpriteId].y += GBA_VIEW_Y;
         gSprites[gTasks[taskId].tMonSpriteId].callback = SpriteCallbackDummy;
         SetFrameViewToGbaSize(FALSE);
 #endif

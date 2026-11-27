@@ -990,8 +990,8 @@ void DrawFrame(uint16_t *pixels)
     int scanlineCount = DISPLAY_HEIGHT;
 #ifdef PLATFORM_SDL2
     const bool8 gbaView = sGbaSizedFrameView;
-    const int viewX = (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
-    const int viewY = (DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2;
+    const int viewX = GBA_VIEW_X;
+    const int viewY = GBA_VIEW_Y;
     uint16_t scanlinePixels[DISPLAY_WIDTH];
 
     if (gbaView)

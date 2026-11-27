@@ -5,8 +5,6 @@
 #include "main.h"
 #include "menu_helpers.h"
 
-#define BAG_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
-#define BAG_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
 #ifdef PLATFORM_SDL2
 #define BAG_TILEMAP_SIZE (2 * BG_SCREEN_SIZE)
 #else

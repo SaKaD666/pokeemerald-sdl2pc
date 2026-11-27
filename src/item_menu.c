@@ -375,11 +375,11 @@ static const struct YesNoFuncTable sYesNoSellItemFunctions = {ConfirmSell, Cance
 
 static const struct ScrollArrowsTemplate sBagScrollArrowsTemplate = {
     .firstArrowType = SCROLL_ARROW_LEFT,
-    .firstX = 28 + BAG_VIEW_X,
-    .firstY = 16 + BAG_VIEW_Y,
+    .firstX = 28 + GBA_VIEW_X,
+    .firstY = 16 + GBA_VIEW_Y,
     .secondArrowType = SCROLL_ARROW_RIGHT,
-    .secondX = 100 + BAG_VIEW_X,
-    .secondY = 16 + BAG_VIEW_Y,
+    .secondX = 100 + GBA_VIEW_X,
+    .secondY = 16 + GBA_VIEW_Y,
     .fullyUpThreshold = -1,
     .fullyDownThreshold = -1,
     .tileTag = TAG_BAG_SCROLL_ARROW,
@@ -816,15 +816,12 @@ void InitBagBgs(void *tilemap)
     ResetAllBgsCoordinates();
     for (bg = 0; bg <= 2; bg++)
     {
-        ChangeBgX(bg, -BAG_VIEW_X * 256, BG_COORD_SET);
-        ChangeBgY(bg, -BAG_VIEW_Y * 256, BG_COORD_SET);
+        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
     }
     ScheduleBgCopyTilemapToVram(2);
 #ifdef PLATFORM_SDL2
-    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, BAG_VIEW_X, BAG_VIEW_X + GBA_DISPLAY_WIDTH);
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(BAG_VIEW_Y, BAG_VIEW_Y + GBA_DISPLAY_HEIGHT));
-    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
-    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    SetCenteredGbaWindow0();
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_WIN0_ON);
 #else
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
@@ -1065,9 +1062,9 @@ static void CreatePocketScrollArrowPair(void)
     if (gBagMenu->pocketScrollArrowsTask == TASK_NONE)
         gBagMenu->pocketScrollArrowsTask = AddScrollIndicatorArrowPairParameterized(
             SCROLL_ARROW_UP,
-            172 + BAG_VIEW_X,
-            12 + BAG_VIEW_Y,
-            148 + BAG_VIEW_Y,
+            172 + GBA_VIEW_X,
+            12 + GBA_VIEW_Y,
+            148 + GBA_VIEW_Y,
             gBagMenu->numItemStacks[gBagPosition.pocket] - gBagMenu->numShownItems[gBagPosition.pocket],
             TAG_POCKET_SCROLL_ARROW,
             TAG_POCKET_SCROLL_ARROW,

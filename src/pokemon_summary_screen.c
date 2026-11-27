@@ -1320,11 +1320,6 @@ static bool8 LoadGraphics(void)
     return FALSE;
 }
 
-#define SUMMARY_VIEW_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
-#define SUMMARY_VIEW_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
-#define SUMMARY_VIEW_BG_X (-SUMMARY_VIEW_X * 256)
-#define SUMMARY_VIEW_BG_Y (-SUMMARY_VIEW_Y * 256)
-
 static void InitBGs(void)
 {
     u8 bg;
@@ -1337,19 +1332,16 @@ static void InitBGs(void)
     SetBgTilemapBuffer(3, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0]);
     ResetAllBgsCoordinates();
 #ifdef PLATFORM_SDL2
-    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, SUMMARY_VIEW_X, SUMMARY_VIEW_X + GBA_DISPLAY_WIDTH);
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(SUMMARY_VIEW_Y, SUMMARY_VIEW_Y + GBA_DISPLAY_HEIGHT));
-    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
-    SetGpuReg(REG_OFFSET_WINOUT, 0);
+    SetCenteredGbaWindow0();
     display |= DISPCNT_WIN0_ON;
 #endif
     for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
     {
-        ChangeBgX(bg, SUMMARY_VIEW_BG_X, BG_COORD_SET);
-        ChangeBgY(bg, SUMMARY_VIEW_BG_Y, BG_COORD_SET);
+        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
     }
-    gSpriteCoordOffsetX = SUMMARY_VIEW_X;
-    gSpriteCoordOffsetY = SUMMARY_VIEW_Y;
+    gSpriteCoordOffsetX = GBA_VIEW_X;
+    gSpriteCoordOffsetY = GBA_VIEW_Y;
     ScheduleBgCopyTilemapToVram(1);
     ScheduleBgCopyTilemapToVram(2);
     ScheduleBgCopyTilemapToVram(3);
@@ -1854,7 +1846,7 @@ static void PssScrollRight(u8 taskId) // Scroll right
             SetBgAttribute(1, BG_ATTR_PRIORITY, 2);
             ScheduleBgCopyTilemapToVram(2);
         }
-        ChangeBgX(data[1], SUMMARY_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgX(data[1], GBA_VIEW_BG_X, BG_COORD_SET);
         SetBgTilemapBuffer(data[1], sMonSummaryScreen->bgTilemapBuffers[sMonSummaryScreen->currPageIndex][0]);
         ShowBg(1);
         ShowBg(2);
@@ -1887,7 +1879,7 @@ static void PssScrollLeft(u8 taskId) // Scroll left
             data[1] = 2;
         else
             data[1] = 1;
-        ChangeBgX(data[1], SUMMARY_VIEW_BG_X + 0x10000, BG_COORD_SET);
+        ChangeBgX(data[1], GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
     }
     ChangeBgX(data[1], 0x2000, BG_COORD_SUB);
     data[0] += 32;
@@ -1913,7 +1905,7 @@ static void PssScrollLeftEnd(u8 taskId) // display left
     if (sMonSummaryScreen->currPageIndex > 1)
     {
         SetBgTilemapBuffer(data[1], sMonSummaryScreen->bgTilemapBuffers[sMonSummaryScreen->currPageIndex - 1][0]);
-        ChangeBgX(data[1], SUMMARY_VIEW_BG_X + 0x10000, BG_COORD_SET);
+        ChangeBgX(data[1], GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
     }
     ShowBg(1);
     ShowBg(2);
@@ -2766,9 +2758,9 @@ static void DrawContestMoveHearts(u16 move)
 static void LimitEggSummaryPageDisplay(void) // If the Pokémon is an egg, limit the number of pages displayed to 1
 {
     if (sMonSummaryScreen->summary.isEgg)
-        ChangeBgX(3, SUMMARY_VIEW_BG_X + 0x10000, BG_COORD_SET);
+        ChangeBgX(3, GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
     else
-        ChangeBgX(3, SUMMARY_VIEW_BG_X, BG_COORD_SET);
+        ChangeBgX(3, GBA_VIEW_BG_X, BG_COORD_SET);
 }
 
 static void ResetWindows(void)

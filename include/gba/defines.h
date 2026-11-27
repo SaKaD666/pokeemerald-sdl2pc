@@ -132,6 +132,11 @@ extern unsigned char OAM[OAM_SIZE] __attribute__ ((aligned (4)));
 #define DISPLAY_HEIGHT GBA_DISPLAY_HEIGHT
 #endif
 
+#define GBA_VIEW_X    ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
+#define GBA_VIEW_Y    ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
+#define GBA_VIEW_BG_X (-GBA_VIEW_X * 256)
+#define GBA_VIEW_BG_Y (-GBA_VIEW_Y * 256)
+
 #define DISPLAY_SCANLINE_COUNT 228
 
 // Size of different tile formats in bytes
