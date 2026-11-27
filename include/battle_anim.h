@@ -90,7 +90,11 @@ void StartAnimLinearTranslation(struct Sprite *sprite);
 void InitAnimArcTranslation(struct Sprite *sprite);
 bool8 AnimTranslateLinear(struct Sprite *sprite);
 void TranslateAnimSpriteToTargetMonLocation(struct Sprite *sprite);
+#ifdef PLATFORM_SDL2
+u16 GetBattlerSpriteCoord2(u8 battler, u8 coordType);
+#else
 u8 GetBattlerSpriteCoord2(u8 battler, u8 coordType);
+#endif
 void InitAnimLinearTranslationWithSpeed(struct Sprite *sprite);
 u16 ArcTan2Neg(s16 x, s16 y);
 void TrySetSpriteRotScale(struct Sprite *sprite, bool8 recalcCenterVector, s16 xScale, s16 yScale, u16 rotation);
@@ -179,7 +183,11 @@ enum
     BATTLER_COORD_ATTR_RAW_BOTTOM,
 };
 
+#ifdef PLATFORM_SDL2
+u16 GetBattlerSpriteCoord(u8 battler, u8 coordType);
+#else
 u8 GetBattlerSpriteCoord(u8 battler, u8 coordType);
+#endif
 
 bool8 IsBattlerSpritePresent(u8 battler);
 void ClearBattleAnimBg(u32 bgId);
@@ -221,7 +229,11 @@ void AnimTask_HorizontalShake(u8 taskId);
 // battle_anim_throw.c
 void TryShinyAnimation(u8 battler, struct Pokemon *mon);
 u8 ItemIdToBallId(u16 ballItem);
+#ifdef PLATFORM_SDL2
+u8 AnimateBallOpenParticles(u16 x, u8 y, u8 priority, u8 subpriority, u8 ballId);
+#else
 u8 AnimateBallOpenParticles(u8 x, u8 y, u8 priority, u8 subpriority, u8 ballId);
+#endif
 u8 LaunchBallFadeMonTask(bool8 unfadeLater, u8 spritePalNum, PaletteMask selectedPalettes, u8 ballId);
 
 // battle_anim_utility_funcs.c

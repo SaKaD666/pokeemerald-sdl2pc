@@ -110,9 +110,15 @@ static const struct SpriteSheet sSpriteSheets_MoveEffectMons[] =
     { gMiscBlank_Gfx, MON_PIC_SIZE, TAG_MOVE_EFFECT_MON_2, },
 };
 
+#ifdef PLATFORM_SDL2
+u16 GetBattlerSpriteCoord(u8 battler, u8 coordType)
+{
+    u16 retVal;
+#else
 u8 GetBattlerSpriteCoord(u8 battler, u8 coordType)
 {
     u8 retVal;
+#endif
     u16 species;
     struct BattleSpriteInfo *spriteInfo;
 
@@ -316,7 +322,11 @@ u8 GetBattlerSpriteFinal_Y(u8 battler, u16 species, bool8 a3)
     return y;
 }
 
+#ifdef PLATFORM_SDL2
+u16 GetBattlerSpriteCoord2(u8 battler, u8 coordType)
+#else
 u8 GetBattlerSpriteCoord2(u8 battler, u8 coordType)
+#endif
 {
     u16 species;
     struct BattleSpriteInfo *spriteInfo;

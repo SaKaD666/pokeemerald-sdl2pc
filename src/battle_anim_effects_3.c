@@ -1248,7 +1248,7 @@ static void AnimWhiteHalo_Step2(struct Sprite *sprite)
 static void AnimTealAlert(struct Sprite *sprite)
 {
     u16 rotation;
-    u8 x = GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_X_2);
+    u16 x = GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_X_2);
     u8 y = GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_Y_PIC_OFFSET);
 
     InitSpritePosToAnimTarget(sprite, TRUE);

@@ -2339,8 +2339,7 @@ static void PlayerHandleDrawTrainerPic(void)
         xPos = 80;
         yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
 #ifdef PLATFORM_SDL2
-        if (!IsDoubleBattle())
-            yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+        yPos += BATTLE_PLAYER_MON_Y_SHIFT;
 #endif
     }
 
@@ -2407,8 +2406,7 @@ static void PlayerHandleTrainerSlide(void)
     SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
     yPos = (8 - gTrainerBackPicCoords[trainerPicId].size) * 4 + 80;
 #ifdef PLATFORM_SDL2
-    if (!IsDoubleBattle())
-        yPos += BATTLE_PLAYER_MON_Y_SHIFT;
+    yPos += BATTLE_PLAYER_MON_Y_SHIFT;
 #endif
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, 80, yPos, 30);
 

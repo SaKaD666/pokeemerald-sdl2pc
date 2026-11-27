@@ -671,7 +671,7 @@ void AnimTask_SwitchOutBallEffect(u8 taskId)
     u8 spriteId;
     u16 ball;
     u8 ballId;
-    u8 x, y;
+    u16 x, y;
     u8 priority, subpriority;
     PaletteMask selectedPalettes;
 
@@ -1574,7 +1574,11 @@ static void LoadBallParticleGfx(u8 ballId)
     }
 }
 
+#ifdef PLATFORM_SDL2
+u8 AnimateBallOpenParticles(u16 x, u8 y, u8 priority, u8 subpriority, u8 ballId)
+#else
 u8 AnimateBallOpenParticles(u8 x, u8 y, u8 priority, u8 subpriority, u8 ballId)
+#endif
 {
     u8 taskId;
 
@@ -1599,7 +1603,7 @@ static void IncrBallParticleCount(void)
 static void PokeBallOpenParticleAnimation(u8 taskId)
 {
     u8 spriteId;
-    u8 x, y;
+    u16 x, y;
     u8 priority, subpriority;
     u8 ballId;
     u8 var0;
@@ -1660,7 +1664,8 @@ static void PokeBallOpenParticleAnimation_Step2(struct Sprite *sprite)
 static void TimerBallOpenParticleAnimation(u8 taskId)
 {
     u8 i;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     ballId = gTasks[taskId].data[15];
@@ -1694,7 +1699,8 @@ static void TimerBallOpenParticleAnimation(u8 taskId)
 static void DiveBallOpenParticleAnimation(u8 taskId)
 {
     u8 i;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     ballId = gTasks[taskId].data[15];
@@ -1729,7 +1735,8 @@ static void DiveBallOpenParticleAnimation(u8 taskId)
 static void SafariBallOpenParticleAnimation(u8 taskId)
 {
     u8 i;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     ballId = gTasks[taskId].data[15];
@@ -1764,7 +1771,8 @@ static void SafariBallOpenParticleAnimation(u8 taskId)
 static void UltraBallOpenParticleAnimation(u8 taskId)
 {
     u8 i;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     ballId = gTasks[taskId].data[15];
@@ -1799,7 +1807,8 @@ static void UltraBallOpenParticleAnimation(u8 taskId)
 static void GreatBallOpenParticleAnimation(u8 taskId)
 {
     u8 i;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     if (gTasks[taskId].data[7])
@@ -1855,7 +1864,8 @@ static void FanOutBallOpenParticles_Step1(struct Sprite *sprite)
 static void RepeatBallOpenParticleAnimation(u8 taskId)
 {
     u8 i;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     ballId = gTasks[taskId].data[15];
@@ -1897,7 +1907,8 @@ static void RepeatBallOpenParticleAnimation_Step1(struct Sprite *sprite)
 static void MasterBallOpenParticleAnimation(u8 taskId)
 {
     u8 i, j;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     ballId = gTasks[taskId].data[15];
@@ -1943,7 +1954,8 @@ static void MasterBallOpenParticleAnimation(u8 taskId)
 static void PremierBallOpenParticleAnimation(u8 taskId)
 {
     u8 i;
-    u8 x, y, priority, subpriority, ballId;
+    u16 x, y;
+    u8 priority, subpriority, ballId;
     u8 spriteId;
 
     ballId = gTasks[taskId].data[15];
@@ -2268,7 +2280,7 @@ void TryShinyAnimation(u8 battler, struct Pokemon *mon)
 static void Task_ShinyStars(u8 taskId)
 {
     u8 battler;
-    u8 x, y;
+    u16 x, y;
     u8 spriteId;
     u16 timer;
     s16 starIdx;

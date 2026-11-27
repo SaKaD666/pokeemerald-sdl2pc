@@ -3779,7 +3779,7 @@ static void AnimAirCutterSlice(struct Sprite *sprite)
 {
     CMD_ARGS(unk0, unk1, unk2, unk3);
 
-    u8 x, y;
+    u16 x, y;
     switch (cmd->unk3)
     {
     case 1:
@@ -5291,7 +5291,7 @@ static void AnimWavyMusicNotes(struct Sprite *sprite)
     CMD_ARGS(unk0, unk1, unk2);
 
     u8 index;
-    u8 x, y;
+    u16 x, y;
     SetSpriteCoordsToAnimAttackerCoords(sprite);
     StartSpriteAnim(sprite, cmd->unk0);
     if ((index = IndexOfSpritePaletteTag(gParticlesColorBlendTable[cmd->unk1][0])) != 0xFF)
