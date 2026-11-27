@@ -43,7 +43,37 @@
 #define TAG_SCROLL_ARROW   2100
 #define TAG_ITEM_ICON_BASE 2110
 
+#ifdef PLATFORM_SDL2
+#define MAX_ITEMS_SHOWN 9
+#define SHOP_TILEMAP_BUFFER_SIZE 0x800
+#define SHOP_MAP_METATILE_WIDTH  20
+#define SHOP_MAP_METATILE_HEIGHT 12
+#define SHOP_OBJ_VIEW_WIDTH      11
+#define SHOP_OBJ_VIEW_HEIGHT     6
+#define SHOP_LIST_LEFT           24
+#define SHOP_LIST_WIDTH          15
+#define SHOP_LIST_HEIGHT         (MAX_ITEMS_SHOWN * 2)
+#define SHOP_DESC_TOP            15
+#define SHOP_DESC_WIDTH          22
+#define SHOP_ITEM_ICON_Y_OFFSET  16
+#define SHOP_SCROLL_CENTER_X     (SHOP_LIST_LEFT * TILE_WIDTH + SHOP_LIST_WIDTH * TILE_WIDTH / 2)
+#define SHOP_SCROLL_BOTTOM_Y     (16 + SHOP_LIST_HEIGHT * TILE_HEIGHT + 4)
+#else
 #define MAX_ITEMS_SHOWN 8
+#define SHOP_TILEMAP_BUFFER_SIZE 0x400
+#define SHOP_MAP_METATILE_WIDTH  15
+#define SHOP_MAP_METATILE_HEIGHT 10
+#define SHOP_OBJ_VIEW_WIDTH      7
+#define SHOP_OBJ_VIEW_HEIGHT     5
+#define SHOP_LIST_LEFT           14
+#define SHOP_LIST_WIDTH          15
+#define SHOP_LIST_HEIGHT         (MAX_ITEMS_SHOWN * 2)
+#define SHOP_DESC_TOP            13
+#define SHOP_DESC_WIDTH          14
+#define SHOP_ITEM_ICON_Y_OFFSET  0
+#define SHOP_SCROLL_CENTER_X     172
+#define SHOP_SCROLL_BOTTOM_Y     148
+#endif
 #define SHOP_MENU_PALETTE_ID 12
 
 enum {
@@ -94,7 +124,7 @@ struct MartInfo
 
 struct ShopData
 {
-    u16 tilemapBuffers[4][0x400];
+    u16 tilemapBuffers[4][SHOP_TILEMAP_BUFFER_SIZE];
     u32 totalCost;
     u16 itemsShowed;
     u16 selectedRow;
@@ -227,7 +257,7 @@ static const struct BgTemplate sShopBuyMenuBgTemplates[] =
         .bg = 0,
         .charBaseIndex = 2,
 #ifdef PLATFORM_SDL2
-        .mapBaseIndex = 26,
+        .mapBaseIndex = 24,
         .screenSize = 1,
 #else
         .mapBaseIndex = 31,
@@ -240,8 +270,13 @@ static const struct BgTemplate sShopBuyMenuBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 26,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -249,8 +284,13 @@ static const struct BgTemplate sShopBuyMenuBgTemplates[] =
     {
         .bg = 2,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 28,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 29,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
@@ -258,8 +298,13 @@ static const struct BgTemplate sShopBuyMenuBgTemplates[] =
     {
         .bg = 3,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 28,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -279,48 +324,79 @@ static const struct WindowTemplate sShopBuyMenuWindowTemplates[] =
     },
     [WIN_ITEM_LIST] = {
         .bg = 0,
-        .tilemapLeft = 14,
+        .tilemapLeft = SHOP_LIST_LEFT,
         .tilemapTop = 2,
-        .width = 15,
-        .height = 16,
+        .width = SHOP_LIST_WIDTH,
+        .height = SHOP_LIST_HEIGHT,
         .paletteNum = 15,
         .baseBlock = 0x0032,
     },
     [WIN_ITEM_DESCRIPTION] = {
         .bg = 0,
         .tilemapLeft = 0,
-        .tilemapTop = 13,
-        .width = 14,
+        .tilemapTop = SHOP_DESC_TOP,
+        .width = SHOP_DESC_WIDTH,
         .height = 6,
         .paletteNum = 15,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 0x0140,
+#else
         .baseBlock = 0x0122,
+#endif
     },
     [WIN_QUANTITY_IN_BAG] = {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 13,
+#else
         .tilemapTop = 11,
+#endif
         .width = 12,
         .height = 2,
         .paletteNum = 15,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 0x0140,
+#else
         .baseBlock = 0x0176,
+#endif
     },
     [WIN_QUANTITY_PRICE] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 25,
+        .tilemapTop = 13,
+#else
         .tilemapLeft = 18,
         .tilemapTop = 11,
+#endif
         .width = 10,
         .height = 2,
         .paletteNum = 15,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 0x0158,
+#else
         .baseBlock = 0x018E,
+#endif
     },
     [WIN_MESSAGE] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 4,
+        .tilemapTop = 17,
+        .width = 32,
+#else
         .tilemapLeft = 2,
         .tilemapTop = 15,
         .width = 27,
+#endif
         .height = 4,
         .paletteNum = 15,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 0x016C,
+#else
         .baseBlock = 0x01A2,
+#endif
     },
     DUMMY_WIN_TEMPLATE
 };
@@ -328,12 +404,21 @@ static const struct WindowTemplate sShopBuyMenuWindowTemplates[] =
 static const struct WindowTemplate sShopBuyMenuYesNoWindowTemplates =
 {
     .bg = 0,
+#ifdef PLATFORM_SDL2
+    .tilemapLeft = 30,
+    .tilemapTop = 11,
+#else
     .tilemapLeft = 21,
     .tilemapTop = 9,
+#endif
     .width = 5,
     .height = 4,
     .paletteNum = 15,
+#ifdef PLATFORM_SDL2
+    .baseBlock = 0x01EC,
+#else
     .baseBlock = 0x020E,
+#endif
 };
 
 static const u8 sShopBuyMenuTextColors[][3] =
@@ -497,6 +582,91 @@ static void VBlankCB_BuyMenu(void)
     TransferPlttBuffer();
 }
 
+#ifdef PLATFORM_SDL2
+static inline u16 ShopTilemapIndex(s16 tileX, s16 tileY)
+{
+    return (tileX >= 32 ? 0x400 : 0) + (tileY * 32) + (tileX & 31);
+}
+
+static void BuyMenuBuildWidescreenTilemap(u16 *dst)
+{
+    s16 x, y;
+
+    memset(dst, 0, SHOP_TILEMAP_BUFFER_SIZE * sizeof(*dst));
+
+    // Parchment item list frame on the right (x = 23..39, y = 0..21).
+    dst[ShopTilemapIndex(23, 0)] = 0x02;
+    dst[ShopTilemapIndex(24, 0)] = 0x03;
+    for (x = 25; x <= 38; x++)
+        dst[ShopTilemapIndex(x, 0)] = 0x04;
+    dst[ShopTilemapIndex(39, 0)] = 0x05;
+
+    for (y = 1; y <= 20; y++)
+    {
+        u16 rowTile = (y >= 2 && y <= 19 && ((y - 2) & 2) == 0) ? 0x0f : 0x0d;
+
+        if (y <= 2)
+            dst[ShopTilemapIndex(23, y)] = 0x10;
+        else if (y <= 13)
+            dst[ShopTilemapIndex(23, y)] = 0x11;
+        else if (y == 14)
+            dst[ShopTilemapIndex(23, y)] = 0x13;
+        else
+            dst[ShopTilemapIndex(23, y)] = 0x15;
+
+        dst[ShopTilemapIndex(24, y)] = 0x0d;
+        for (x = 25; x <= 38; x++)
+            dst[ShopTilemapIndex(x, y)] = rowTile;
+        dst[ShopTilemapIndex(39, y)] = 0x12;
+    }
+
+    dst[ShopTilemapIndex(23, 21)] = 0x0c;
+    dst[ShopTilemapIndex(24, 21)] = 0x03 | 0x800;
+    for (x = 25; x <= 38; x++)
+        dst[ShopTilemapIndex(x, 21)] = 0x04 | 0x800;
+    dst[ShopTilemapIndex(39, 21)] = 0x05 | 0x800;
+
+    // Item icon holder (x = 0..4, y = 10..13).
+    dst[ShopTilemapIndex(0, 10)] = 0x1b;
+    for (x = 1; x <= 3; x++)
+        dst[ShopTilemapIndex(x, 10)] = 0x0e;
+    dst[ShopTilemapIndex(4, 10)] = 0x1b | 0x400;
+    for (y = 11; y <= 13; y++)
+    {
+        dst[ShopTilemapIndex(0, y)] = 0x1a;
+        for (x = 1; x <= 3; x++)
+            dst[ShopTilemapIndex(x, y)] = 0x01;
+        dst[ShopTilemapIndex(4, y)] = 0x1a | 0x400;
+    }
+
+    // Blue item description box (x = 0..22, y = 14..21).
+    dst[ShopTilemapIndex(0, 14)] = 0x06;
+    dst[ShopTilemapIndex(1, 14)] = 0x07;
+    dst[ShopTilemapIndex(2, 14)] = 0x18;
+    dst[ShopTilemapIndex(3, 14)] = 0x18;
+    dst[ShopTilemapIndex(4, 14)] = 0x19;
+    for (x = 5; x <= 22; x++)
+        dst[ShopTilemapIndex(x, 14)] = 0x08;
+
+    for (y = 15; y <= 20; y++)
+    {
+        dst[ShopTilemapIndex(0, y)] = (y == 15) ? 0x17 : (y == 20 ? 0x16 : 0x14);
+        for (x = 1; x <= 22; x++)
+            dst[ShopTilemapIndex(x, y)] = 0x01;
+    }
+
+    dst[ShopTilemapIndex(0, 21)] = 0x09;
+    dst[ShopTilemapIndex(1, 21)] = 0x0a;
+    for (x = 2; x <= 22; x++)
+        dst[ShopTilemapIndex(x, 21)] = 0x0b;
+}
+#else
+static inline u16 ShopTilemapIndex(s16 tileX, s16 tileY)
+{
+    return (tileY * 32) + tileX;
+}
+#endif
+
 static void CB2_InitBuyMenu(void)
 {
     u8 taskId;
@@ -519,10 +689,17 @@ static void CB2_InitBuyMenu(void)
         sShopData->itemSpriteIds[1] = SPRITE_NONE;
         BuyMenuBuildListMenuTemplate();
         BuyMenuInitBgs();
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect(0, 0, 0, 0, 64, 32, 0);
+        FillBgTilemapBufferRect(1, 0, 0, 0, 64, 32, 0);
+        FillBgTilemapBufferRect(2, 0, 0, 0, 64, 32, 0);
+        FillBgTilemapBufferRect(3, 0, 0, 0, 64, 32, 0);
+#else
         FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 0x20, 0x20);
         FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 0x20, 0x20);
         FillBgTilemapBufferRect_Palette0(2, 0, 0, 0, 0x20, 0x20);
         FillBgTilemapBufferRect_Palette0(3, 0, 0, 0, 0x20, 0x20);
+#endif
         BuyMenuInitWindows();
         BuyMenuDecompressBgGraphics();
         gMain.state++;
@@ -551,9 +728,6 @@ static void BuyMenuFreeMemory(void)
     ClearScheduledBgCopiesToVram();
     ClearDma3Requests();
     ResetAllBgsCoordinates();
-#ifdef PLATFORM_SDL2
-    ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
-#endif
     FreeAllWindowBuffers();
     for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
         SetBgTilemapBuffer(bg, NULL);
@@ -661,9 +835,9 @@ static void BuyMenuAddScrollIndicatorArrows(void)
     {
         sShopData->scrollIndicatorsTaskId = AddScrollIndicatorArrowPairParameterized(
             SCROLL_ARROW_UP,
-            172 + GBA_VIEW_X,
-            12 + GBA_VIEW_Y,
-            148 + GBA_VIEW_Y,
+            SHOP_SCROLL_CENTER_X,
+            12,
+            SHOP_SCROLL_BOTTOM_Y,
             sMartInfo.itemCount - (MAX_ITEMS_SHOWN - 1),
             TAG_SCROLL_ARROW,
             TAG_SCROLL_ARROW,
@@ -699,13 +873,13 @@ static void BuyMenuAddItemIcon(u16 item, u8 iconSlot)
         if (spriteId != MAX_SPRITES)
         {
             *spriteIdPtr = spriteId;
-            gSprites[spriteId].x2 = 24 + GBA_VIEW_X;
-            gSprites[spriteId].y2 = 88 + GBA_VIEW_Y;
+            gSprites[spriteId].x2 = 24;
+            gSprites[spriteId].y2 = 88 + SHOP_ITEM_ICON_Y_OFFSET;
         }
     }
     else
     {
-        spriteId = AddDecorationIconObject(item, 20 + GBA_VIEW_X, 84 + GBA_VIEW_Y, 1, iconSlot + TAG_ITEM_ICON_BASE, iconSlot + TAG_ITEM_ICON_BASE);
+        spriteId = AddDecorationIconObject(item, 20, 84 + SHOP_ITEM_ICON_Y_OFFSET, 1, iconSlot + TAG_ITEM_ICON_BASE, iconSlot + TAG_ITEM_ICON_BASE);
         if (spriteId != MAX_SPRITES)
             *spriteIdPtr = spriteId;
     }
@@ -726,7 +900,6 @@ static void BuyMenuRemoveItemIcon(u16 item, u8 iconSlot)
 static void BuyMenuInitBgs(void)
 {
     u8 bg;
-    u16 display = DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP;
 
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sShopBuyMenuBgTemplates, ARRAY_COUNT(sShopBuyMenuBgTemplates));
@@ -735,15 +908,11 @@ static void BuyMenuInitBgs(void)
     SetBgTilemapBuffer(3, sShopData->tilemapBuffers[2]);
     for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
     {
-        ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
-        ChangeBgY(bg, GBA_VIEW_BG_Y, BG_COORD_SET);
+        ChangeBgX(bg, 0, BG_COORD_SET);
+        ChangeBgY(bg, 0, BG_COORD_SET);
     }
-#ifdef PLATFORM_SDL2
-    SetCenteredGbaWindow0();
-    display |= DISPCNT_WIN0_ON;
-#endif
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
-    SetGpuReg(REG_OFFSET_DISPCNT, display);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     ShowBg(1);
     ShowBg(2);
@@ -753,7 +922,11 @@ static void BuyMenuInitBgs(void)
 static void BuyMenuDecompressBgGraphics(void)
 {
     DecompressAndCopyTileDataToVram(1, gShopMenu_Gfx, 0x3A0, 0x3E3, 0);
+#ifdef PLATFORM_SDL2
+    BuyMenuBuildWidescreenTilemap(sShopData->tilemapBuffers[0]);
+#else
     LZDecompressWram(gShopMenu_Tilemap, sShopData->tilemapBuffers[0]);
+#endif
     LoadCompressedPalette(gShopMenu_Pal, BG_PLTT_ID(SHOP_MENU_PALETTE_ID), PLTT_SIZE_4BPP);
 }
 
@@ -783,7 +956,7 @@ static void BuyMenuDrawGraphics(void)
 {
     BuyMenuDrawMapGraphics();
     BuyMenuCopyMenuBgToBg1TilemapBuffer();
-    AddMoneyLabelObject(19 + GBA_VIEW_X, 11 + GBA_VIEW_Y);
+    AddMoneyLabelObject(19, 11);
     PrintMoneyAmountInMoneyBoxWithBorder(WIN_MONEY, 1, 13, GetMoney(&gSaveBlock1Ptr->money));
     ScheduleBgCopyTilemapToVram(0);
     ScheduleBgCopyTilemapToVram(1);
@@ -811,9 +984,9 @@ static void BuyMenuDrawMapBg(void)
     x -= 4;
     y -= 4;
 
-    for (j = 0; j < 10; j++)
+    for (j = 0; j < SHOP_MAP_METATILE_HEIGHT; j++)
     {
-        for (i = 0; i < 15; i++)
+        for (i = 0; i < SHOP_MAP_METATILE_WIDTH; i++)
         {
             metatile = MapGridGetMetatileIdAt(x + i, y + j);
             if (BuyMenuCheckForOverlapWithMenuBg(i, j) == TRUE)
@@ -832,7 +1005,7 @@ static void BuyMenuDrawMapBg(void)
 static void BuyMenuDrawMapMetatile(s16 x, s16 y, const u16 *src, u8 metatileLayerType)
 {
     u16 offset1 = x * 2;
-    u16 offset2 = y * 64;
+    u16 offset2 = y * 2;
 
     switch (metatileLayerType)
     {
@@ -851,13 +1024,13 @@ static void BuyMenuDrawMapMetatile(s16 x, s16 y, const u16 *src, u8 metatileLaye
     }
 }
 
-static void BuyMenuDrawMapMetatileLayer(u16 *dest, s16 offset1, s16 offset2, const u16 *src)
+static void BuyMenuDrawMapMetatileLayer(u16 *dest, s16 tileX, s16 tileY, const u16 *src)
 {
     // This function draws a whole 2x2 metatile.
-    dest[offset1 + offset2] = src[0]; // top left
-    dest[offset1 + offset2 + 1] = src[1]; // top right
-    dest[offset1 + offset2 + 32] = src[2]; // bottom left
-    dest[offset1 + offset2 + 33] = src[3]; // bottom right
+    dest[ShopTilemapIndex(tileX, tileY)] = src[0]; // top left
+    dest[ShopTilemapIndex(tileX + 1, tileY)] = src[1]; // top right
+    dest[ShopTilemapIndex(tileX, tileY + 1)] = src[2]; // bottom left
+    dest[ShopTilemapIndex(tileX + 1, tileY + 1)] = src[3]; // bottom right
 }
 
 static void BuyMenuCollectObjectEventData(void)
@@ -873,9 +1046,9 @@ static void BuyMenuCollectObjectEventData(void)
     for (y = 0; y < OBJECT_EVENTS_COUNT; y++)
         sShopData->viewportObjects[y][OBJ_EVENT_ID] = OBJECT_EVENTS_COUNT;
 
-    for (y = 0; y < 5; y++)
+    for (y = 0; y < SHOP_OBJ_VIEW_HEIGHT; y++)
     {
-        for (x = 0; x < 7; x++)
+        for (x = 0; x < SHOP_OBJ_VIEW_WIDTH; x++)
         {
             u8 objEventId = GetObjectEventIdByXY(facingX - 4 + x, facingY - 2 + y);
 
@@ -924,8 +1097,8 @@ static void BuyMenuDrawObjectEvents(void)
         spriteId = CreateObjectGraphicsSprite(
             gObjectEvents[sShopData->viewportObjects[i][OBJ_EVENT_ID]].graphicsId,
             SpriteCallbackDummy,
-            sShopData->viewportObjects[i][X_COORD] * 16 + 8 + GBA_VIEW_X,
-            sShopData->viewportObjects[i][Y_COORD] * 16 + 48 - graphicsInfo->height / 2 + GBA_VIEW_Y,
+            sShopData->viewportObjects[i][X_COORD] * 16 + 8,
+            sShopData->viewportObjects[i][Y_COORD] * 16 + 48 - graphicsInfo->height / 2,
             2);
         if (spriteId == MAX_SPRITES)
             continue;
@@ -954,7 +1127,7 @@ static void BuyMenuCopyMenuBgToBg1TilemapBuffer(void)
     u16 *dest = sShopData->tilemapBuffers[1];
     const u16 *src = sShopData->tilemapBuffers[0];
 
-    for (i = 0; i < 1024; i++)
+    for (i = 0; i < SHOP_TILEMAP_BUFFER_SIZE; i++)
     {
         if (src[i] != 0)
             dest[i] = src[i] + ((SHOP_MENU_PALETTE_ID << 12) | 0x3E3);
@@ -964,13 +1137,13 @@ static void BuyMenuCopyMenuBgToBg1TilemapBuffer(void)
 static bool8 BuyMenuCheckForOverlapWithMenuBg(int x, int y)
 {
     const u16 *metatile = sShopData->tilemapBuffers[0];
-    int offset1 = x * 2;
-    int offset2 = y * 64;
+    s16 tileX = x * 2;
+    s16 tileY = y * 2;
 
-    if (metatile[offset2 + offset1] == 0 &&
-        metatile[offset2 + offset1 + 32] == 0 &&
-        metatile[offset2 + offset1 + 1] == 0 &&
-        metatile[offset2 + offset1 + 33] == 0)
+    if (metatile[ShopTilemapIndex(tileX, tileY)] == 0 &&
+        metatile[ShopTilemapIndex(tileX, tileY + 1)] == 0 &&
+        metatile[ShopTilemapIndex(tileX + 1, tileY)] == 0 &&
+        metatile[ShopTilemapIndex(tileX + 1, tileY + 1)] == 0)
         return TRUE;
 
     return FALSE;
@@ -1188,6 +1361,9 @@ static void BuyMenuReturnToItemList(u8 taskId)
     ClearDialogWindowAndFrameToTransparent(WIN_MESSAGE, FALSE);
     BuyMenuPrintCursor(tListTaskId, COLORID_ITEM_LIST);
     PutWindowTilemap(WIN_ITEM_LIST);
+#ifdef PLATFORM_SDL2
+    CopyWindowToVram(WIN_ITEM_DESCRIPTION, COPYWIN_GFX);
+#endif
     PutWindowTilemap(WIN_ITEM_DESCRIPTION);
     ScheduleBgCopyTilemapToVram(0);
     BuyMenuAddScrollIndicatorArrows();
