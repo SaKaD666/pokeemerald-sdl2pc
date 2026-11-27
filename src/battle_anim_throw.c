@@ -673,7 +673,7 @@ void AnimTask_SwitchOutBallEffect(u8 taskId)
     u8 ballId;
     u8 x, y;
     u8 priority, subpriority;
-    u32 selectedPalettes;
+    PaletteMask selectedPalettes;
 
     spriteId = gBattlerSpriteIds[gBattleAnimAttacker];
     if (GetBattlerSide(gBattleAnimAttacker) == B_SIDE_PLAYER)

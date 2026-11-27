@@ -387,7 +387,7 @@ u8 BattleArena_ShowJudgmentWindow(u8 *state)
     switch (*state)
     {
     case 0:
-        BeginNormalPaletteFade(0x7FFFFF1C, 4, 0, 8, RGB_BLACK);
+        BeginNormalPaletteFade((PALETTES_OBJECTS_FULL & ~ObjPaletteMask(15)) | 0xFF1C, 4, 0, 8, RGB_BLACK);
         SetGpuReg(REG_OFFSET_WININ, (WININ_WIN0_ALL & ~WININ_WIN0_BG0) | WININ_WIN1_ALL);
         LoadCompressedSpriteSheet(sBattleArenaJudgmentSymbolsSpriteSheet);
         LoadCompressedPalette(gBattleArenaJudgmentSymbolsPalette, OBJ_PLTT_ID(15), PLTT_SIZE_4BPP);
@@ -491,7 +491,7 @@ u8 BattleArena_ShowJudgmentWindow(u8 *state)
         HandleBattleWindow(5, 0, 24, 13, WINDOW_CLEAR);
         CopyBgTilemapBufferToVram(0);
         m4aMPlayVolumeControl(&gMPlayInfo_BGM, TRACKS_ALL, 256);
-        BeginNormalPaletteFade(0x7FFFFF1C, 4, 8, 0, RGB_BLACK);
+        BeginNormalPaletteFade((PALETTES_OBJECTS_FULL & ~ObjPaletteMask(15)) | 0xFF1C, 4, 8, 0, RGB_BLACK);
         (*state)++;
         break;
     case JUDGMENT_STATE_FINISHED + 2:

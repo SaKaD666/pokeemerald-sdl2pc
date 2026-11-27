@@ -166,6 +166,17 @@ static void ReadPlttIntoBuffers(void)
     }
 }
 
+static PaletteMask ExpandFullPaletteMask(PaletteMask selectedPalettes)
+{
+    if (selectedPalettes == PALETTES_ALL)
+        return PALETTES_ALL_FULL;
+    if (selectedPalettes == PALETTES_BG)
+        return PALETTES_BG_FULL;
+    if (selectedPalettes == PALETTES_OBJECTS)
+        return PALETTES_OBJECTS_FULL;
+    return selectedPalettes;
+}
+
 bool8 BeginNormalPaletteFade(PaletteMask selectedPalettes, s8 delay, u8 startY, u8 targetY, u16 blendColor)
 {
     u8 temp;
@@ -185,7 +196,7 @@ bool8 BeginNormalPaletteFade(PaletteMask selectedPalettes, s8 delay, u8 startY, 
             delay = 0;
         }
 
-        gPaletteFade_selectedPalettes = selectedPalettes == PALETTES_ALL ? PALETTES_ALL_FULL : selectedPalettes;
+        gPaletteFade_selectedPalettes = ExpandFullPaletteMask(selectedPalettes);
         gPaletteFade.delayCounter = delay;
         gPaletteFade_delay = delay;
         gPaletteFade.y = startY;
@@ -845,8 +856,7 @@ void BlendPalettes(PaletteMask selectedPalettes, u8 coeff, u16 color)
 {
     u8 bank;
 
-    if (selectedPalettes == PALETTES_ALL)
-        selectedPalettes = PALETTES_ALL_FULL;
+    selectedPalettes = ExpandFullPaletteMask(selectedPalettes);
 
     for (bank = 0; selectedPalettes; bank++)
     {
@@ -990,7 +1000,7 @@ void BlendPalettesGradually(PaletteMask selectedPalettes, s8 delay, u8 coeff, u8
     if (coeffTarget < coeff)
         tCoeffDelta *= -1;
 
-    StorePaletteMask(&tPaletteMask, selectedPalettes);
+    StorePaletteMask(&tPaletteMask, ExpandFullPaletteMask(selectedPalettes));
     tColor = color;
     tId = id;
     Task_BlendPalettesGradually(taskId);

@@ -1049,7 +1049,7 @@ static void Task_EndShowContestResults(u8 taskId)
         }
         else if (gTasks[taskId].tTimer == 1)
         {
-            BlendPalettes(PALETTES_OBJECTS, 16, RGB_BLACK);
+            BlendPalettes(PALETTES_OBJECTS_FULL, 16, RGB_BLACK);
             gTasks[taskId].tTimer++;
         }
         else

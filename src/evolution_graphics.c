@@ -456,7 +456,7 @@ static void Task_Sparkles_SprayAndFlash_Init(u8 taskId)
     SetEvoSparklesMatrices();
     gTasks[taskId].tTimer = 0;
     CpuCopy16(&gPlttBufferFaded[BG_PLTT_ID(2)], &gPlttBufferUnfaded[BG_PLTT_ID(2)], 3 * PLTT_SIZE_4BPP);
-    BeginNormalPaletteFade(0xFFF9041C, 0, 0, 0x10, RGB_WHITE); // was 0xFFF9001C in R/S
+    BeginNormalPaletteFade((PALETTES_OBJECTS_FULL & ~(ObjPaletteMask(1) | ObjPaletteMask(2))) | 0x041C, 0, 0, 0x10, RGB_WHITE); // was 0xFFF9001C in R/S
     gTasks[taskId].func = Task_Sparkles_SprayAndFlash;
     PlaySE(SE_M_PETAL_DANCE);
 }
@@ -477,7 +477,7 @@ static void Task_Sparkles_SprayAndFlash(u8 taskId)
                 CreateSparkle_Spray(i);
             break;
         case 32:
-            BeginNormalPaletteFade(0xFFFF041C, 0x10, 0x10, 0, RGB_WHITE); // was 0xFFF9001C in R/S
+            BeginNormalPaletteFade(PALETTES_OBJECTS_FULL | 0x041C, 0x10, 0x10, 0, RGB_WHITE); // was 0xFFF9001C in R/S
             break;
         }
         gTasks[taskId].tTimer++;
@@ -507,7 +507,7 @@ static void Task_Sparkles_SprayAndFlashTrade_Init(u8 taskId)
     SetEvoSparklesMatrices();
     gTasks[taskId].tTimer = 0;
     CpuCopy16(&gPlttBufferFaded[BG_PLTT_ID(2)], &gPlttBufferUnfaded[BG_PLTT_ID(2)], 3 * PLTT_SIZE_4BPP);
-    BeginNormalPaletteFade(0xFFF90400, 0, 0, 0x10, RGB_WHITE); // was 0xFFFF0001 in R/S
+    BeginNormalPaletteFade((PALETTES_OBJECTS_FULL & ~(ObjPaletteMask(1) | ObjPaletteMask(2))) | 0x0400, 0, 0, 0x10, RGB_WHITE); // was 0xFFFF0001 in R/S
     gTasks[taskId].func = Task_Sparkles_SprayAndFlashTrade;
     PlaySE(SE_M_PETAL_DANCE);
 }
@@ -528,7 +528,7 @@ static void Task_Sparkles_SprayAndFlashTrade(u8 taskId)
                 CreateSparkle_Spray(i);
             break;
         case 32:
-            BeginNormalPaletteFade(0xFFFF0400, 0x10, 0x10, 0, RGB_WHITE); // was 0xFFFF0001 in R/S
+            BeginNormalPaletteFade(PALETTES_OBJECTS_FULL | 0x0400, 0x10, 0x10, 0, RGB_WHITE); // was 0xFFFF0001 in R/S
             break;
         }
         gTasks[taskId].tTimer++;

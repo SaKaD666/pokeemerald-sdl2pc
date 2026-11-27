@@ -1737,7 +1737,7 @@ static bool8 Kyogre_PaletteBrighten(struct Task *task)
 
 static bool8 WeatherDuo_FadeOut(struct Task *task)
 {
-    BeginNormalPaletteFade(PALETTES_OBJECTS | (1 << 15), 1, 0, 16, RGB_BLACK);
+    BeginNormalPaletteFade(PALETTES_OBJECTS_FULL | (1 << 15), 1, 0, 16, RGB_BLACK);
     task->tState++;
     return FALSE;
 }
@@ -3804,7 +3804,7 @@ static bool8 Rayquaza_FadeToBlack(struct Task *task)
     {
         task->tState++;
         task->tTimer = 0;
-        BeginNormalPaletteFade(PALETTES_OBJECTS | (1 << 15), 2, 0, 16, RGB_BLACK);
+        BeginNormalPaletteFade(PALETTES_OBJECTS_FULL | (1 << 15), 2, 0, 16, RGB_BLACK);
     }
 
     return FALSE;
@@ -3823,7 +3823,7 @@ static bool8 Rayquaza_WaitFade(struct Task *task)
 static bool8 Rayquaza_SetBlack(struct Task *task)
 {
     BlendPalettes(PALETTES_BG & ~(1 << 15), 8, RGB_BLACK);
-    BlendPalettes(PALETTES_OBJECTS | (1 << 15), 0, RGB_BLACK);
+    BlendPalettes(PALETTES_OBJECTS_FULL | (1 << 15), 0, RGB_BLACK);
 
     task->tState++;
     return FALSE;

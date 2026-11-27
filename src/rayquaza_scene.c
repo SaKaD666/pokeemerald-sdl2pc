@@ -1789,20 +1789,20 @@ static void DuoFight_Lightning1(void)
 {
     PlaySE(SE_THUNDER);
     BlendPalettesGradually(PALETTES_BG & ~(0x8000), 0, 16, 0, RGB_WHITEALPHA, 0, 0);
-    BlendPalettesGradually(PALETTES_OBJECTS, 0, 16, 0, RGB_BLACK,      0, 1);
+    BlendPalettesGradually(PALETTES_OBJECTS_FULL, 0, 16, 0, RGB_BLACK,      0, 1);
 }
 
 static void DuoFight_Lightning2(void)
 {
     PlaySE(SE_THUNDER);
     BlendPalettesGradually(PALETTES_BG & ~(0x8000), 0, 16, 16, RGB_WHITEALPHA, 0, 0);
-    BlendPalettesGradually(PALETTES_OBJECTS, 0, 16, 16, RGB_BLACK,      0, 1);
+    BlendPalettesGradually(PALETTES_OBJECTS_FULL, 0, 16, 16, RGB_BLACK,      0, 1);
 }
 
 static void DuoFight_LightningLong(void)
 {
     BlendPalettesGradually(PALETTES_BG & ~(0x8000), 4, 16, 0, RGB_WHITEALPHA, 0, 0);
-    BlendPalettesGradually(PALETTES_OBJECTS, 4, 16, 0, RGB_BLACK,      0, 1);
+    BlendPalettesGradually(PALETTES_OBJECTS_FULL, 4, 16, 0, RGB_BLACK,      0, 1);
 }
 
 static void DuoFight_AnimateRain(void)
@@ -2910,7 +2910,7 @@ static void Task_HandleRayChasesAway(u8 taskId)
             if (tTimer % 144 == 0)
             {
                 BlendPalettesGradually(PALETTES_BG & ~1, 0, 16, 0, RGB_WHITEALPHA, 0, 0);
-                BlendPalettesGradually(PALETTES_OBJECTS, 0, 16, 0, RGB_BLACK,      0, 1);
+                BlendPalettesGradually(PALETTES_OBJECTS_FULL, 0, 16, 0, RGB_BLACK,      0, 1);
             }
         }
         break;
