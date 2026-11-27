@@ -1,5 +1,7 @@
 #include "global.h"
-#include "platform/framedraw.h"
+#ifdef PLATFORM_SDL2
+#include "decompress.h"
+#endif
 #include "task.h"
 #include "bg.h"
 #include "palette.h"
@@ -59,7 +61,11 @@ static struct WirelessCommunicationStatusScreen *sStatusScreen;
 
 static void CB2_InitWirelessCommunicationScreen(void);
 static void Task_WirelessCommunicationScreen(u8);
+#ifdef PLATFORM_SDL2
+static void WCSS_AddTextPrinterParameterized(u8, u8, const u8 *, u16, u8, u8);
+#else
 static void WCSS_AddTextPrinterParameterized(u8, u8, const u8 *, u8, u8, u8);
+#endif
 static bool32 UpdateCommunicationCounts(u32 *, u32 *, u32 *, u8);
 
 static const u16 sPalettes[][16] = {
@@ -87,12 +93,20 @@ static const struct BgTemplate sBgTemplates[] = {
     {
         .bg = 0,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
+#endif
         .priority = 0
     }, {
         .bg = 1,
         .charBaseIndex = 0,
         .mapBaseIndex = 8,
+#ifdef PLATFORM_SDL2
+        .screenSize = 1,
+#endif
         .priority = 1
     }
 };
@@ -102,28 +116,50 @@ static const struct WindowTemplate sWindowTemplates[] = {
         .bg = 0,
         .tilemapLeft = 3,
         .tilemapTop = 0,
+#ifdef PLATFORM_SDL2
+        .width = 34,
+#else
         .width = 24,
+#endif
         .height = 3,
         .paletteNum = 15,
         .baseBlock = 0x0001
     },
     [WIN_GROUP_NAMES] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 4,
+        .tilemapTop = 5,
+        .width = 29,
+        .height = 15,
+        .paletteNum = 15,
+        .baseBlock = 0x0067
+#else
         .tilemapLeft = 3,
         .tilemapTop = 4,
         .width = 21,
         .height = 15,
         .paletteNum = 15,
         .baseBlock = 0x0049
+#endif
     },
     [WIN_GROUP_COUNTS] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 33,
+        .tilemapTop = 5,
+        .width = 3,
+        .height = 15,
+        .paletteNum = 15,
+        .baseBlock = 0x021A
+#else
         .tilemapLeft = 24,
         .tilemapTop = 4,
         .width = 3,
         .height = 15,
         .paletteNum = 15,
         .baseBlock = 0x0184
+#endif
     }, DUMMY_WIN_TEMPLATE
 };
 
@@ -198,17 +234,46 @@ void ShowWirelessCommunicationScreen(void)
 
 static void CB2_InitWirelessCommunicationScreen(void)
 {
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
     sStatusScreen = AllocZeroed(sizeof(struct WirelessCommunicationStatusScreen));
     SetVBlankCallback(NULL);
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
+#ifdef PLATFORM_SDL2
+    {
+        u16 *dst = AllocZeroed(BG_SCREEN_SIZE * 2);
+        const u16 *src = (const u16 *)gDecompressionBuffer;
+        u16 x, y;
+
+        LZ77UnCompWram(sBgTiles_Tilemap, gDecompressionBuffer);
+        for (y = 0; y < 23; y++)
+        {
+            u16 srcY = (y < 4) ? y : ((y < 22) ? (4 + ((y - 4) % 3)) : 19);
+            for (x = 0; x < DISPLAY_WIDTH / TILE_WIDTH; x++)
+            {
+                u16 srcX;
+                u16 dstIdx = (x < 32) ? (y * 32 + x) : (1024 + y * 32 + (x - 32));
+                if (x < 4)
+                    srcX = x;
+                else if (x < 35)
+                    srcX = 4 + ((x - 4) % 3);
+                else if (x < 37)
+                    srcX = 26 + (x - 35);
+                else if (x < 39)
+                    srcX = 28;
+                else
+                    srcX = 29;
+                dst[dstIdx] = src[srcY * 32 + srcX];
+            }
+        }
+        SetBgTilemapBuffer(1, dst);
+        SetBgTilemapBuffer(0, Alloc(BG_SCREEN_SIZE * 2));
+    }
+#else
     SetBgTilemapBuffer(1, Alloc(BG_SCREEN_SIZE));
     SetBgTilemapBuffer(0, Alloc(BG_SCREEN_SIZE));
     CopyToBgTilemapBuffer(1, sBgTiles_Tilemap, 0, 0);
+#endif
     InitWindows(sWindowTemplates);
     DeactivateAllTextPrinters();
     ResetPaletteFade();
@@ -228,7 +293,11 @@ static void CB2_InitWirelessCommunicationScreen(void)
     LoadPalette(sPalettes, BG_PLTT_ID(0), PLTT_SIZE_4BPP);
     Menu_LoadStdPalAt(BG_PLTT_ID(15));
     DynamicPlaceholderTextUtil_Reset();
+#ifdef PLATFORM_SDL2
+    FillBgTilemapBufferRect(0, 0, 0, 0, 64, 32, 15);
+#else
     FillBgTilemapBufferRect(0, 0, 0, 0, 32, 32, 15);
+#endif
     CopyBgTilemapBufferToVram(1);
     SetMainCallback2(CB2_RunWirelessCommunicationScreen);
     RunTasks();
@@ -257,9 +326,6 @@ static void CB2_ExitWirelessCommunicationStatusScreen(void)
         Free(tilemap);
     }
     Free(sStatusScreen);
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(FALSE);
-#endif
     SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
 }
 
@@ -286,7 +352,11 @@ static void PrintHeaderTexts(void)
     FillWindowPixelBuffer(WIN_GROUP_COUNTS, PIXEL_FILL(0));
 
     // Print title
+#ifdef PLATFORM_SDL2
+    WCSS_AddTextPrinterParameterized(WIN_TITLE, FONT_NORMAL, sHeaderTexts[0], GetStringCenterAlignXOffset(FONT_NORMAL, sHeaderTexts[0], 34 * TILE_WIDTH), 6, COLORMODE_GREEN);
+#else
     WCSS_AddTextPrinterParameterized(WIN_TITLE, FONT_NORMAL, sHeaderTexts[0], GetStringCenterAlignXOffset(FONT_NORMAL, sHeaderTexts[0], 0xC0), 6, COLORMODE_GREEN);
+#endif
 
     // Print label for each group (excluding total)
     for (i = 0; i < NUM_GROUPTYPES - 1; i++)
@@ -362,7 +432,11 @@ static void Task_WirelessCommunicationScreen(u8 taskId)
 
 #undef tState
 
+#ifdef PLATFORM_SDL2
+static void WCSS_AddTextPrinterParameterized(u8 windowId, u8 fontId, const u8 *str, u16 x, u8 y, u8 mode)
+#else
 static void WCSS_AddTextPrinterParameterized(u8 windowId, u8 fontId, const u8 *str, u8 x, u8 y, u8 mode)
+#endif
 {
     u8 color[3];
 
