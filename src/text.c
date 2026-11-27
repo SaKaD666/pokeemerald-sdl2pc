@@ -248,7 +248,11 @@ void DeactivateAllTextPrinters(void)
         sTextPrinters[printer].active = FALSE;
 }
 
+#ifdef PLATFORM_SDL2
+bool16 AddTextPrinterParameterized(u8 windowId, u8 fontId, const u8 *str, u16 x, u8 y, u8 speed, TextPrinterCallback callback)
+#else
 bool16 AddTextPrinterParameterized(u8 windowId, u8 fontId, const u8 *str, u8 x, u8 y, u8 speed, TextPrinterCallback callback)
+#endif
 {
     struct TextPrinterTemplate printerTemplate;
 

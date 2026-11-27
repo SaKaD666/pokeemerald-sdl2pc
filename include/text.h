@@ -66,10 +66,17 @@ struct TextPrinterTemplate
     const u8 *currentChar;
     u8 windowId;
     u8 fontId;
+#ifdef PLATFORM_SDL2
+    u16 x;
+    u8 y;
+    u16 currentX;
+    u8 currentY;
+#else
     u8 x;
     u8 y;
     u8 currentX;        // 0x8
     u8 currentY;
+#endif
     u8 letterSpacing;
     u8 lineSpacing;
     u8 unk:4;   // 0xC
@@ -138,7 +145,11 @@ extern bool8 gDisableTextPrinters;
 extern struct TextGlyph gCurGlyph;
 
 void DeactivateAllTextPrinters(void);
+#ifdef PLATFORM_SDL2
+bool16 AddTextPrinterParameterized(u8 windowId, u8 fontId, const u8 *str, u16 x, u8 y, u8 speed, TextPrinterCallback callback);
+#else
 bool16 AddTextPrinterParameterized(u8 windowId, u8 fontId, const u8 *str, u8 x, u8 y, u8 speed, TextPrinterCallback callback);
+#endif
 bool16 AddTextPrinter(struct TextPrinterTemplate *printerTemplate, u8 speed, TextPrinterCallback callback);
 void RunTextPrinters(void);
 bool16 IsTextPrinterActive(u8 id);

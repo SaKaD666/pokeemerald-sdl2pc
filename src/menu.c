@@ -2015,7 +2015,11 @@ void BgDmaFill(u32 bg, u8 value, int offset, int size)
     RequestDma3Fill(value << 24 | value << 16 | value << 8 | value, (void *)address, size * temp, 1);
 }
 
+#ifdef PLATFORM_SDL2
+void AddTextPrinterParameterized3(u8 windowId, u8 fontId, u16 left, u8 top, const u8 *color, s8 speed, const u8 *str)
+#else
 void AddTextPrinterParameterized3(u8 windowId, u8 fontId, u8 left, u8 top, const u8 *color, s8 speed, const u8 *str)
+#endif
 {
     struct TextPrinterTemplate printer;
 
@@ -2036,7 +2040,11 @@ void AddTextPrinterParameterized3(u8 windowId, u8 fontId, u8 left, u8 top, const
     AddTextPrinter(&printer, speed, NULL);
 }
 
+#ifdef PLATFORM_SDL2
+void AddTextPrinterParameterized4(u8 windowId, u8 fontId, u16 left, u8 top, u8 letterSpacing, u8 lineSpacing, const u8 *color, s8 speed, const u8 *str)
+#else
 void AddTextPrinterParameterized4(u8 windowId, u8 fontId, u8 left, u8 top, u8 letterSpacing, u8 lineSpacing, const u8 *color, s8 speed, const u8 *str)
+#endif
 {
     struct TextPrinterTemplate printer;
 
@@ -2057,7 +2065,11 @@ void AddTextPrinterParameterized4(u8 windowId, u8 fontId, u8 left, u8 top, u8 le
     AddTextPrinter(&printer, speed, NULL);
 }
 
+#ifdef PLATFORM_SDL2
+void AddTextPrinterParameterized5(u8 windowId, u8 fontId, const u8 *str, u16 left, u8 top, u8 speed, TextPrinterCallback callback, u8 letterSpacing, u8 lineSpacing)
+#else
 void AddTextPrinterParameterized5(u8 windowId, u8 fontId, const u8 *str, u8 left, u8 top, u8 speed, TextPrinterCallback callback, u8 letterSpacing, u8 lineSpacing)
+#endif
 {
     struct TextPrinterTemplate printer;
 

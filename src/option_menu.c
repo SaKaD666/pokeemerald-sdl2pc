@@ -433,7 +433,11 @@ static void HighlightOptionMenuItem(u8 index)
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(index * 16 + 40, index * 16 + 56));
 }
 
+#ifdef PLATFORM_SDL2
+static void DrawOptionMenuChoice(const u8 *text, u16 x, u8 y, u8 style)
+#else
 static void DrawOptionMenuChoice(const u8 *text, u8 x, u8 y, u8 style)
+#endif
 {
     u8 dst[16];
     u16 i;
