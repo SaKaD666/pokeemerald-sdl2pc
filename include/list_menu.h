@@ -102,11 +102,19 @@ struct ListMenuWindowRect
 struct ScrollArrowsTemplate
 {
     u8 firstArrowType;
+#ifdef PLATFORM_SDL2
+    u16 firstX;
+    u16 firstY;
+    u8 secondArrowType;
+    u16 secondX;
+    u16 secondY;
+#else
     u8 firstX;
     u8 firstY;
     u8 secondArrowType;
     u8 secondX;
     u8 secondY;
+#endif
     u16 fullyUpThreshold;
     u16 fullyDownThreshold;
     u16 tileTag;

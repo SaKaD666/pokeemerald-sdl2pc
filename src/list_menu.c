@@ -1027,7 +1027,11 @@ static void SpriteCallback_ScrollIndicatorArrow(struct Sprite *sprite)
     }
 }
 
+#ifdef PLATFORM_SDL2
+static u8 AddScrollIndicatorArrowObject(u8 arrowDir, u16 x, u16 y, u16 tileTag, u16 palTag)
+#else
 static u8 AddScrollIndicatorArrowObject(u8 arrowDir, u8 x, u8 y, u16 tileTag, u16 palTag)
+#endif
 {
     u8 spriteId;
     struct SpriteTemplate spriteTemplate;
