@@ -1718,17 +1718,31 @@ void FillBgTilemapBufferRect_Palette0(u8 bg, u16 tileNum, u8 x, u8 y, u8 width, 
         switch (GetBgType(bg))
         {
         case BG_TYPE_NORMAL:
+        {
+#ifdef PLATFORM_SDL2
+            u16 attribute = GetBgControlAttribute(bg, BG_CTRL_ATTR_SCREENSIZE);
+            u16 modeWidth = GetBgMetricTextMode(bg, 0x1) * 0x20;
+            u16 modeHeight = GetBgMetricTextMode(bg, 0x2) * 0x20;
             for (y16 = y; y16 < (y + height); y16++)
             {
-#ifdef PLATFORM_SDL2
-                ClearBgTilemapEntryBanks(bg, y16 * 0x20 + x, width);
-#endif
+                for (x16 = x; x16 < (x + width); x16++)
+                {
+                    u16 index = GetTileMapIndexFromCoords(x16, y16, attribute, modeWidth, modeHeight);
+                    ClearBgTilemapEntryBanks(bg, index, 1);
+                    ((u16 *)sGpuBgConfigs2[bg].tilemap)[index] = tileNum;
+                }
+            }
+#else
+            for (y16 = y; y16 < (y + height); y16++)
+            {
                 for (x16 = x; x16 < (x + width); x16++)
                 {
                     ((u16 *)sGpuBgConfigs2[bg].tilemap)[((y16 * 0x20) + x16)] = tileNum;
                 }
             }
+#endif
             break;
+        }
         case BG_TYPE_AFFINE:
             mode = GetBgMetricAffineMode(bg, 0x1);
             for (y16 = y; y16 < (y + height); y16++)
