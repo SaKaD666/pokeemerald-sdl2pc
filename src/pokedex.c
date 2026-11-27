@@ -3815,7 +3815,7 @@ static void LoadPokedexSizeScreenBgTilemap_SDL2(void)
         else
         {
             for (x = 0; x < 40; x++)
-                WritePokedexListTilemapEntry(bg3, x, y, 0x0006);
+                WritePokedexListTilemapEntry(bg3, x, y, 0x1001);
         }
     }
     Free(src);
