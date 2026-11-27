@@ -92,8 +92,13 @@ static const u8 ALIGNED(4) sCard_FooterTextOffsets[CARD_TYPE_COUNT] =
 static const struct WindowTemplate sCard_WindowTemplates[] = {
     [CARD_WIN_HEADER] = {
         .bg = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 6,
+        .tilemapTop = 2,
+#else
         .tilemapLeft = 1,
         .tilemapTop = 1,
+#endif
         .width = 25,
         .height = 4,
         .paletteNum = 2,
@@ -101,8 +106,13 @@ static const struct WindowTemplate sCard_WindowTemplates[] = {
     },
     [CARD_WIN_BODY] = {
         .bg = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 6,
+        .tilemapTop = 7,
+#else
         .tilemapLeft = 1,
         .tilemapTop = 6,
+#endif
         .width = 28,
         .height = 8,
         .paletteNum = 2,
@@ -110,8 +120,13 @@ static const struct WindowTemplate sCard_WindowTemplates[] = {
     },
     [CARD_WIN_FOOTER] = {
         .bg = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 6,
+        .tilemapTop = 15,
+#else
         .tilemapLeft = 1,
         .tilemapTop = 14,
+#endif
         .width = 28,
         .height = 5,
         .paletteNum = 2,
@@ -226,9 +241,15 @@ s32 WonderCard_Enter(void)
             return 0;
         break;
     case 2:
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, 64, 32);
+#else
         FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
+#endif
         CopyBgTilemapBufferToVram(0);
         CopyBgTilemapBufferToVram(1);
         CopyBgTilemapBufferToVram(2);
@@ -244,7 +265,11 @@ s32 WonderCard_Enter(void)
         gPaletteFade.bufferTransferDisabled = TRUE;
         LoadPalette(sWonderCardData->gfx->pal, BG_PLTT_ID(1), PLTT_SIZE_4BPP);
         LZ77UnCompWram(sWonderCardData->gfx->map, sWonderCardData->bgTilemapBuffer);
+#ifdef PLATFORM_SDL2
+        CopyRectToBgTilemapBufferRect(2, sWonderCardData->bgTilemapBuffer, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 5, 1, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 1, 0x008, 0);
+#else
         CopyRectToBgTilemapBufferRect(2, sWonderCardData->bgTilemapBuffer, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT, 1, 0x008, 0);
+#endif
         CopyBgTilemapBufferToVram(2);
         break;
     case 4:
@@ -291,9 +316,15 @@ s32 WonderCard_Exit(bool32 useCancel)
             return 0;
         break;
     case 2:
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, 64, 32);
+#else
         FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
+#endif
         CopyBgTilemapBufferToVram(0);
         CopyBgTilemapBufferToVram(1);
         CopyBgTilemapBufferToVram(2);
@@ -490,7 +521,11 @@ static void CreateCardSprites(void)
     // Create icon sprite
     if (sWonderCardData->cardMetadata.iconSpecies != SPECIES_NONE)
     {
+#ifdef PLATFORM_SDL2
+        sWonderCardData->monIconSpriteId = CreateMonIconNoPersonality(GetIconSpeciesNoPersonality(sWonderCardData->cardMetadata.iconSpecies), SpriteCallbackDummy, 260, 28, 0, FALSE);
+#else
         sWonderCardData->monIconSpriteId = CreateMonIconNoPersonality(GetIconSpeciesNoPersonality(sWonderCardData->cardMetadata.iconSpecies), SpriteCallbackDummy, 220, 20, 0, FALSE);
+#endif
         gSprites[sWonderCardData->monIconSpriteId].oam.priority = 2;
     }
 
@@ -503,12 +538,21 @@ static void CreateCardSprites(void)
         {
             sWonderCardData->stampSpriteIds[i][0] = SPRITE_NONE;
             sWonderCardData->stampSpriteIds[i][1] = SPRITE_NONE;
+#ifdef PLATFORM_SDL2
+            sWonderCardData->stampSpriteIds[i][0] = CreateSprite(&sSpriteTemplate_StampShadow, 256 - 32 * i, 152, 8);
+            if (sWonderCardData->cardMetadata.stampData[STAMP_SPECIES][i] != SPECIES_NONE)
+                sWonderCardData->stampSpriteIds[i][1] = CreateMonIconNoPersonality(GetIconSpeciesNoPersonality(sWonderCardData->cardMetadata.stampData[STAMP_SPECIES][i]),
+                                                                               SpriteCallbackDummy,
+                                                                               256 - 32 * i,
+                                                                               144, 0, 0);
+#else
             sWonderCardData->stampSpriteIds[i][0] = CreateSprite(&sSpriteTemplate_StampShadow, 216 - 32 * i, 144, 8);
             if (sWonderCardData->cardMetadata.stampData[STAMP_SPECIES][i] != SPECIES_NONE)
                 sWonderCardData->stampSpriteIds[i][1] = CreateMonIconNoPersonality(GetIconSpeciesNoPersonality(sWonderCardData->cardMetadata.stampData[STAMP_SPECIES][i]),
                                                                                SpriteCallbackDummy,
                                                                                216 - 32 * i,
                                                                                136, 0, 0);
+#endif
         }
     }
 }
@@ -583,8 +627,13 @@ static const u8 sNews_TextColorTable[][3] = {
 static const struct WindowTemplate sNews_WindowTemplates[] = {
     [NEWS_WIN_TITLE] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 6,
+        .tilemapTop = 1,
+#else
         .tilemapLeft = 1,
         .tilemapTop = 0,
+#endif
         .width = 28,
         .height = 3,
         .paletteNum = 2,
@@ -592,8 +641,13 @@ static const struct WindowTemplate sNews_WindowTemplates[] = {
     },
     [NEWS_WIN_BODY] = {
         .bg = 2,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 6,
+        .tilemapTop = 4,
+#else
         .tilemapLeft = 1,
         .tilemapTop = 3,
+#endif
         .width = 28,
         .height = DISPLAY_TILE_HEIGHT,
         .paletteNum = 2,
@@ -603,11 +657,21 @@ static const struct WindowTemplate sNews_WindowTemplates[] = {
 
 static const struct ScrollArrowsTemplate sNews_ArrowsTemplate = {
     .firstArrowType = SCROLL_ARROW_UP,
+#ifdef PLATFORM_SDL2
+    .firstX = 272,
+    .firstY = 32,
+#else
     .firstX = 232,
     .firstY = 24,
+#endif
     .secondArrowType = SCROLL_ARROW_DOWN,
+#ifdef PLATFORM_SDL2
+    .secondX = 272,
+    .secondY = 160,
+#else
     .secondX = 232,
     .secondY = 152,
+#endif
     .fullyUpThreshold = 0,
     .fullyDownThreshold = 2,
     .tileTag = TAG_ARROWS,
@@ -681,6 +745,21 @@ s32 WonderNews_Enter(void)
         ChangeBgY(1, 0, BG_COORD_SET);
         ChangeBgY(2, 0, BG_COORD_SET);
         ChangeBgY(3, 0, BG_COORD_SET);
+#ifdef PLATFORM_SDL2
+        SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 40, 280);
+        SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(34, 160));
+        SetGpuWindowHorizontalRange(REG_OFFSET_WIN1H, 40, 280);
+        SetGpuReg(REG_OFFSET_WIN1V, WIN_RANGE(8, 168));
+        SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN1_BG0 | WININ_WIN1_BG1 | WININ_WIN1_BG3 | WININ_WIN1_OBJ);
+        SetGpuReg(REG_OFFSET_WINOUT, 0);
+        SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON | DISPCNT_WIN1_ON);
+        break;
+    case 2:
+        FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(3, 0x000, 0, 0, 64, 32);
+#else
         SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, GBA_DISPLAY_WIDTH);
         SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(26, 152));
         SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ);
@@ -692,6 +771,7 @@ s32 WonderNews_Enter(void)
         FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(3, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
+#endif
         CopyBgTilemapBufferToVram(0);
         CopyBgTilemapBufferToVram(1);
         CopyBgTilemapBufferToVram(2);
@@ -707,8 +787,13 @@ s32 WonderNews_Enter(void)
         gPaletteFade.bufferTransferDisabled = TRUE;
         LoadPalette(sWonderNewsData->gfx->pal, BG_PLTT_ID(1), PLTT_SIZE_4BPP);
         LZ77UnCompWram(sWonderNewsData->gfx->map, sWonderNewsData->bgTilemapBuffer);
+#ifdef PLATFORM_SDL2
+        CopyRectToBgTilemapBufferRect(1, sWonderNewsData->bgTilemapBuffer, 0, 0, DISPLAY_TILE_WIDTH, 3, 5, 1, DISPLAY_TILE_WIDTH, 3, 1, 8, 0);
+        CopyRectToBgTilemapBufferRect(3, sWonderNewsData->bgTilemapBuffer, 0, 3, DISPLAY_TILE_WIDTH, 3 + DISPLAY_TILE_HEIGHT, 5, 4, DISPLAY_TILE_WIDTH, 3 + DISPLAY_TILE_HEIGHT, 1, 8, 0);
+#else
         CopyRectToBgTilemapBufferRect(1, sWonderNewsData->bgTilemapBuffer, 0, 0, DISPLAY_TILE_WIDTH, 3, 0, 0, DISPLAY_TILE_WIDTH, 3, 1, 8, 0);
         CopyRectToBgTilemapBufferRect(3, sWonderNewsData->bgTilemapBuffer, 0, 3, DISPLAY_TILE_WIDTH, 3 + DISPLAY_TILE_HEIGHT, 0, 3, DISPLAY_TILE_WIDTH, 3 + DISPLAY_TILE_HEIGHT, 1, 8, 0);
+#endif
         CopyBgTilemapBufferToVram(1);
         CopyBgTilemapBufferToVram(3);
         break;
@@ -755,15 +840,30 @@ s32 WonderNews_Exit(bool32 useCancel)
         ChangeBgY(2, 0, BG_COORD_SET);
         SetGpuReg(REG_OFFSET_WIN0H, 0);
         SetGpuReg(REG_OFFSET_WIN0V, 0);
+#ifdef PLATFORM_SDL2
+        SetGpuReg(REG_OFFSET_WIN1H, 0);
+        SetGpuReg(REG_OFFSET_WIN1V, 0);
+#endif
         SetGpuReg(REG_OFFSET_WININ, 0);
         SetGpuReg(REG_OFFSET_WINOUT, 0);
+#ifdef PLATFORM_SDL2
+        ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON | DISPCNT_WIN1_ON);
+#else
         ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
+#endif
         break;
     case 2:
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, 64, 32);
+        FillBgTilemapBufferRect_Palette0(3, 0x000, 0, 0, 64, 32);
+#else
         FillBgTilemapBufferRect_Palette0(0, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(1, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
         FillBgTilemapBufferRect_Palette0(2, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT + 4);
         FillBgTilemapBufferRect_Palette0(3, 0x000, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT + 4);
+#endif
         CopyBgTilemapBufferToVram(0);
         CopyBgTilemapBufferToVram(1);
         CopyBgTilemapBufferToVram(2);
