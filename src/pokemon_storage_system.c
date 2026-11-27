@@ -10220,12 +10220,22 @@ static void TilemapUtil_Draw(u8 id)
 
     for (i = 0; i < sTilemapUtil[id].cur.height; i++)
     {
+#ifdef PLATFORM_SDL2
+        CopyToBgTilemapBufferRect_ChangePalette(sTilemapUtil[id].bg,
+                                                tiles,
+                                                sTilemapUtil[id].cur.destX,
+                                                sTilemapUtil[id].cur.destY + i,
+                                                sTilemapUtil[id].cur.width,
+                                                1,
+                                                17);
+#else
         CopyToBgTilemapBufferRect(sTilemapUtil[id].bg,
                                   tiles,
                                   sTilemapUtil[id].cur.destX,
                                   sTilemapUtil[id].cur.destY + i,
                                   sTilemapUtil[id].cur.width,
                                   1);
+#endif
         tiles += adder;
     }
 }
