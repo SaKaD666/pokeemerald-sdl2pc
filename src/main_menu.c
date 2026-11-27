@@ -456,7 +456,11 @@ static const struct BgTemplate sBirchBgTemplate = {
     .baseTile = 0
 };
 
+#ifdef PLATFORM_SDL2
+static const struct ScrollArrowsTemplate sScrollArrowsTemplate_MainMenu = {2, DISPLAY_WIDTH / 2, 8, 3, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT - 8, 3, 4, 1, 1, 0};
+#else
 static const struct ScrollArrowsTemplate sScrollArrowsTemplate_MainMenu = {2, 0x78, 8, 3, 0x78, 0x98, 3, 4, 1, 1, 0};
+#endif
 
 static const union AffineAnimCmd sSpriteAffineAnim_PlayerShrink[] = {
     AFFINEANIMCMD_FRAME(-2, -2, 0, 0x30),
@@ -1151,7 +1155,11 @@ static void Task_DisplayMainMenuInvalidActionError(u8 taskId)
     switch (gTasks[taskId].tCurrItem)
     {
         case 0:
+#ifdef PLATFORM_SDL2
+            FillBgTilemapBufferRect(0, 0, 0, 0, DISPLAY_WIDTH / TILE_WIDTH, (DISPLAY_HEIGHT + TILE_HEIGHT - 1) / TILE_HEIGHT, 0);
+#else
             FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, DISPLAY_TILE_WIDTH, DISPLAY_TILE_HEIGHT);
+#endif
             switch (gTasks[taskId].tMenuType)
             {
                 case 0:
@@ -2160,8 +2168,11 @@ static void CreateMainMenuErrorWindow(const u8 *str)
     CopyWindowToVram(7, COPYWIN_GFX);
     DrawMainMenuWindowBorder(&sWindowTemplates_MainMenu[7], MAIN_MENU_BORDER_TILE);
     SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 9, DISPLAY_WIDTH - 9);
-    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(113, DISPLAY_HEIGHT - 1));
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(((MENU_TOP_ERROR - 1) * 8) + MENU_SHADOW_PADDING, ((MENU_TOP_ERROR + MENU_HEIGHT_ERROR + 1) * 8) - MENU_SHADOW_PADDING));
 }
+
+#define CONTINUE_COL2_RIGHT (MENU_WIDTH * 8)
+#define CONTINUE_COL2_X     (CONTINUE_COL2_RIGHT - 100)
 
 static void MainMenu_FormatSavegameText(void)
 {
@@ -2184,11 +2195,11 @@ static void MainMenu_FormatSavegameTime(void)
     u8 *ptr;
 
     StringExpandPlaceholders(gStringVar4, gText_ContinueMenuTime);
-    AddTextPrinterParameterized3(2, FONT_NORMAL, 0x6C, 17, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
+    AddTextPrinterParameterized3(2, FONT_NORMAL, CONTINUE_COL2_X, 17, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
     ptr = ConvertIntToDecimalStringN(str, gSaveBlock2Ptr->playTimeHours, STR_CONV_MODE_LEFT_ALIGN, 3);
     *ptr = 0xF0;
     ConvertIntToDecimalStringN(ptr + 1, gSaveBlock2Ptr->playTimeMinutes, STR_CONV_MODE_LEADING_ZEROS, 2);
-    AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, str, 0xD0), 17, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
+    AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, str, CONTINUE_COL2_RIGHT), 17, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
 }
 
 static void MainMenu_FormatSavegamePokedex(void)
@@ -2221,9 +2232,9 @@ static void MainMenu_FormatSavegameBadges(void)
             badgeCount++;
     }
     StringExpandPlaceholders(gStringVar4, gText_ContinueMenuBadges);
-    AddTextPrinterParameterized3(2, FONT_NORMAL, 0x6C, 33, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
+    AddTextPrinterParameterized3(2, FONT_NORMAL, CONTINUE_COL2_X, 33, sTextColor_MenuInfo, TEXT_SKIP_DRAW, gStringVar4);
     ConvertIntToDecimalStringN(str, badgeCount, STR_CONV_MODE_LEADING_ZEROS, 1);
-    AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, str, 0xD0), 33, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
+    AddTextPrinterParameterized3(2, FONT_NORMAL, GetStringRightAlignXOffset(FONT_NORMAL, str, CONTINUE_COL2_RIGHT), 33, sTextColor_MenuInfo, TEXT_SKIP_DRAW, str);
 }
 
 static void LoadMainMenuWindowFrameTiles(u8 bgId, u16 tileOffset)
