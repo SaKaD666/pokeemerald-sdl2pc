@@ -1879,8 +1879,13 @@ static void Task_NewGameBirchSpeech_AreYouReady(u8 taskId)
             spriteId = gTasks[taskId].tMaySpriteId;
         else
             spriteId = gTasks[taskId].tBrendanSpriteId;
+#ifdef PLATFORM_SDL2
+        gSprites[spriteId].x = 160;
+        gSprites[spriteId].y = 68;
+#else
         gSprites[spriteId].x = 120;
         gSprites[spriteId].y = 60;
+#endif
         gSprites[spriteId].invisible = FALSE;
         gSprites[spriteId].oam.objMode = ST_OAM_OBJ_BLEND;
         gTasks[taskId].tPlayerSpriteId = spriteId;
