@@ -1027,7 +1027,6 @@ static const u16 sSpriteImageSizes[3][4] =
 
 u8 CreateMonIcon(u16 species, void (*callback)(struct Sprite *), s16 x, s16 y, u8 subpriority, u32 personality, bool32 handleDeoxys)
 {
-    u8 spriteId;
     struct MonIconSpriteTemplate iconTemplate =
     {
         .oam = &sMonIconOamData,
@@ -1041,16 +1040,11 @@ u8 CreateMonIcon(u16 species, void (*callback)(struct Sprite *), s16 x, s16 y, u
     if (species > NUM_SPECIES)
         iconTemplate.paletteTag = POKE_ICON_BASE_PAL_TAG;
 
-    spriteId = CreateMonIconSprite(&iconTemplate, x, y, subpriority);
-
-    UpdateMonIconFrame(&gSprites[spriteId]);
-
-    return spriteId;
+    return CreateMonIconSprite(&iconTemplate, x, y, subpriority);
 }
 
 u8 CreateMonIconNoPersonality(u16 species, void (*callback)(struct Sprite *), s16 x, s16 y, u8 subpriority, bool32 handleDeoxys)
 {
-    u8 spriteId;
     struct MonIconSpriteTemplate iconTemplate =
     {
         .oam = &sMonIconOamData,
@@ -1062,11 +1056,7 @@ u8 CreateMonIconNoPersonality(u16 species, void (*callback)(struct Sprite *), s1
     };
 
     iconTemplate.image = GetMonIconTiles(species, handleDeoxys);
-    spriteId = CreateMonIconSprite(&iconTemplate, x, y, subpriority);
-
-    UpdateMonIconFrame(&gSprites[spriteId]);
-
-    return spriteId;
+    return CreateMonIconSprite(&iconTemplate, x, y, subpriority);
 }
 
 u16 GetIconSpecies(u16 species, u32 personality)
@@ -1243,17 +1233,20 @@ u8 UpdateMonIconFrame(struct Sprite *sprite)
             sprite->animCmdIndex = 0;
             break;
         default:
-            RequestSpriteCopy(
-                // pointer arithmetic is needed to get the correct pointer to perform the sprite copy on.
-                // because sprite->images is a struct def, it has to be casted to (u8 *) before any
-                // arithmetic can be performed.
-                (u8 *)sprite->images + (sSpriteImageSizes[sprite->oam.shape][sprite->oam.size] * frame),
-                (u8 *)(OBJ_VRAM0 + sprite->oam.tileNum * TILE_SIZE_4BPP),
-                sSpriteImageSizes[sprite->oam.shape][sprite->oam.size]);
+        {
+            u16 size = sSpriteImageSizes[sprite->oam.shape][sprite->oam.size];
+            u8 *dest = GetSpriteTileVram(sprite, 0, size / TILE_SIZE_4BPP);
+
+            if (dest == NULL)
+                return 0;
+
+            // Icon frames are packed consecutively in the image data.
+            RequestSpriteCopy((const u8 *)sprite->images + size * frame, dest, size);
             sprite->animDelayCounter = sprite->anims[sprite->animNum][sprite->animCmdIndex].frame.duration & 0xFF;
             sprite->animCmdIndex++;
             result = sprite->animCmdIndex;
             break;
+        }
         }
     }
     else
@@ -1281,9 +1274,13 @@ static u8 CreateMonIconSprite(struct MonIconSpriteTemplate *iconTemplate, s16 x,
     };
 
     spriteId = CreateSprite(&spriteTemplate, x, y, subpriority);
+    if (spriteId >= MAX_SPRITES)
+        return spriteId;
+
     gSprites[spriteId].animPaused = TRUE;
     gSprites[spriteId].animBeginning = FALSE;
     gSprites[spriteId].images = (const struct SpriteFrameImage *)iconTemplate->image;
+    UpdateMonIconFrame(&gSprites[spriteId]);
     return spriteId;
 }
 

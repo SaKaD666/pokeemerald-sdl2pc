@@ -99,8 +99,13 @@ extern unsigned char VRAM_[VRAM_SIZE] __attribute__ ((aligned (4)));
 #define OBJ_VRAM1      (VRAM + 0x14000)
 #define OBJ_VRAM1_SIZE 0x4000
 
+#ifdef PLATFORM_SDL2
+#define OAM_ENTRY_COUNT 255
+#define OAM_SIZE 0x7F8
+#else
 #define OAM_ENTRY_COUNT 128
 #define OAM_SIZE 0x400
+#endif
 #ifndef PORTABLE
 #define OAM      0x7000000
 #else
@@ -138,7 +143,12 @@ extern unsigned char OAM[OAM_SIZE] __attribute__ ((aligned (4)));
 #define TILE_OFFSET_4BPP(n) ((n) * TILE_SIZE_4BPP)
 #define TILE_OFFSET_8BPP(n) ((n) * TILE_SIZE_8BPP)
 
-#define TOTAL_OBJ_TILE_COUNT 1024
+#define LEGACY_OBJ_TILE_COUNT (OBJ_VRAM0_SIZE / TILE_SIZE_4BPP)
+#ifdef PLATFORM_SDL2
+#define TOTAL_OBJ_TILE_COUNT (LEGACY_OBJ_TILE_COUNT + OBJ_VRAM_EXT_SIZE / TILE_SIZE_4BPP)
+#else
+#define TOTAL_OBJ_TILE_COUNT LEGACY_OBJ_TILE_COUNT
+#endif
 
 #define PLTT_SIZEOF(n) ((n) * sizeof(u16))
 #define PLTT_SIZE_4BPP PLTT_SIZEOF(16)

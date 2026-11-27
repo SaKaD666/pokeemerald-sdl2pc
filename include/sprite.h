@@ -1,13 +1,18 @@
 #ifndef GUARD_SPRITE_H
 #define GUARD_SPRITE_H
 
-#define OAM_MATRIX_COUNT 32
+#define LEGACY_OAM_MATRIX_COUNT 32
 #ifdef PLATFORM_SDL2
-#define MAX_SPRITES 128
+#define OAM_MATRIX_COUNT 64
+#else
+#define OAM_MATRIX_COUNT LEGACY_OAM_MATRIX_COUNT
+#endif
+#define SPRITE_NONE 0xFF
+#ifdef PLATFORM_SDL2
+#define MAX_SPRITES SPRITE_NONE
 #else
 #define MAX_SPRITES 64
 #endif
-#define SPRITE_NONE 0xFF
 #define TAG_NONE 0xFFFF
 #define SPRITE_TILE_NONE 0xFFFF
 
@@ -301,9 +306,19 @@ void StartSpriteAffineAnim(struct Sprite *sprite, u8 animNum);
 void StartSpriteAffineAnimIfDifferent(struct Sprite *sprite, u8 animNum);
 void ChangeSpriteAffineAnim(struct Sprite *sprite, u8 animNum);
 void ChangeSpriteAffineAnimIfDifferent(struct Sprite *sprite, u8 animNum);
+void SetSpriteSheetTileOffset(struct Sprite *sprite, s16 tileOffset);
+void OffsetSpriteTile(struct Sprite *sprite, s32 offset);
+u8 *GetSpriteTileVram(const struct Sprite *sprite, u16 offset, u16 count);
 void SetSpriteSheetFrameTileNum(struct Sprite *sprite);
+u8 GetSpriteMatrixHandle(const struct Sprite *sprite);
+void SetSpriteMatrixHandle(struct Sprite *sprite, u8 matrix);
+void AdoptSpriteMatrixHandle(struct Sprite *sprite, u8 matrix);
 u8 AllocOamMatrix(void);
 void FreeOamMatrix(u8 matrixNum);
+#ifdef PLATFORM_SDL2
+bool8 ReserveOamMatrices(u8 first, u8 count);
+void ReleaseOamMatrices(u8 first, u8 count);
+#endif
 bool8 InitSpriteAffineAnim(struct Sprite *sprite);
 void SetOamMatrixRotationScaling(u8 matrixNum, s16 xScale, s16 yScale, u16 rotation);
 u16 LoadSpriteSheet(const struct SpriteSheet *sheet);
@@ -317,13 +332,63 @@ u8 LoadSpritePalette(const struct SpritePalette *palette);
 void LoadSpritePalettes(const struct SpritePalette *palettes);
 u8 AllocSpritePalette(u16 tag);
 u8 IndexOfSpritePaletteTag(u16 tag);
+void SetOamPaletteFromTag(struct OamData *oam, u16 tag);
+u8 GetSpritePaletteHandle(const struct Sprite *sprite);
+void SetSpritePaletteHandle(struct Sprite *sprite, u8 palette);
+void SetSpritePaletteFromTag(struct Sprite *sprite, u16 tag);
 u16 GetSpritePaletteTagByPaletteNum(u8 paletteNum);
 void FreeSpritePaletteByTag(u16 tag);
 void SetSubspriteTables(struct Sprite *sprite, const struct SubspriteTable *subspriteTables);
 bool8 AddSpriteToOamBuffer(struct Sprite *sprite, u8 *oamIndex);
 bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u8 *oamIndex);
+void CopySpriteState(struct Sprite *dest, const struct Sprite *src);
+void BorrowSpriteTiles(struct Sprite *dest, const struct Sprite *src);
+#ifdef PLATFORM_SDL2
+#define OAM_AFFINE_HANDLE_TAG 0xA500
+#define OAM_AFFINE_HANDLE_MASK 0x00FF
+
+struct OamResourceHandles
+{
+    u16 tile;
+    u16 tileBase;
+    u8 tileBank;
+    u8 palette;
+    bool8 hasHandles;
+};
+
+extern struct OamResourceHandles gOamResourceHandles[OAM_ENTRY_COUNT];
+void InvalidateOamResourceHandles(const volatile void *dest, u32 size);
+extern struct OamMatrix gPublishedOamMatrices[OAM_MATRIX_COUNT];
+bool8 ReserveOamSlots(u16 start, u16 count);
+void ReleaseOamSlots(u16 start, u16 count);
+void SetReservedOamSlotHandles(u8 slot, u16 tile, u16 tileBase, u8 palette);
+void LoadReservedOamSlot(u8 slot);
+
+struct SpriteResourceHandles
+{
+    u16 tile;
+    u16 tileBase;
+    u16 dynamicTileCount;
+    u8 tileBank;
+    u8 palette;
+    u8 matrix;
+    bool8 ownsImageTiles;
+    bool8 ownsMatrix;
+};
+
+// Restore only while the sprite resources captured by the snapshot are still loaded.
+struct SpritePoolSnapshot
+{
+    struct Sprite sprites[MAX_SPRITES];
+    struct SpriteResourceHandles handles[MAX_SPRITES];
+};
+
+void CopyToSprites(const struct SpritePoolSnapshot *src);
+void CopyFromSprites(struct SpritePoolSnapshot *dest);
+#else
 void CopyToSprites(u8 *src);
 void CopyFromSprites(u8 *dest);
+#endif
 u8 SpriteTileAllocBitmapOp(u16 bit, u8 op);
 void ClearSpriteCopyRequests(void);
 void ResetAffineAnimData(void);

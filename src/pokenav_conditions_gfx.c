@@ -644,9 +644,9 @@ static void SpriteCB_PartyPokeball(struct Sprite *sprite)
 void HighlightCurrentPartyIndexPokeball(struct Sprite *sprite)
 {
     if (GetConditionGraphCurrentListIndex() == GetMonListCount() - 1)
-        sprite->oam.paletteNum = IndexOfSpritePaletteTag(TAG_CONDITION_BALL);
+        SetSpritePaletteFromTag(sprite, TAG_CONDITION_BALL);
     else
-        sprite->oam.paletteNum = IndexOfSpritePaletteTag(TAG_CONDITION_CANCEL);
+        SetSpritePaletteFromTag(sprite, TAG_CONDITION_CANCEL);
 }
 
 void MonMarkingsCallback(struct Sprite *sprite)

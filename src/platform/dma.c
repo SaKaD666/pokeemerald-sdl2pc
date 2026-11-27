@@ -3,6 +3,7 @@
 #include "platform/dma.h"
 #ifdef PLATFORM_SDL2
 #include "bg.h"
+#include "sprite.h"
 #endif
 
 struct DMATransfer {
@@ -44,6 +45,7 @@ static void InvalidateDmaDestination(const struct DMATransfer *dma)
 
     InvalidateBgTilemapRamRange((void *)start, units * unit);
     InvalidateBgTilemapVramRange((void *)start, units * unit);
+    InvalidateOamResourceHandles((void *)start, units * unit);
 }
 #endif
 

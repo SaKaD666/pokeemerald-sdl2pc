@@ -2,6 +2,7 @@
 #include "global.h"
 #ifdef PLATFORM_SDL2
 #include "bg.h"
+#include "sprite.h"
 #endif
 
 #ifdef PLATFORM_SDL2
@@ -9,6 +10,7 @@ static void InvalidateGraphicsWrite(const volatile void *dest, u32 size)
 {
     InvalidateBgTilemapRamRange(dest, size);
     InvalidateBgTilemapVramRange(dest, size);
+    InvalidateOamResourceHandles(dest, size);
 }
 #endif
 

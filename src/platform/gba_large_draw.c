@@ -8,6 +8,9 @@
 #include "gpu_regs.h"
 #include "platform/dma.h"
 #include "platform/framedraw.h"
+#ifdef PLATFORM_SDL2
+#include "sprite.h"
+#endif
 
 #define mosaicBGEffectX (REG_MOSAIC & 0xF)
 #define mosaicBGEffectY ((REG_MOSAIC >> 4) & 0xF)
@@ -530,7 +533,7 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
         puts("2-D OBJ Character mapping not supported.");
     }
 
-    for (i = 127; i >= 0; i--)
+    for (i = OAM_ENTRY_COUNT - 1; i >= 0; i--)
     {
         struct OamData *oam = &((struct OamData *)OAM)[i];
         unsigned int width;
@@ -583,6 +586,20 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
 
         if (isAffine)
         {
+#ifdef PLATFORM_SDL2
+            u16 param = oam->affineParam;
+            u8 matrixNum = oam->matrixNum;
+            if ((param & ~OAM_AFFINE_HANDLE_MASK) == OAM_AFFINE_HANDLE_TAG)
+                matrixNum = param & OAM_AFFINE_HANDLE_MASK;
+            if (matrixNum >= OAM_MATRIX_COUNT)
+                continue;
+
+            const struct OamMatrix *affine = &gPublishedOamMatrices[matrixNum];
+            matrix[0][0] = affine->a;
+            matrix[0][1] = affine->b;
+            matrix[1][0] = affine->c;
+            matrix[1][1] = affine->d;
+#else
             //TODO: there is probably a better way to do this
             u8 matrixNum = oam->matrixNum * 4;
 
@@ -595,6 +612,7 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
             matrix[0][1] = oam2->affineParam;
             matrix[1][0] = oam3->affineParam;
             matrix[1][1] = oam4->affineParam;
+#endif
 
             if (doubleSizeOrDisabled) // double size for affine
             {
@@ -621,6 +639,22 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
             bool flipX  = !isAffine && ((oam->matrixNum >> 3) & 1);
             bool flipY  = !isAffine && ((oam->matrixNum >> 4) & 1);
             bool is8BPP  = oam->bpp & 1;
+            unsigned int tileNum = oam->tileNum;
+            unsigned int paletteNum = oam->paletteNum;
+#ifdef PLATFORM_SDL2
+            const struct OamResourceHandles *handles = &gOamResourceHandles[i];
+            if (handles->hasHandles)
+            {
+                if (handles->tile >= TOTAL_OBJ_TILE_COUNT || handles->tileBase >= TOTAL_OBJ_TILE_COUNT
+                 || handles->tile / LEGACY_OBJ_TILE_COUNT != handles->tileBank)
+                    continue;
+
+                tileNum = handles->tile;
+                if (handles->palette < OBJ_PLTT_CAPACITY / PLTT_SIZE_4BPP)
+                    paletteNum = handles->palette;
+            }
+            unsigned int tileLimit = (tileNum / LEGACY_OBJ_TILE_COUNT + 1) * LEGACY_OBJ_TILE_COUNT;
+#endif
 
             for (int local_x = -half_width; local_x <= half_width; local_x++)
             {
@@ -662,19 +696,26 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
                 int block_y = tex_y / 8;
                 int block_offset = ((block_y * (REG_DISPCNT & 0x40 ? (width / 8) : 16)) + block_x);
                 uint16_t pixel = 0;
+                unsigned int pixelTile = tileNum + block_offset * (is8BPP ? 2 : 1);
 
+#ifdef PLATFORM_SDL2
+                if (!handles->hasHandles)
+                    pixelTile %= LEGACY_OBJ_TILE_COUNT;
+                if (pixelTile + (is8BPP ? 1 : 0) >= tileLimit)
+                    continue;
+#endif
                 if (!is8BPP)
                 {
-                    pixel = tiledata[(block_offset + oam->tileNum) * 32 + (tile_y * 4) + (tile_x / 2)];
+                    pixel = tiledata[pixelTile * TILE_SIZE_4BPP + (tile_y * 4) + (tile_x / 2)];
                     if (tile_x & 1)
                         pixel >>= 4;
                     else
                         pixel &= 0xF;
-                    palette += oam->paletteNum * 16;
+                    palette += paletteNum * 16;
                 }
                 else
                 {
-                    pixel = tiledata[(block_offset * 2 + oam->tileNum) * 32 + (tile_y * 8) + tile_x];
+                    pixel = tiledata[pixelTile * TILE_SIZE_4BPP + (tile_y * 8) + tile_x];
                 }
 
                 if (pixel != 0)

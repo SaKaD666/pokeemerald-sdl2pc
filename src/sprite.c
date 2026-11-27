@@ -2,7 +2,7 @@
 #include "sprite.h"
 #include "main.h"
 #ifdef PLATFORM_SDL2
-#include "link_rfu.h"
+#include "dma3.h"
 #endif
 #include "palette.h"
 
@@ -52,13 +52,15 @@ struct OamDimensions
 static void UpdateOamCoords(void);
 static void BuildSpritePriorities(void);
 static void SortSprites(void);
+#ifndef PLATFORM_SDL2
 static void CopyMatricesToOamBuffer(void);
+#endif
 static void AddSpritesToOamBuffer(void);
 static u8 CreateSpriteAt(u8 index, const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority);
 static void ResetOamMatrices(void);
 static void ResetSprite(struct Sprite *sprite);
-static s16 AllocSpriteTiles(u16 tileCount);
-static void RequestSpriteFrameImageCopy(u16 index, u16 tileNum, const struct SpriteFrameImage *images);
+static s16 AllocSpriteTiles(u16 tileCount, u16 tileLimit);
+static void RequestSpriteFrameImageCopy(const struct Sprite *sprite, u16 index);
 static void ResetAllSprites(void);
 static void BeginAnim(struct Sprite *sprite);
 static void ContinueAnim(struct Sprite *sprite);
@@ -80,7 +82,6 @@ static void AffineAnimCmd_jump(u8 matrixNum, struct Sprite *sprite);
 static void AffineAnimCmd_end(u8 matrixNum, struct Sprite *sprite);
 static void AffineAnimCmd_frame(u8 matrixNum, struct Sprite *sprite);
 static void CopyOamMatrix(u8 destMatrixIndex, struct OamMatrix *srcMatrix);
-static u8 GetSpriteMatrixNum(struct Sprite *sprite);
 static void SetSpriteOamFlipBits(struct Sprite *sprite, u8 hFlip, u8 vFlip);
 static void AffineAnimStateRestartAnim(u8 matrixNum);
 static void AffineAnimStateStartAnim(u8 matrixNum, u8 animNum);
@@ -93,7 +94,6 @@ static s16 ConvertScaleParam(s16 scale);
 static void GetAffineAnimFrame(u8 matrixNum, struct Sprite *sprite, struct AffineAnimFrameCmd *frameCmd);
 static void ApplyAffineAnimFrame(u8 matrixNum, struct AffineAnimFrameCmd *frameCmd);
 static u8 IndexOfSpriteTileTag(u16 tag);
-static void AllocSpriteTileRange(u16 tag, u16 start, u16 count);
 static void DoLoadSpritePalette(const u16 *src, u16 paletteOffset);
 static void UpdateSpriteMatrixAnchorPos(struct Sprite *, s32, s32);
 
@@ -274,13 +274,112 @@ static const struct OamDimensions sOamDimensions[3][4] =
 static u16 sSpriteTileRangeTags[MAX_SPRITES];
 static u16 sSpriteTileRanges[MAX_SPRITES][2];
 static struct AffineAnimState sAffineAnimStates[OAM_MATRIX_COUNT];
-static u16 sSpritePaletteTags[16];
+#define LEGACY_OBJ_PALETTE_COUNT (OBJ_PLTT_SIZE / PLTT_SIZE_4BPP)
+#define OBJ_PALETTE_COUNT (OBJ_PLTT_CAPACITY / PLTT_SIZE_4BPP)
+static u16 sSpritePaletteTags[OBJ_PALETTE_COUNT];
 
 // iwram common
-COMMON_DATA u32 gOamMatrixAllocBitmap = 0;
+#ifdef PLATFORM_SDL2
+typedef u64 OamMatrixBitmap;
+#else
+typedef u32 OamMatrixBitmap;
+#endif
+static OamMatrixBitmap sOamMatrixAllocBitmap;
+#ifdef PLATFORM_SDL2
+static OamMatrixBitmap sReservedOamMatrices;
+#endif
 COMMON_DATA u8 gReservedSpritePaletteCount = 0;
 
 EWRAM_DATA struct Sprite gSprites[MAX_SPRITES + 1] = {0};
+#ifdef PLATFORM_SDL2
+static const struct SpriteResourceHandles sInvalidSpriteResourceHandles =
+{
+    .tile = SPRITE_TILE_NONE,
+    .tileBase = SPRITE_TILE_NONE,
+    .tileBank = 0xFF,
+    .palette = 0xFF,
+    .matrix = 0xFF,
+};
+static EWRAM_DATA struct SpriteResourceHandles sSpriteResourceHandles[MAX_SPRITES + 1];
+static EWRAM_DATA struct OamResourceHandles sOamBufferResourceHandles[OAM_ENTRY_COUNT];
+static EWRAM_DATA bool8 sReservedOamSlots[OAM_ENTRY_COUNT];
+EWRAM_DATA struct OamResourceHandles gOamResourceHandles[OAM_ENTRY_COUNT];
+
+void InvalidateOamResourceHandles(const volatile void *dest, u32 size)
+{
+    uintptr_t base = (uintptr_t)OAM;
+    uintptr_t start = max((uintptr_t)dest, base);
+    uintptr_t end = min((uintptr_t)dest + size, base + OAM_SIZE);
+    u16 first, last, i;
+
+    if (start >= end)
+        return;
+
+    first = (start - base) / sizeof(struct OamData);
+    last = (end - 1 - base) / sizeof(struct OamData);
+    for (i = first; i <= last; i++)
+    {
+        // Attribute 2 contains the tile number and palette bank.
+        uintptr_t attr2 = base + i * sizeof(struct OamData) + offsetof(struct OamData, affineParam) - sizeof(u16);
+
+        if (start < attr2 + sizeof(u16) && attr2 < end)
+            gOamResourceHandles[i] = (struct OamResourceHandles){0};
+    }
+}
+static EWRAM_DATA struct OamMatrix sOamBufferMatrices[OAM_MATRIX_COUNT];
+EWRAM_DATA struct OamMatrix gPublishedOamMatrices[OAM_MATRIX_COUNT];
+
+bool8 ReserveOamSlots(u16 start, u16 count)
+{
+    u16 end = start + count;
+    u16 slot;
+
+    if (start >= OAM_ENTRY_COUNT || count > OAM_ENTRY_COUNT - start)
+        return FALSE;
+    for (slot = start; slot < end; slot++)
+        if (sReservedOamSlots[slot])
+            return FALSE;
+    ResetOamRange(start, end);
+    for (slot = start; slot < end; slot++)
+        sReservedOamSlots[slot] = TRUE;
+    return TRUE;
+}
+
+void ReleaseOamSlots(u16 start, u16 count)
+{
+    if (start >= OAM_ENTRY_COUNT || count > OAM_ENTRY_COUNT - start)
+        return;
+    memset(&sReservedOamSlots[start], 0, count * sizeof(sReservedOamSlots[0]));
+    ResetOamRange(start, start + count);
+}
+
+void SetReservedOamSlotHandles(u8 slot, u16 tile, u16 tileBase, u8 palette)
+{
+    if (slot >= OAM_ENTRY_COUNT || !sReservedOamSlots[slot])
+        return;
+    sOamBufferResourceHandles[slot] = (struct OamResourceHandles){
+        .tile = tile,
+        .tileBase = tileBase,
+        .tileBank = tileBase / LEGACY_OBJ_TILE_COUNT,
+        .palette = palette,
+        .hasHandles = TRUE,
+    };
+}
+
+void LoadReservedOamSlot(u8 slot)
+{
+    if (slot >= OAM_ENTRY_COUNT || !sReservedOamSlots[slot] || gMain.oamLoadDisabled)
+        return;
+    CpuCopy16(&gMain.oamBuffer[slot], &((struct OamData *)OAM)[slot], sizeof(struct OamData));
+    gOamResourceHandles[slot] = sOamBufferResourceHandles[slot];
+}
+
+static void SkipReservedOamSlots(u8 *slot)
+{
+    while (*slot < gOamLimit && sReservedOamSlots[*slot])
+        (*slot)++;
+}
+#endif
 EWRAM_DATA static u16 sSpritePriorities[MAX_SPRITES] = {0};
 EWRAM_DATA static u8 sSpriteOrder[MAX_SPRITES] = {0};
 EWRAM_DATA static bool8 sShouldProcessSpriteCopyRequests = 0;
@@ -288,22 +387,51 @@ EWRAM_DATA static u8 sSpriteCopyRequestCount = 0;
 EWRAM_DATA static struct SpriteCopyRequest sSpriteCopyRequests[MAX_SPRITE_COPY_REQUESTS] = {0};
 EWRAM_DATA u8 gOamLimit = 0;
 EWRAM_DATA u16 gReservedSpriteTileCount = 0;
-EWRAM_DATA static u8 sSpriteTileAllocBitmap[128] = {0};
+EWRAM_DATA static u8 sSpriteTileAllocBitmap[TOTAL_OBJ_TILE_COUNT / 8] = {0};
 EWRAM_DATA s16 gSpriteCoordOffsetX = 0;
 EWRAM_DATA s16 gSpriteCoordOffsetY = 0;
 EWRAM_DATA struct OamMatrix gOamMatrices[OAM_MATRIX_COUNT] = {0};
 EWRAM_DATA bool8 gAffineAnimsDisabled = FALSE;
 
+#ifdef PLATFORM_SDL2
+static void CancelObjCopiesToTileRange(u16 firstTile, u16 endTile)
+{
+    uintptr_t start = OBJ_VRAM0 + firstTile * TILE_SIZE_4BPP;
+    uintptr_t end = OBJ_VRAM0 + endTile * TILE_SIZE_4BPP;
+    u16 read, write = 0;
+
+    if (firstTile >= endTile)
+        return;
+
+    for (read = 0; read < sSpriteCopyRequestCount; read++)
+    {
+        const struct SpriteCopyRequest *request = &sSpriteCopyRequests[read];
+        uintptr_t dest = (uintptr_t)request->dest;
+
+        if (request->size != 0 && dest < end && start < dest + request->size)
+            continue;
+
+        sSpriteCopyRequests[write++] = *request;
+    }
+
+    sSpriteCopyRequestCount = write;
+    CancelPendingDma3Writes((const void *)start, end - start);
+}
+#endif
+
 void ResetSpriteData(void)
 {
-    ResetOamRange(0, 128);
+#ifdef PLATFORM_SDL2
+    memset(sReservedOamSlots, 0, sizeof(sReservedOamSlots));
+#endif
+    ResetOamRange(0, OAM_ENTRY_COUNT);
     ResetAllSprites();
     ClearSpriteCopyRequests();
     ResetAffineAnimData();
     FreeSpriteTileRanges();
     gOamLimit = 64;
     gReservedSpriteTileCount = 0;
-    AllocSpriteTiles(0);
+    AllocSpriteTiles(0, TOTAL_OBJ_TILE_COUNT);
     gSpriteCoordOffsetX = 0;
     gSpriteCoordOffsetY = 0;
 }
@@ -333,22 +461,12 @@ void BuildOamBuffer(void)
     SortSprites();
     temp = gMain.oamLoadDisabled;
     gMain.oamLoadDisabled = TRUE;
+    AddSpritesToOamBuffer();
 #ifdef PLATFORM_SDL2
-    if (gOamLimit == ARRAY_COUNT(gMain.oamBuffer) && IsWirelessStatusIndicatorActive())
-    {
-        gOamLimit--;
-        AddSpritesToOamBuffer();
-        gOamLimit++;
-        gMain.oamBuffer[127] = gMain.oamBuffer[126];
-        gMain.oamBuffer[126] = gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX];
-        gMain.oamBuffer[WIRELESS_STATUS_OAM_INDEX] = gDummyOamData;
-    }
-    else
-#endif
-    {
-        AddSpritesToOamBuffer();
-    }
+    memcpy(sOamBufferMatrices, gOamMatrices, sizeof(sOamBufferMatrices));
+#else
     CopyMatricesToOamBuffer();
+#endif
     gMain.oamLoadDisabled = temp;
     sShouldProcessSpriteCopyRequests = TRUE;
 }
@@ -483,6 +601,7 @@ void SortSprites(void)
     }
 }
 
+#ifndef PLATFORM_SDL2
 void CopyMatricesToOamBuffer(void)
 {
     u8 i;
@@ -495,6 +614,7 @@ void CopyMatricesToOamBuffer(void)
         gMain.oamBuffer[base + 3].affineParam = gOamMatrices[i].d;
     }
 }
+#endif
 
 void AddSpritesToOamBuffer(void)
 {
@@ -505,15 +625,38 @@ void AddSpritesToOamBuffer(void)
     {
         struct Sprite *sprite = &gSprites[sSpriteOrder[i]];
         if (sprite->inUse && !sprite->invisible && AddSpriteToOamBuffer(sprite, &oamIndex))
+        {
+#ifdef PLATFORM_SDL2
+            break;
+#else
             return;
+#endif
+        }
         i++;
     }
 
     while (oamIndex < gOamLimit)
     {
+#ifdef PLATFORM_SDL2
+        SkipReservedOamSlots(&oamIndex);
+        if (oamIndex >= gOamLimit)
+            break;
+#endif
         gMain.oamBuffer[oamIndex] = gDummyOamData;
+#ifdef PLATFORM_SDL2
+        sOamBufferResourceHandles[oamIndex] = (struct OamResourceHandles){0};
+#endif
         oamIndex++;
     }
+
+#ifdef PLATFORM_SDL2
+    // Reserved producers can publish above the normal sprite limit.
+    for (i = gOamLimit; i < OAM_ENTRY_COUNT; i++)
+    {
+        if (!sReservedOamSlots[i])
+            ResetOamRange(i, i + 1);
+    }
+#endif
 }
 
 u8 CreateSprite(const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
@@ -554,10 +697,14 @@ u8 CreateInvisibleSprite(void (*callback)(struct Sprite *))
     }
 }
 
-u8 CreateSpriteAt(u8 index, const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
+static u8 CreateSpriteAt(u8 index, const struct SpriteTemplate *template, s16 x, s16 y, u8 subpriority)
 {
-    struct Sprite *sprite = &gSprites[index];
+    struct Sprite *sprite;
 
+    if (index >= MAX_SPRITES)
+        return MAX_SPRITES;
+
+    sprite = &gSprites[index];
     ResetSprite(sprite);
 
     sprite->inUse = TRUE;
@@ -579,8 +726,20 @@ u8 CreateSpriteAt(u8 index, const struct SpriteTemplate *template, s16 x, s16 y,
     if (template->tileTag == TAG_NONE)
     {
         s16 tileNum;
+        u16 tileCount;
         sprite->images = template->images;
-        tileNum = AllocSpriteTiles((u8)(sprite->images->size / TILE_SIZE_4BPP));
+#ifdef PLATFORM_SDL2
+        if (sprite->images == NULL || sprite->images->size < TILE_SIZE_4BPP)
+        {
+            ResetSprite(sprite);
+            return MAX_SPRITES;
+        }
+        tileCount = (sprite->images->size + TILE_SIZE_4BPP - 1) / TILE_SIZE_4BPP;
+        tileNum = AllocSpriteTiles(tileCount, TOTAL_OBJ_TILE_COUNT);
+#else
+        tileCount = sprite->images->size / TILE_SIZE_4BPP;
+        tileNum = AllocSpriteTiles((u8)tileCount, LEGACY_OBJ_TILE_COUNT);
+#endif
         if (tileNum == -1)
         {
             ResetSprite(sprite);
@@ -589,6 +748,13 @@ u8 CreateSpriteAt(u8 index, const struct SpriteTemplate *template, s16 x, s16 y,
         sprite->oam.tileNum = tileNum;
         sprite->usingSheet = FALSE;
         sprite->sheetTileStart = 0;
+#ifdef PLATFORM_SDL2
+        sSpriteResourceHandles[index].tile = tileNum;
+        sSpriteResourceHandles[index].tileBase = tileNum;
+        sSpriteResourceHandles[index].tileBank = tileNum / LEGACY_OBJ_TILE_COUNT;
+        sSpriteResourceHandles[index].dynamicTileCount = tileCount;
+        sSpriteResourceHandles[index].ownsImageTiles = TRUE;
+#endif
     }
     else
     {
@@ -597,10 +763,25 @@ u8 CreateSpriteAt(u8 index, const struct SpriteTemplate *template, s16 x, s16 y,
     }
 
     if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+    {
+#ifdef PLATFORM_SDL2
+        if (!InitSpriteAffineAnim(sprite))
+        {
+            DestroySprite(sprite);
+            return MAX_SPRITES;
+        }
+#else
         InitSpriteAffineAnim(sprite);
+#endif
+    }
 
     if (template->paletteTag != TAG_NONE)
-        sprite->oam.paletteNum = IndexOfSpritePaletteTag(template->paletteTag);
+        SetSpritePaletteFromTag(sprite, template->paletteTag);
+
+#ifdef PLATFORM_SDL2
+    else
+        SetSpritePaletteHandle(sprite, template->oam->paletteNum);
+#endif
 
     return index;
 }
@@ -636,11 +817,28 @@ void DestroySprite(struct Sprite *sprite)
 {
     if (sprite->inUse)
     {
+#ifdef PLATFORM_SDL2
+        const struct SpriteResourceHandles *handles = &sSpriteResourceHandles[sprite - gSprites];
+        if (handles->ownsMatrix)
+            FreeSpriteOamMatrix(sprite);
+        if (!sprite->usingSheet && handles->ownsImageTiles)
+#else
         if (!sprite->usingSheet)
+#endif
         {
+#ifdef PLATFORM_SDL2
+            u16 tileStart = handles->tileBase;
+            u16 tileEnd = tileStart + handles->dynamicTileCount;
+#else
+            u16 tileStart = sprite->oam.tileNum;
+            u16 tileEnd = tileStart + sprite->images->size / TILE_SIZE_4BPP;
+#endif
             u16 i;
-            u16 tileEnd = (sprite->images->size / TILE_SIZE_4BPP) + sprite->oam.tileNum;
-            for (i = sprite->oam.tileNum; i < tileEnd; i++)
+
+#ifdef PLATFORM_SDL2
+            CancelObjCopiesToTileRange(tileStart, tileEnd);
+#endif
+            for (i = tileStart; i < tileEnd; i++)
                 FREE_SPRITE_TILE(i);
         }
         ResetSprite(sprite);
@@ -650,14 +848,25 @@ void DestroySprite(struct Sprite *sprite)
 void ResetOamRange(u8 start, u8 end)
 {
     u8 i;
-    for (i = start; i < end; i++)
+    for (i = start; i < end && i < OAM_ENTRY_COUNT; i++)
+    {
         gMain.oamBuffer[i] = *(struct OamData *)&gDummyOamData;
+#ifdef PLATFORM_SDL2
+        sOamBufferResourceHandles[i] = (struct OamResourceHandles){0};
+#endif
+    }
 }
 
 void LoadOam(void)
 {
     if (!gMain.oamLoadDisabled)
+    {
         CpuCopy32(gMain.oamBuffer, (void *)OAM, sizeof(gMain.oamBuffer));
+#ifdef PLATFORM_SDL2
+        memcpy(gOamResourceHandles, sOamBufferResourceHandles, sizeof(gOamResourceHandles));
+        memcpy(gPublishedOamMatrices, sOamBufferMatrices, sizeof(gPublishedOamMatrices));
+#endif
+    }
 }
 
 void ClearSpriteCopyRequests(void)
@@ -690,6 +899,9 @@ void ResetOamMatrices(void)
 
 void SetOamMatrix(u8 matrixNum, u16 a, u16 b, u16 c, u16 d)
 {
+    if (matrixNum >= OAM_MATRIX_COUNT)
+        return;
+
     gOamMatrices[matrixNum].a = a;
     gOamMatrices[matrixNum].b = b;
     gOamMatrices[matrixNum].c = c;
@@ -699,6 +911,44 @@ void SetOamMatrix(u8 matrixNum, u16 a, u16 b, u16 c, u16 d)
 void ResetSprite(struct Sprite *sprite)
 {
     *sprite = sDummySprite;
+#ifdef PLATFORM_SDL2
+    sSpriteResourceHandles[sprite - gSprites] = sInvalidSpriteResourceHandles;
+#endif
+}
+
+void CopySpriteState(struct Sprite *dest, const struct Sprite *src)
+{
+#ifdef PLATFORM_SDL2
+    if (dest == &gSprites[MAX_SPRITES] || src == &gSprites[MAX_SPRITES])
+        return;
+#endif
+    *dest = *src;
+#ifdef PLATFORM_SDL2
+    if (dest != src)
+    {
+        sSpriteResourceHandles[dest - gSprites] = sSpriteResourceHandles[src - gSprites];
+        sSpriteResourceHandles[dest - gSprites].ownsImageTiles = FALSE;
+        sSpriteResourceHandles[dest - gSprites].ownsMatrix = FALSE;
+    }
+#endif
+}
+
+void BorrowSpriteTiles(struct Sprite *dest, const struct Sprite *src)
+{
+    if (dest == src || dest == &gSprites[MAX_SPRITES] || src == &gSprites[MAX_SPRITES])
+        return;
+
+#ifdef PLATFORM_SDL2
+    struct SpriteResourceHandles *destHandles = &sSpriteResourceHandles[dest - gSprites];
+    const struct SpriteResourceHandles *srcHandles = &sSpriteResourceHandles[src - gSprites];
+
+    destHandles->tile = srcHandles->tile;
+    destHandles->tileBase = srcHandles->tileBase;
+    destHandles->tileBank = srcHandles->tileBank;
+    destHandles->dynamicTileCount = srcHandles->dynamicTileCount;
+    destHandles->ownsImageTiles = FALSE;
+#endif
+    dest->oam.tileNum = src->oam.tileNum;
 }
 
 void CalcCenterToCornerVec(struct Sprite *sprite, u8 shape, u8 size, u8 affineMode)
@@ -716,65 +966,58 @@ void CalcCenterToCornerVec(struct Sprite *sprite, u8 shape, u8 size, u8 affineMo
     sprite->centerToCornerVecY = y;
 }
 
-s16 AllocSpriteTiles(u16 tileCount)
+s16 AllocSpriteTiles(u16 tileCount, u16 tileLimit)
 {
     u16 i;
-    s16 start;
-    u16 numTilesFound;
+    u16 numTilesFound = 0;
 
     if (tileCount == 0)
     {
         // Free all unreserved tiles if the tile count is 0.
-        for (i = gReservedSpriteTileCount; i < TOTAL_OBJ_TILE_COUNT; i++)
+#ifdef PLATFORM_SDL2
+        CancelObjCopiesToTileRange(gReservedSpriteTileCount, tileLimit);
+#endif
+        for (i = gReservedSpriteTileCount; i < tileLimit; i++)
             FREE_SPRITE_TILE(i);
 
         return 0;
     }
 
-    i = gReservedSpriteTileCount;
-
-    for (;;)
+    for (i = gReservedSpriteTileCount; i < tileLimit; i++)
     {
-        while (SPRITE_TILE_IS_ALLOCATED(i))
+#ifdef PLATFORM_SDL2
+        if (i == LEGACY_OBJ_TILE_COUNT)
+            numTilesFound = 0;
+#endif
+        if (SPRITE_TILE_IS_ALLOCATED(i))
         {
-            i++;
-
-            if (i == TOTAL_OBJ_TILE_COUNT)
-                return -1;
+            numTilesFound = 0;
+            continue;
         }
 
-        start = i;
-        numTilesFound = 1;
-
-        while (numTilesFound != tileCount)
+        if (++numTilesFound == tileCount)
         {
-            i++;
+            u16 start = i + 1 - tileCount;
+            u16 tile;
 
-            if (i == TOTAL_OBJ_TILE_COUNT)
-                return -1;
-
-            if (!SPRITE_TILE_IS_ALLOCATED(i))
-                numTilesFound++;
-            else
-                break;
+            for (tile = start; tile <= i; tile++)
+                ALLOC_SPRITE_TILE(tile);
+            return start;
         }
-
-        if (numTilesFound == tileCount)
-            break;
     }
 
-    for (i = start; i < tileCount + start; i++)
-        ALLOC_SPRITE_TILE(i);
-
-    return start;
+    return -1;
 }
 
 u8 SpriteTileAllocBitmapOp(u16 bit, u8 op)
 {
-    u8 index = bit / 8;
+    u16 index = bit / 8;
     u8 shift = bit % 8;
     u8 val = bit % 8;
     u8 retVal = 0;
+
+    if (bit >= TOTAL_OBJ_TILE_COUNT)
+        return 0;
 
     if (op == 0)
     {
@@ -816,15 +1059,14 @@ void ProcessSpriteCopyRequests(void)
     }
 }
 
-void RequestSpriteFrameImageCopy(u16 index, u16 tileNum, const struct SpriteFrameImage *images)
+static void RequestSpriteFrameImageCopy(const struct Sprite *sprite, u16 index)
 {
-    if (sSpriteCopyRequestCount < MAX_SPRITE_COPY_REQUESTS)
-    {
-        sSpriteCopyRequests[sSpriteCopyRequestCount].src = images[index].data;
-        sSpriteCopyRequests[sSpriteCopyRequestCount].dest = (u8 *)OBJ_VRAM0 + TILE_SIZE_4BPP * tileNum;
-        sSpriteCopyRequests[sSpriteCopyRequestCount].size = images[index].size;
-        sSpriteCopyRequestCount++;
-    }
+    const struct SpriteFrameImage *image = &sprite->images[index];
+    u16 tileCount = (image->size + TILE_SIZE_4BPP - 1) / TILE_SIZE_4BPP;
+    u8 *dest = GetSpriteTileVram(sprite, 0, tileCount);
+
+    if (dest != NULL)
+        RequestSpriteCopy(image->data, dest, image->size);
 }
 
 void RequestSpriteCopy(const u8 *src, u8 *dest, u16 size)
@@ -838,6 +1080,20 @@ void RequestSpriteCopy(const u8 *src, u8 *dest, u16 size)
     }
 }
 
+#ifdef PLATFORM_SDL2
+void CopyFromSprites(struct SpritePoolSnapshot *dest)
+{
+    memcpy(dest->sprites, gSprites, sizeof(dest->sprites));
+    memcpy(dest->handles, sSpriteResourceHandles, sizeof(dest->handles));
+}
+
+void CopyToSprites(const struct SpritePoolSnapshot *src)
+{
+    memcpy(gSprites, src->sprites, sizeof(src->sprites));
+    memcpy(sSpriteResourceHandles, src->handles, sizeof(src->handles));
+    ResetSprite(&gSprites[MAX_SPRITES]);
+}
+#else
 void CopyFromSprites(u8 *dest)
 {
     u32 i;
@@ -861,6 +1117,7 @@ void CopyToSprites(u8 *src)
         dest++;
     }
 }
+#endif
 
 void ResetAllSprites(void)
 {
@@ -900,11 +1157,30 @@ void FreeSpritePalette(struct Sprite *sprite)
 
 void FreeSpriteOamMatrix(struct Sprite *sprite)
 {
+#ifdef PLATFORM_SDL2
+    struct SpriteResourceHandles *handles;
+
+    if (sprite == &gSprites[MAX_SPRITES])
+        return;
+
+    handles = &sSpriteResourceHandles[sprite - gSprites];
+    if (handles->ownsMatrix)
+        FreeOamMatrix(handles->matrix);
+    handles->matrix = 0xFF;
+    handles->ownsMatrix = FALSE;
     if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
     {
-        FreeOamMatrix(sprite->oam.matrixNum);
+        sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+        sprite->oam.matrixNum = 0;
+        CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, ST_OAM_AFFINE_OFF);
+    }
+#else
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+    {
+        FreeOamMatrix(GetSpriteMatrixHandle(sprite));
         sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
     }
+#endif
 }
 
 void DestroySpriteAndFreeResources(struct Sprite *sprite)
@@ -951,9 +1227,9 @@ void BeginAnim(struct Sprite *sprite)
             SetSpriteOamFlipBits(sprite, hFlip, vFlip);
 
         if (sprite->usingSheet)
-            sprite->oam.tileNum = sprite->sheetTileStart + imageValue;
+            SetSpriteSheetTileOffset(sprite, imageValue);
         else
-            RequestSpriteFrameImageCopy(imageValue, sprite->oam.tileNum, sprite->images);
+            RequestSpriteFrameImageCopy(sprite, imageValue);
     }
 }
 
@@ -1003,9 +1279,9 @@ void AnimCmd_frame(struct Sprite *sprite)
         SetSpriteOamFlipBits(sprite, hFlip, vFlip);
 
     if (sprite->usingSheet)
-        sprite->oam.tileNum = sprite->sheetTileStart + imageValue;
+        SetSpriteSheetTileOffset(sprite, imageValue);
     else
-        RequestSpriteFrameImageCopy(imageValue, sprite->oam.tileNum, sprite->images);
+        RequestSpriteFrameImageCopy(sprite, imageValue);
 }
 
 void AnimCmd_end(struct Sprite *sprite)
@@ -1037,9 +1313,9 @@ void AnimCmd_jump(struct Sprite *sprite)
         SetSpriteOamFlipBits(sprite, hFlip, vFlip);
 
     if (sprite->usingSheet)
-        sprite->oam.tileNum = sprite->sheetTileStart + imageValue;
+        SetSpriteSheetTileOffset(sprite, imageValue);
     else
-        RequestSpriteFrameImageCopy(imageValue, sprite->oam.tileNum, sprite->images);
+        RequestSpriteFrameImageCopy(sprite, imageValue);
 }
 
 void AnimCmd_loop(struct Sprite *sprite)
@@ -1086,7 +1362,9 @@ void BeginAffineAnim(struct Sprite *sprite)
     if ((sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK) && sprite->affineAnims[0][0].type != 32767)
     {
         struct AffineAnimFrameCmd frameCmd;
-        u8 matrixNum = GetSpriteMatrixNum(sprite);
+        u8 matrixNum = GetSpriteMatrixHandle(sprite);
+        if (matrixNum >= OAM_MATRIX_COUNT)
+            return;
         AffineAnimStateRestartAnim(matrixNum);
         GetAffineAnimFrame(matrixNum, sprite, &frameCmd);
         sprite->affineAnimBeginning = FALSE;
@@ -1102,7 +1380,9 @@ void ContinueAffineAnim(struct Sprite *sprite)
 {
     if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
     {
-        u8 matrixNum = GetSpriteMatrixNum(sprite);
+        u8 matrixNum = GetSpriteMatrixHandle(sprite);
+        if (matrixNum >= OAM_MATRIX_COUNT)
+            return;
 
         if (sAffineAnimStates[matrixNum].delayCounter)
         {
@@ -1204,18 +1484,53 @@ void AffineAnimCmd_frame(u8 matrixNum, struct Sprite *sprite)
 
 void CopyOamMatrix(u8 destMatrixIndex, struct OamMatrix *srcMatrix)
 {
+    if (destMatrixIndex >= OAM_MATRIX_COUNT)
+        return;
+
     gOamMatrices[destMatrixIndex].a = srcMatrix->a;
     gOamMatrices[destMatrixIndex].b = srcMatrix->b;
     gOamMatrices[destMatrixIndex].c = srcMatrix->c;
     gOamMatrices[destMatrixIndex].d = srcMatrix->d;
 }
 
-u8 GetSpriteMatrixNum(struct Sprite *sprite)
+u8 GetSpriteMatrixHandle(const struct Sprite *sprite)
 {
-    u8 matrixNum = 0;
-    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
-        matrixNum = sprite->oam.matrixNum;
-    return matrixNum;
+    if (sprite == &gSprites[MAX_SPRITES])
+        return 0xFF;
+    if (!(sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK))
+        return 0;
+
+#ifdef PLATFORM_SDL2
+    u8 matrix = sSpriteResourceHandles[sprite - gSprites].matrix;
+
+    if (matrix < OAM_MATRIX_COUNT)
+        return matrix;
+#endif
+    return sprite->oam.matrixNum;
+}
+
+void SetSpriteMatrixHandle(struct Sprite *sprite, u8 matrix)
+{
+    if (sprite == &gSprites[MAX_SPRITES] || matrix >= OAM_MATRIX_COUNT)
+        return;
+
+#ifdef PLATFORM_SDL2
+    sSpriteResourceHandles[sprite - gSprites].matrix = matrix;
+    if (matrix >= LEGACY_OAM_MATRIX_COUNT)
+        return;
+#endif
+    sprite->oam.matrixNum = matrix;
+}
+
+void AdoptSpriteMatrixHandle(struct Sprite *sprite, u8 matrix)
+{
+    if (sprite == &gSprites[MAX_SPRITES] || matrix >= OAM_MATRIX_COUNT)
+        return;
+
+    SetSpriteMatrixHandle(sprite, matrix);
+#ifdef PLATFORM_SDL2
+    sSpriteResourceHandles[sprite - gSprites].ownsMatrix = TRUE;
+#endif
 }
 
 // Used to shift a sprite's position as it scales.
@@ -1243,7 +1558,9 @@ static void UpdateSpriteMatrixAnchorPos(struct Sprite *sprite, s32 x, s32 y)
 {
     s32 dimension, var1, var2;
 
-    u32 matrixNum = sprite->oam.matrixNum;
+    u8 matrixNum = GetSpriteMatrixHandle(sprite);
+    if (matrixNum >= OAM_MATRIX_COUNT)
+        return;
     if (x != NO_ANCHOR)
     {
         dimension = sOamDimensions32[sprite->oam.shape][sprite->oam.size].width;
@@ -1387,9 +1704,19 @@ void SeekSpriteAnim(struct Sprite *sprite, u8 animCmdIndex)
     sprite->animPaused = temp;
 }
 
+static u8 GetSpriteAffineAnimMatrix(const struct Sprite *sprite)
+{
+    if (sprite == &gSprites[MAX_SPRITES] || !(sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK))
+        return 0xFF;
+
+    return GetSpriteMatrixHandle(sprite);
+}
+
 void StartSpriteAffineAnim(struct Sprite *sprite, u8 animNum)
 {
-    u8 matrixNum = GetSpriteMatrixNum(sprite);
+    u8 matrixNum = GetSpriteAffineAnimMatrix(sprite);
+    if (matrixNum >= OAM_MATRIX_COUNT)
+        return;
     AffineAnimStateStartAnim(matrixNum, animNum);
     sprite->affineAnimBeginning = TRUE;
     sprite->affineAnimEnded = FALSE;
@@ -1397,14 +1724,18 @@ void StartSpriteAffineAnim(struct Sprite *sprite, u8 animNum)
 
 void StartSpriteAffineAnimIfDifferent(struct Sprite *sprite, u8 animNum)
 {
-    u8 matrixNum = GetSpriteMatrixNum(sprite);
+    u8 matrixNum = GetSpriteAffineAnimMatrix(sprite);
+    if (matrixNum >= OAM_MATRIX_COUNT)
+        return;
     if (sAffineAnimStates[matrixNum].animNum != animNum)
         StartSpriteAffineAnim(sprite, animNum);
 }
 
 void ChangeSpriteAffineAnim(struct Sprite *sprite, u8 animNum)
 {
-    u8 matrixNum = GetSpriteMatrixNum(sprite);
+    u8 matrixNum = GetSpriteAffineAnimMatrix(sprite);
+    if (matrixNum >= OAM_MATRIX_COUNT)
+        return;
     sAffineAnimStates[matrixNum].animNum = animNum;
     sprite->affineAnimBeginning = TRUE;
     sprite->affineAnimEnded = FALSE;
@@ -1412,9 +1743,82 @@ void ChangeSpriteAffineAnim(struct Sprite *sprite, u8 animNum)
 
 void ChangeSpriteAffineAnimIfDifferent(struct Sprite *sprite, u8 animNum)
 {
-    u8 matrixNum = GetSpriteMatrixNum(sprite);
+    u8 matrixNum = GetSpriteAffineAnimMatrix(sprite);
+    if (matrixNum >= OAM_MATRIX_COUNT)
+        return;
     if (sAffineAnimStates[matrixNum].animNum != animNum)
         ChangeSpriteAffineAnim(sprite, animNum);
+}
+
+void SetSpriteSheetTileOffset(struct Sprite *sprite, s16 tileOffset)
+{
+#ifdef PLATFORM_SDL2
+    if (sprite == &gSprites[MAX_SPRITES])
+        return;
+
+    struct SpriteResourceHandles *handles = &sSpriteResourceHandles[sprite - gSprites];
+
+    if (!handles->ownsImageTiles && handles->tileBase != sprite->sheetTileStart)
+        handles->dynamicTileCount = 0;
+    handles->tileBase = sprite->sheetTileStart;
+    if (handles->tileBase == SPRITE_TILE_NONE)
+    {
+        handles->tile = SPRITE_TILE_NONE;
+        handles->tileBank = 0xFF;
+        return;
+    }
+
+    handles->tile = handles->tileBase + tileOffset;
+    handles->tileBank = handles->tileBase / LEGACY_OBJ_TILE_COUNT;
+#endif
+    sprite->oam.tileNum = sprite->sheetTileStart + tileOffset;
+}
+
+void OffsetSpriteTile(struct Sprite *sprite, s32 offset)
+{
+    if (sprite == &gSprites[MAX_SPRITES])
+        return;
+
+#ifdef PLATFORM_SDL2
+    struct SpriteResourceHandles *handles = &sSpriteResourceHandles[sprite - gSprites];
+
+    if (handles->tile < TOTAL_OBJ_TILE_COUNT)
+    {
+        u16 bankStart = handles->tile / LEGACY_OBJ_TILE_COUNT * LEGACY_OBJ_TILE_COUNT;
+        u16 localTile = ((u32)handles->tile + (u32)offset) & (LEGACY_OBJ_TILE_COUNT - 1);
+
+        handles->tile = bankStart + localTile;
+        sprite->oam.tileNum = localTile;
+        return;
+    }
+#endif
+    sprite->oam.tileNum += offset;
+}
+
+u8 *GetSpriteTileVram(const struct Sprite *sprite, u16 offset, u16 count)
+{
+    u32 tile;
+
+    if (sprite == &gSprites[MAX_SPRITES] || !sprite->inUse)
+        return NULL;
+#ifdef PLATFORM_SDL2
+    const struct SpriteResourceHandles *handles = &sSpriteResourceHandles[sprite - gSprites];
+    u32 bankStart = (u32)handles->tileBank * LEGACY_OBJ_TILE_COUNT;
+    u32 bankEnd = bankStart + LEGACY_OBJ_TILE_COUNT;
+
+    tile = (u32)handles->tile + offset;
+    if (handles->tile >= TOTAL_OBJ_TILE_COUNT || tile < bankStart || tile >= bankEnd || count > bankEnd - tile)
+        return NULL;
+
+    if (handles->dynamicTileCount != 0
+     && (tile < handles->tileBase || tile + count > (u32)handles->tileBase + handles->dynamicTileCount))
+        return NULL;
+#else
+    tile = (u32)sprite->oam.tileNum + offset;
+#endif
+    if (tile >= TOTAL_OBJ_TILE_COUNT || count > TOTAL_OBJ_TILE_COUNT - tile)
+        return NULL;
+    return (u8 *)OBJ_VRAM0 + tile * TILE_SIZE_4BPP;
 }
 
 void SetSpriteSheetFrameTileNum(struct Sprite *sprite)
@@ -1424,7 +1828,7 @@ void SetSpriteSheetFrameTileNum(struct Sprite *sprite)
         s16 tileOffset = sprite->anims[sprite->animNum][sprite->animCmdIndex].frame.imageValue;
         if (tileOffset < 0)
             tileOffset = 0;
-        sprite->oam.tileNum = sprite->sheetTileStart + tileOffset;
+        SetSpriteSheetTileOffset(sprite, tileOffset);
     }
 }
 
@@ -1433,7 +1837,10 @@ void ResetAffineAnimData(void)
     u8 i;
 
     gAffineAnimsDisabled = FALSE;
-    gOamMatrixAllocBitmap = 0;
+    sOamMatrixAllocBitmap = 0;
+#ifdef PLATFORM_SDL2
+    sReservedOamMatrices = 0;
+#endif
 
     ResetOamMatrices();
 
@@ -1441,22 +1848,52 @@ void ResetAffineAnimData(void)
         AffineAnimStateReset(i);
 }
 
+#ifdef PLATFORM_SDL2
+static OamMatrixBitmap GetOamMatrixRangeMask(u8 first, u8 count)
+{
+    OamMatrixBitmap mask = 0;
+    u8 i;
+
+    if (first >= OAM_MATRIX_COUNT || count > OAM_MATRIX_COUNT - first)
+        return 0;
+    for (i = first; i < first + count; i++)
+        mask |= (OamMatrixBitmap)1 << i;
+    return mask;
+}
+
+bool8 ReserveOamMatrices(u8 first, u8 count)
+{
+    OamMatrixBitmap mask = GetOamMatrixRangeMask(first, count);
+
+    if (mask == 0 || ((sOamMatrixAllocBitmap | sReservedOamMatrices) & mask))
+        return FALSE;
+    sReservedOamMatrices |= mask;
+    return TRUE;
+}
+
+void ReleaseOamMatrices(u8 first, u8 count)
+{
+    sReservedOamMatrices &= ~GetOamMatrixRangeMask(first, count);
+}
+#endif
+
 u8 AllocOamMatrix(void)
 {
-    u8 i = 0;
-    u32 bit = 1;
-    u32 bitmap = gOamMatrixAllocBitmap;
+    u8 i;
+    OamMatrixBitmap occupied = sOamMatrixAllocBitmap;
+#ifdef PLATFORM_SDL2
+    occupied |= sReservedOamMatrices;
+#endif
 
-    while (i < OAM_MATRIX_COUNT)
+    for (i = 0; i < OAM_MATRIX_COUNT; i++)
     {
-        if (!(bitmap & bit))
+        OamMatrixBitmap bit = (OamMatrixBitmap)1 << i;
+
+        if (!(occupied & bit))
         {
-            gOamMatrixAllocBitmap |= bit;
+            sOamMatrixAllocBitmap |= bit;
             return i;
         }
-
-        i++;
-        bit <<= 1;
     }
 
     return 0xFF;
@@ -1464,27 +1901,44 @@ u8 AllocOamMatrix(void)
 
 void FreeOamMatrix(u8 matrixNum)
 {
-    u8 i = 0;
-    u32 bit = 1;
+    OamMatrixBitmap bit;
 
-    while (i < matrixNum)
-    {
-        i++;
-        bit <<= 1;
-    }
+    if (matrixNum >= OAM_MATRIX_COUNT)
+        return;
 
-    gOamMatrixAllocBitmap &= ~bit;
+    bit = (OamMatrixBitmap)1 << matrixNum;
+#ifdef PLATFORM_SDL2
+    if (!(sOamMatrixAllocBitmap & bit) || (sReservedOamMatrices & bit))
+        return;
+#endif
+    sOamMatrixAllocBitmap &= ~bit;
     SetOamMatrix(matrixNum, 0x100, 0, 0, 0x100);
 }
 
 bool8 InitSpriteAffineAnim(struct Sprite *sprite)
 {
-    u8 matrixNum = AllocOamMatrix();
+    u8 matrixNum;
+
+    if (sprite == &gSprites[MAX_SPRITES])
+        return FALSE;
+
+#ifdef PLATFORM_SDL2
+    const struct SpriteResourceHandles *handles = &sSpriteResourceHandles[sprite - gSprites];
+    if (handles->ownsMatrix && handles->matrix < OAM_MATRIX_COUNT)
+    {
+        matrixNum = handles->matrix;
+        SetOamMatrix(matrixNum, 0x100, 0, 0, 0x100);
+    }
+    else
+#endif
+    {
+        matrixNum = AllocOamMatrix();
+    }
     if (matrixNum == 0xFF)
         return FALSE;
 
     CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
-    sprite->oam.matrixNum = matrixNum;
+    AdoptSpriteMatrixHandle(sprite, matrixNum);
     sprite->affineAnimBeginning = TRUE;
     AffineAnimStateReset(matrixNum);
     return TRUE;
@@ -1503,18 +1957,22 @@ void SetOamMatrixRotationScaling(u8 matrixNum, s16 xScale, s16 yScale, u16 rotat
 
 u16 LoadSpriteSheet(const struct SpriteSheet *sheet)
 {
-    s16 tileStart = AllocSpriteTiles(sheet->size / TILE_SIZE_4BPP);
+    u8 rangeIndex = IndexOfSpriteTileTag(TAG_NONE);
+    u16 tileCount;
+    s16 tileStart;
 
+    if (rangeIndex == 0xFF || sheet->tag == TAG_NONE || sheet->data == NULL || sheet->size == 0 || sheet->size % 2 != 0)
+        return SPRITE_TILE_NONE;
+
+    tileCount = (sheet->size + TILE_SIZE_4BPP - 1) / TILE_SIZE_4BPP;
+    tileStart = AllocSpriteTiles(tileCount, TOTAL_OBJ_TILE_COUNT);
     if (tileStart < 0)
-    {
-        return 0;
-    }
-    else
-    {
-        AllocSpriteTileRange(sheet->tag, (u16)tileStart, sheet->size / TILE_SIZE_4BPP);
-        CpuCopy16(sheet->data, (u8 *)OBJ_VRAM0 + TILE_SIZE_4BPP * tileStart, sheet->size);
-        return (u16)tileStart;
-    }
+        return SPRITE_TILE_NONE;
+
+    sSpriteTileRangeTags[rangeIndex] = sheet->tag;
+    SET_SPRITE_TILE_RANGE(rangeIndex, tileStart, tileCount);
+    CpuCopy16(sheet->data, (u8 *)OBJ_VRAM0 + TILE_SIZE_4BPP * tileStart, sheet->size);
+    return tileStart;
 }
 
 void LoadSpriteSheets(const struct SpriteSheet *sheets)
@@ -1535,6 +1993,9 @@ void FreeSpriteTilesByTag(u16 tag)
         start = sSpriteTileRanges[index][0];
         count = sSpriteTileRanges[index][1];
 
+#ifdef PLATFORM_SDL2
+        CancelObjCopiesToTileRange(start, start + count);
+#endif
         for (i = start; i < start + count; i++)
             FREE_SPRITE_TILE(i);
 
@@ -1557,7 +2018,7 @@ u16 GetSpriteTileStartByTag(u16 tag)
 {
     u8 index = IndexOfSpriteTileTag(tag);
     if (index == 0xFF)
-        return 0xFFFF;
+        return SPRITE_TILE_NONE;
     return sSpriteTileRanges[index][0];
 }
 
@@ -1585,40 +2046,54 @@ u16 GetSpriteTileTagByTileStart(u16 start)
     return TAG_NONE;
 }
 
-void AllocSpriteTileRange(u16 tag, u16 start, u16 count)
-{
-    u8 freeIndex = IndexOfSpriteTileTag(TAG_NONE);
-    sSpriteTileRangeTags[freeIndex] = tag;
-    SET_SPRITE_TILE_RANGE(freeIndex, start, count);
-}
-
 void FreeAllSpritePalettes(void)
 {
     u8 i;
+
     gReservedSpritePaletteCount = 0;
-    for (i = 0; i < 16; i++)
+    for (i = 0; i < ARRAY_COUNT(sSpritePaletteTags); i++)
         sSpritePaletteTags[i] = TAG_NONE;
+}
+
+static u8 FindSpritePaletteTag(u16 tag, u8 paletteLimit)
+{
+    u8 i;
+
+    for (i = gReservedSpritePaletteCount; i < paletteLimit; i++)
+        if (sSpritePaletteTags[i] == tag)
+            return i;
+
+    return 0xFF;
+}
+
+static u8 AllocSpritePaletteInRange(u16 tag, u8 paletteLimit)
+{
+    u8 index;
+
+    if (tag == TAG_NONE)
+        return 0xFF;
+
+    index = FindSpritePaletteTag(TAG_NONE, paletteLimit);
+    if (index != 0xFF)
+        sSpritePaletteTags[index] = tag;
+    return index;
 }
 
 u8 LoadSpritePalette(const struct SpritePalette *palette)
 {
-    u8 index = IndexOfSpritePaletteTag(palette->tag);
+    u8 index;
 
+    if (palette->tag == TAG_NONE)
+        return 0xFF;
+
+    index = IndexOfSpritePaletteTag(palette->tag);
     if (index != 0xFF)
         return index;
 
-    index = IndexOfSpritePaletteTag(TAG_NONE);
-
-    if (index == 0xFF)
-    {
-        return 0xFF;
-    }
-    else
-    {
-        sSpritePaletteTags[index] = palette->tag;
+    index = AllocSpritePalette(palette->tag);
+    if (index != 0xFF)
         DoLoadSpritePalette(palette->data, PLTT_ID(index));
-        return index;
-    }
+    return index;
 }
 
 void LoadSpritePalettes(const struct SpritePalette *palettes)
@@ -1636,30 +2111,62 @@ void DoLoadSpritePalette(const u16 *src, u16 paletteOffset)
 
 u8 AllocSpritePalette(u16 tag)
 {
-    u8 index = IndexOfSpritePaletteTag(TAG_NONE);
-    if (index == 0xFF)
-    {
-        return 0xFF;
-    }
-    else
-    {
-        sSpritePaletteTags[index] = tag;
-        return index;
-    }
+    return AllocSpritePaletteInRange(tag, OBJ_PALETTE_COUNT);
 }
 
 u8 IndexOfSpritePaletteTag(u16 tag)
 {
-    u8 i;
-    for (i = gReservedSpritePaletteCount; i < 16; i++)
-        if (sSpritePaletteTags[i] == tag)
-            return i;
+    return FindSpritePaletteTag(tag, OBJ_PALETTE_COUNT);
+}
 
-    return 0xFF;
+u8 GetSpritePaletteHandle(const struct Sprite *sprite)
+{
+#ifdef PLATFORM_SDL2
+    if (sprite == &gSprites[MAX_SPRITES])
+        return 0xFF;
+    return sSpriteResourceHandles[sprite - gSprites].palette;
+#else
+    return sprite->oam.paletteNum;
+#endif
+}
+
+void SetSpritePaletteHandle(struct Sprite *sprite, u8 palette)
+{
+#ifdef PLATFORM_SDL2
+    if (sprite == &gSprites[MAX_SPRITES] || palette >= OBJ_PALETTE_COUNT)
+        return;
+
+    sSpriteResourceHandles[sprite - gSprites].palette = palette;
+    if (palette >= LEGACY_OBJ_PALETTE_COUNT)
+        return;
+#endif
+    sprite->oam.paletteNum = palette;
+}
+
+void SetSpritePaletteFromTag(struct Sprite *sprite, u16 tag)
+{
+#ifdef PLATFORM_SDL2
+    if (tag == TAG_NONE)
+        return;
+#endif
+    SetSpritePaletteHandle(sprite, IndexOfSpritePaletteTag(tag));
+}
+
+void SetOamPaletteFromTag(struct OamData *oam, u16 tag)
+{
+    u8 palette = IndexOfSpritePaletteTag(tag);
+
+#ifdef PLATFORM_SDL2
+    if (tag == TAG_NONE || palette >= LEGACY_OBJ_PALETTE_COUNT)
+        return;
+#endif
+    oam->paletteNum = palette;
 }
 
 u16 GetSpritePaletteTagByPaletteNum(u8 paletteNum)
 {
+    if (paletteNum >= ARRAY_COUNT(sSpritePaletteTags))
+        return TAG_NONE;
     return sSpritePaletteTags[paletteNum];
 }
 
@@ -1677,14 +2184,42 @@ void SetSubspriteTables(struct Sprite *sprite, const struct SubspriteTable *subs
     sprite->subspriteMode = SUBSPRITES_ON;
 }
 
+#ifdef PLATFORM_SDL2
+static void SetOamBufferSpriteHandles(u8 slot, const struct Sprite *sprite, u16 tileOffset)
+{
+    const struct SpriteResourceHandles *handles = &sSpriteResourceHandles[sprite - gSprites];
+    u32 tile = (u32)handles->tile + tileOffset;
+
+    sOamBufferResourceHandles[slot] = (struct OamResourceHandles){
+        .tile = tile < TOTAL_OBJ_TILE_COUNT ? tile : SPRITE_TILE_NONE,
+        .tileBase = handles->tileBase,
+        .tileBank = handles->tileBank,
+        .palette = handles->palette,
+        .hasHandles = TRUE,
+    };
+
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+    {
+        u8 matrix = GetSpriteMatrixHandle(sprite);
+        gMain.oamBuffer[slot].affineParam = OAM_AFFINE_HANDLE_TAG | matrix;
+    }
+}
+#endif
+
 bool8 AddSpriteToOamBuffer(struct Sprite *sprite, u8 *oamIndex)
 {
+#ifdef PLATFORM_SDL2
+    SkipReservedOamSlots(oamIndex);
+#endif
     if (*oamIndex >= gOamLimit)
         return TRUE;
 
     if (!sprite->subspriteTables || sprite->subspriteMode == SUBSPRITES_OFF)
     {
         gMain.oamBuffer[*oamIndex] = sprite->oam;
+#ifdef PLATFORM_SDL2
+        SetOamBufferSpriteHandles(*oamIndex, sprite, 0);
+#endif
         (*oamIndex)++;
         return FALSE;
     }
@@ -1708,6 +2243,9 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
     if (!subspriteTable || !subspriteTable->subsprites)
     {
         *destOam = *oam;
+#ifdef PLATFORM_SDL2
+        SetOamBufferSpriteHandles(*oamIndex, sprite, 0);
+#endif
         (*oamIndex)++;
         return FALSE;
     }
@@ -1725,6 +2263,14 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
         subspriteCount = subspriteTable->subspriteCount;
         hFlip = ((s32)oam->matrixNum >> 3) & 1;
         vFlip = ((s32)oam->matrixNum >> 4) & 1;
+#ifdef PLATFORM_SDL2
+        // In affine mode these bits are part of the matrix selector.
+        if (oam->affineMode & ST_OAM_AFFINE_ON_MASK)
+        {
+            hFlip = FALSE;
+            vFlip = FALSE;
+        }
+#endif
         baseX = oam->x - sprite->centerToCornerVecX;
         baseY = oam->y - sprite->centerToCornerVecY;
 
@@ -1732,9 +2278,18 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
         {
             u16 x;
             u16 y;
+            struct OamData *entry;
 
+#ifdef PLATFORM_SDL2
+            SkipReservedOamSlots(oamIndex);
+#endif
             if (*oamIndex >= gOamLimit)
                 return TRUE;
+#ifdef PLATFORM_SDL2
+            entry = &gMain.oamBuffer[*oamIndex];
+#else
+            entry = &destOam[i];
+#endif
 
             x = subspriteTable->subsprites[i].x;
             y = subspriteTable->subsprites[i].y;
@@ -1757,15 +2312,18 @@ bool8 AddSubspritesToOamBuffer(struct Sprite *sprite, struct OamData *destOam, u
                 y = ~y + 1;
             }
 
-            destOam[i] = *oam;
-            destOam[i].shape = subspriteTable->subsprites[i].shape;
-            destOam[i].size = subspriteTable->subsprites[i].size;
-            destOam[i].x = (s16)baseX + (s16)x;
-            destOam[i].y = baseY + y;
-            destOam[i].tileNum = tileNum + subspriteTable->subsprites[i].tileOffset;
+            *entry = *oam;
+            entry->shape = subspriteTable->subsprites[i].shape;
+            entry->size = subspriteTable->subsprites[i].size;
+            entry->x = (s16)baseX + (s16)x;
+            entry->y = baseY + y;
+            entry->tileNum = tileNum + subspriteTable->subsprites[i].tileOffset;
+#ifdef PLATFORM_SDL2
+            SetOamBufferSpriteHandles(*oamIndex, sprite, subspriteTable->subsprites[i].tileOffset);
+#endif
 
             if (sprite->subspriteMode != SUBSPRITES_IGNORE_PRIORITY)
-                destOam[i].priority = subspriteTable->subsprites[i].priority;
+                entry->priority = subspriteTable->subsprites[i].priority;
         }
     }
 

@@ -500,19 +500,18 @@ static void SlideMonToOriginalPos(struct Sprite *sprite)
     else if (gBattleAnimArgs[1] == 2)
         sprite->data[1] = 0;
 
-    sprite->data[7] = gBattleAnimArgs[1];
-    sprite->data[7] |= monSpriteId << 8;
+    sprite->data[7] = (u8)gBattleAnimArgs[1] | ((u16)monSpriteId << 8);
     sprite->callback = SlideMonToOriginalPos_Step;
 }
 
 static void SlideMonToOriginalPos_Step(struct Sprite *sprite)
 {
-    s8 monSpriteId;
+    u8 monSpriteId;
     u8 lo;
     struct Sprite *monSprite;
 
     lo = sprite->data[7] & 0xff;
-    monSpriteId = sprite->data[7] >> 8;
+    monSpriteId = (u16)sprite->data[7] >> 8;
     monSprite = &gSprites[monSpriteId];
     if (sprite->data[0] == 0)
     {

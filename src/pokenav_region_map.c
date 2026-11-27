@@ -689,10 +689,9 @@ static void CreateCityZoomTextSprites(void)
         sprite = &gSprites[spriteId];
         sprite->data[0] = 0;
         sprite->data[1] = i * 4;
-        sprite->data[2] = sprite->oam.tileNum;
         sprite->data[3] = 150;
         sprite->data[4] = i * 4;
-        sprite->oam.tileNum += i * 4;
+        SetSpriteSheetTileOffset(sprite, i * 4);
         state->cityZoomTextSprites[i] = sprite;
     }
 }
@@ -712,7 +711,7 @@ static void SpriteCB_CityZoomText(struct Sprite *sprite)
     if (++sprite->data[1] > 60)
         sprite->data[1] = 0;
 
-    sprite->oam.tileNum = sprite->data[2] + sprite->data[1];
+    SetSpriteSheetTileOffset(sprite, sprite->data[1]);
     if (sprite->data[5] < 4)
     {
         if (sprite->data[0] == 0)

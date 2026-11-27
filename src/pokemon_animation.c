@@ -966,21 +966,18 @@ void SetSpriteCB_MonAnimDummy(struct Sprite *sprite)
 
 static void SetAffineData(struct Sprite *sprite, s16 xScale, s16 yScale, u16 rotation)
 {
-    u8 matrixNum;
     struct ObjAffineSrcData affineSrcData;
     struct OamMatrix dest;
+
+    if (!(sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK))
+        return;
 
     affineSrcData.xScale = xScale;
     affineSrcData.yScale = yScale;
     affineSrcData.rotation = rotation;
 
-    matrixNum = sprite->oam.matrixNum;
-
     ObjAffineSet(&affineSrcData, &dest, 1, 2);
-    gOamMatrices[matrixNum].a = dest.a;
-    gOamMatrices[matrixNum].b = dest.b;
-    gOamMatrices[matrixNum].c = dest.c;
-    gOamMatrices[matrixNum].d = dest.d;
+    SetOamMatrix(GetSpriteMatrixHandle(sprite), dest.a, dest.b, dest.c, dest.d);
 }
 
 static void HandleStartAffineAnim(struct Sprite *sprite)
@@ -988,8 +985,11 @@ static void HandleStartAffineAnim(struct Sprite *sprite)
     sprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
     sprite->affineAnims = sMonAffineAnims;
 
-    if (sIsSummaryAnim == TRUE)
-        InitSpriteAffineAnim(sprite);
+    if (sIsSummaryAnim == TRUE && !InitSpriteAffineAnim(sprite))
+    {
+        sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+        return;
+    }
 
     if (!sprite->sDontFlip)
         StartSpriteAffineAnim(sprite, 1);
@@ -1043,28 +1043,22 @@ static u8 AddNewAnim(void)
 
 static void ResetSpriteAfterAnim(struct Sprite *sprite)
 {
-    sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
-
     if (sIsSummaryAnim == TRUE)
     {
-        if (!sprite->sDontFlip)
-            sprite->hFlip = TRUE;
-        else
-            sprite->hFlip = FALSE;
-
-        FreeOamMatrix(sprite->oam.matrixNum);
-        sprite->oam.matrixNum |= (sprite->hFlip << 3);
-        sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+        FreeSpriteOamMatrix(sprite);
+        sprite->hFlip = !sprite->sDontFlip;
+        sprite->oam.matrixNum = sprite->hFlip ? ST_OAM_HFLIP : 0;
     }
-#ifdef BUGFIX
     else
     {
+        sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
+#ifdef BUGFIX
         // FIX: Reset these back to normal after they were changed so Poké Ball catch/release
         // animations without a screen transition in between don't break
         sprite->affineAnims = gAffineAnims_BattleSpriteOpponentSide;
-    }
 #endif // BUGFIX
+    }
+    CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, sprite->oam.affineMode);
 }
 
 static void Anim_CircularStretchTwice(struct Sprite *sprite)
@@ -1519,20 +1513,28 @@ static void Anim_CircleCounterclockwise(struct Sprite *sprite)
     sprite->callback = CircleCounterclockwise;
 }
 
+static void BlendPortraitPalette(const struct Sprite *sprite, u8 coefficient, u16 color)
+{
+    u8 palette = sprite->data[7];
+
+    if (ObjPaletteMask(palette) != 0)
+        BlendPalette(OBJ_PLTT_ID(palette), 16, coefficient, color);
+}
+
 #define GlowColor(color, colorIncrement, speed)                         \
 {                                                                       \
     if (sprite->data[2] == 0)                                           \
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);          \
+        sprite->data[7] = GetSpritePaletteHandle(sprite);                  \
                                                                         \
     if (sprite->data[2] > 128)                                          \
     {                                                                   \
-        BlendPalette(sprite->data[7], 16, 0, (color));                  \
+        BlendPortraitPalette(sprite, 0, (color));                     \
         sprite->callback = WaitAnimEnd;                                 \
     }                                                                   \
     else                                                                \
     {                                                                   \
         sprite->data[6] = Sin(sprite->data[2], (colorIncrement));       \
-        BlendPalette(sprite->data[7], 16, sprite->data[6], (color));    \
+        BlendPortraitPalette(sprite, sprite->data[6], (color));    \
     }                                                                   \
     sprite->data[2] += (speed);                                         \
 }
@@ -2457,7 +2459,7 @@ static void Anim_FlashYellow(struct Sprite *sprite)
 {
     if (++sprite->data[2] == 1)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[6] = 0;
         sprite->data[5] = 0;
         sprite->data[4] = 0;
@@ -2472,9 +2474,9 @@ static void Anim_FlashYellow(struct Sprite *sprite)
         if (sprite->data[4] == 1)
         {
             if (sYellowFlashData[sprite->data[6]][0])
-                BlendPalette(sprite->data[7], 16, 16, RGB_YELLOW);
+                BlendPortraitPalette(sprite, 16, RGB_YELLOW);
             else
-                BlendPalette(sprite->data[7], 16, 0, RGB_YELLOW);
+                BlendPortraitPalette(sprite, 0, RGB_YELLOW);
 
             sprite->data[4] = 0;
         }
@@ -5217,9 +5219,9 @@ static void ShakeFlashYellow(struct Sprite *sprite)
         if (sprite->data[4] == 1)
         {
             if (array[sprite->data[6]].isYellow)
-                BlendPalette(sprite->data[7], 16, 16, RGB_YELLOW);
+                BlendPortraitPalette(sprite, 16, RGB_YELLOW);
             else
-                BlendPalette(sprite->data[7], 16, 0, RGB_YELLOW);
+                BlendPortraitPalette(sprite, 0, RGB_YELLOW);
 
             sprite->data[4] = 0;
         }
@@ -5241,7 +5243,7 @@ static void Anim_ShakeFlashYellow_Fast(struct Sprite *sprite)
 {
     if (++sprite->data[2] == 1)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[6] = 0;
         sprite->data[5] = 0;
         sprite->data[4] = 0;
@@ -5255,7 +5257,7 @@ static void Anim_ShakeFlashYellow(struct Sprite *sprite)
 {
     if (++sprite->data[2] == 1)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[6] = 0;
         sprite->data[5] = 0;
         sprite->data[4] = 0;
@@ -5269,7 +5271,7 @@ static void Anim_ShakeFlashYellow_Slow(struct Sprite *sprite)
 {
     if (++sprite->data[2] == 1)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[6] = 0;
         sprite->data[5] = 0;
         sprite->data[4] = 0;
@@ -5298,13 +5300,13 @@ static void ShakeGlow_Blend(struct Sprite *sprite)
 
     if (sprite->data[2] > 127)
     {
-        BlendPalette(sprite->data[7], 16, 0, RGB_RED);
+        BlendPortraitPalette(sprite, 0, RGB_RED);
         sprite->callback = WaitAnimEnd;
     }
     else
     {
         sprite->data[6] = Sin(sprite->data[2], 12);
-        BlendPalette(sprite->data[7], 16, sprite->data[6], sColors[sprite->data[1]]);
+        BlendPortraitPalette(sprite, sprite->data[6], sColors[sprite->data[1]]);
     }
 }
 
@@ -5335,7 +5337,7 @@ static void Anim_ShakeGlowRed_Fast(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 10;
         sprite->data[5] = 0;
         sprite->data[4] = 2;
@@ -5356,7 +5358,7 @@ static void Anim_ShakeGlowRed(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 20;
         sprite->data[5] = 0;
         sprite->data[4] = 1;
@@ -5377,7 +5379,7 @@ static void Anim_ShakeGlowRed_Slow(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 80;
         sprite->data[5] = 0;
         sprite->data[4] = 1;
@@ -5398,7 +5400,7 @@ static void Anim_ShakeGlowGreen_Fast(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 10;
         sprite->data[5] = 0;
         sprite->data[4] = 2;
@@ -5419,7 +5421,7 @@ static void Anim_ShakeGlowGreen(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 20;
         sprite->data[5] = 0;
         sprite->data[4] = 1;
@@ -5440,7 +5442,7 @@ static void Anim_ShakeGlowGreen_Slow(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 80;
         sprite->data[5] = 0;
         sprite->data[4] = 1;
@@ -5461,7 +5463,7 @@ static void Anim_ShakeGlowBlue_Fast(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 10;
         sprite->data[5] = 0;
         sprite->data[4] = 2;
@@ -5482,7 +5484,7 @@ static void Anim_ShakeGlowBlue(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 20;
         sprite->data[5] = 0;
         sprite->data[4] = 1;
@@ -5503,7 +5505,7 @@ static void Anim_ShakeGlowBlue_Slow(struct Sprite *sprite)
 {
     if (sprite->data[2] == 0)
     {
-        sprite->data[7] = OBJ_PLTT_ID(sprite->oam.paletteNum);
+        sprite->data[7] = GetSpritePaletteHandle(sprite);
         sprite->data[0] = 80;
         sprite->data[5] = 0;
         sprite->data[4] = 1;

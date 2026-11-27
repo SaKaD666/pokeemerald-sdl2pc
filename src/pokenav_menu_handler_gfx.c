@@ -855,7 +855,6 @@ static void DrawOptionLabelGfx(const u16 *const *optionGfx, s32 yPos, s32 deltaY
 {
     s32 i, j;
     struct Pokenav_MenuGfx *gfx = GetSubstructPtr(POKENAV_SUBSTRUCT_MENU_GFX);
-    s32 baseTile = GetSpriteTileStartByTag(GFXTAG_OPTIONS);
 
     for (i = 0; i < MAX_POKENAV_MENUITEMS; i++)
     {
@@ -863,8 +862,8 @@ static void DrawOptionLabelGfx(const u16 *const *optionGfx, s32 yPos, s32 deltaY
         {
             for (j = 0; j < NUM_OPTION_SUBSPRITES; j++)
             {
-                gfx->iconSprites[i][j]->oam.tileNum = (*optionGfx)[0] + baseTile + 8 * j;
-                gfx->iconSprites[i][j]->oam.paletteNum = IndexOfSpritePaletteTag((*optionGfx)[1] + PALTAG_OPTIONS_START);
+                SetSpriteSheetTileOffset(gfx->iconSprites[i][j], (*optionGfx)[0] + 8 * j);
+                SetSpritePaletteFromTag(gfx->iconSprites[i][j], (*optionGfx)[1] + PALTAG_OPTIONS_START);
                 gfx->iconSprites[i][j]->invisible = TRUE;
                 gfx->iconSprites[i][j]->y = yPos;
                 gfx->iconSprites[i][j]->x = OPTION_DEFAULT_X;
@@ -1030,8 +1029,15 @@ static void StartOptionZoom(struct Sprite **sprites)
         (*sprites)->sZoomDelay = 8;
         (*sprites)->sZoomSetAffine = FALSE;
         (*sprites)->sZoomSubspriteId = i;
-        InitSpriteAffineAnim(sprites[0]);
-        StartSpriteAffineAnim(sprites[0], 0);
+        if (InitSpriteAffineAnim(*sprites))
+            StartSpriteAffineAnim(*sprites, 0);
+        else
+        {
+            (*sprites)->oam.affineMode = ST_OAM_AFFINE_OFF;
+            (*sprites)->oam.objMode = ST_OAM_OBJ_NORMAL;
+            (*sprites)->invisible = TRUE;
+            (*sprites)->callback = SpriteCallbackDummy;
+        }
         sprites++;
     }
 
@@ -1112,9 +1118,8 @@ static void SpriteCB_OptionZoom(struct Sprite *sprite)
             if (sprite->affineAnimEnded)
             {
                 sprite->invisible = TRUE;
-                FreeOamMatrix(sprite->oam.matrixNum);
+                FreeSpriteOamMatrix(sprite);
                 CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, ST_OAM_AFFINE_OFF);
-                sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
                 sprite->oam.objMode = ST_OAM_OBJ_NORMAL;
                 sprite->callback = SpriteCallbackDummy;
             }

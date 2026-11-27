@@ -367,14 +367,14 @@ void FreeMonMarkingsMenu(void)
     for (i = 0; i < ARRAY_COUNT(sMenu->windowSprites); i++)
     {
         if (!sMenu->windowSprites[i])
-            return;
+            continue;
         DestroySprite(sMenu->windowSprites[i]);
         sMenu->windowSprites[i] = NULL;
     }
     for (i = 0; i < NUM_MON_MARKINGS; i++)
     {
         if (!sMenu->markingSprites[i])
-            return;
+            continue;
         DestroySprite(sMenu->markingSprites[i]);
         sMenu->markingSprites[i] = NULL;
     }
@@ -393,6 +393,10 @@ void FreeMonMarkingsMenu(void)
 bool8 HandleMonMarkingsMenuInput(void)
 {
     u16 i;
+
+    // The cursor is created last, once all other menu sprites are ready.
+    if (sMenu->cursorSprite == NULL)
+        return FALSE;
 
     if (JOY_NEW(DPAD_UP))
     {
@@ -471,8 +475,12 @@ static void CreateMonMarkingsMenuSprites(s16 x, s16 y, u16 baseTileTag, u16 base
         .callback = SpriteCB_Dummy,
     };
 
-    LoadSpriteSheets(sheets);
-    LoadSpritePalettes(palettes);
+    for (i = 0; i < 2; i++)
+    {
+        if (LoadSpriteSheet(&sheets[i]) == SPRITE_TILE_NONE
+         || LoadSpritePalette(&palettes[i]) == 0xFF)
+            return;
+    }
 
     // Create window sprites
     for (i = 0; i < ARRAY_COUNT(sMenu->windowSprites); i++)
@@ -528,6 +536,7 @@ static void CreateMonMarkingsMenuSprites(s16 x, s16 y, u16 baseTileTag, u16 base
     else
     {
         sMenu->textSprite = NULL;
+        return;
     }
 
     // Create cursor sprite
@@ -585,6 +594,7 @@ struct Sprite *CreateMonMarkingComboSprite(u16 tileTag, u16 paletteTag, const u1
 static struct Sprite *CreateMarkingComboSprite(u16 tileTag, u16 paletteTag, const u16 *palette, u16 size)
 {
     u8 spriteId;
+    bool8 hadPalette;
     struct SpriteTemplate template;
     struct SpriteSheet sheet = { sMonMarkings_Gfx, 0x80, tileTag };
     struct SpritePalette sprPalette = { palette, paletteTag };
@@ -599,14 +609,23 @@ static struct Sprite *CreateMarkingComboSprite(u16 tileTag, u16 paletteTag, cons
 
     sheet.size = size * 0x80;
 
-    LoadSpriteSheet(&sheet);
-    LoadSpritePalette(&sprPalette);
+    if (LoadSpriteSheet(&sheet) == SPRITE_TILE_NONE)
+        return NULL;
+    hadPalette = IndexOfSpritePaletteTag(paletteTag) != 0xFF;
+    if (LoadSpritePalette(&sprPalette) == 0xFF)
+    {
+        FreeSpriteTilesByTag(tileTag);
+        return NULL;
+    }
 
     spriteId = CreateSprite(&template, 0, 0, 0);
-    if (spriteId != MAX_SPRITES)
+    if (spriteId < MAX_SPRITES)
         return &gSprites[spriteId];
-    else
-        return NULL;
+
+    FreeSpriteTilesByTag(tileTag);
+    if (!hadPalette)
+        FreeSpritePaletteByTag(paletteTag);
+    return NULL;
 }
 
 // Update what combination is shown, used for sprites created with CreateMonMarkingComboSprite

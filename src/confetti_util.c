@@ -14,7 +14,7 @@ bool32 ConfettiUtil_Init(u8 count)
 {
     u8 i = 0;
 
-    if (count == 0)
+    if (count == 0 || sWork != NULL)
         return FALSE;
     if (count > 64)
         count = 64;
@@ -29,6 +29,14 @@ bool32 ConfettiUtil_Init(u8 count)
         return FALSE;
     }
 
+#ifdef PLATFORM_SDL2
+    if (!ReserveOamSlots(64, count))
+    {
+        FREE_AND_SET_NULL(sWork->array);
+        FREE_AND_SET_NULL(sWork);
+        return FALSE;
+    }
+#endif
     sWork->count = count;
     for (i = 0; i < count; i++)
     {
@@ -41,13 +49,14 @@ bool32 ConfettiUtil_Init(u8 count)
 
 bool32 ConfettiUtil_Free(void)
 {
-    u8 i = 0;
-
     if (sWork == NULL)
         return FALSE;
 
-    for (i = 0; i < sWork->count; i++)
-        memcpy(&gMain.oamBuffer[i + 64], &gDummyOamData, sizeof(struct OamData));
+#ifdef PLATFORM_SDL2
+    ReleaseOamSlots(64, sWork->count);
+#else
+    ResetOamRange(64, 64 + sWork->count);
+#endif
 
     memset(sWork->array, 0, sWork->count * sizeof(struct ConfettiUtil));
     FREE_AND_SET_NULL(sWork->array);
@@ -73,10 +82,24 @@ bool32 ConfettiUtil_Update(void)
 
             if (sWork->array[i].dummied)
             {
-                memcpy(&gMain.oamBuffer[i + 64], &gDummyOamData, sizeof(struct OamData));
+                ResetOamRange(i + 64, i + 65);
             }
             else
             {
+#ifdef PLATFORM_SDL2
+                u16 tileBase = GetSpriteTileStartByTag(sWork->array[i].tileTag);
+                u8 palette = IndexOfSpritePaletteTag(sWork->array[i].palTag);
+
+                if (tileBase == SPRITE_TILE_NONE || palette == 0xFF)
+                {
+                    ResetOamRange(i + 64, i + 65);
+                    continue;
+                }
+                SetOamPaletteFromTag(&sWork->array[i].oam, sWork->array[i].palTag);
+                sWork->array[i].tileNum = tileBase
+                    + GetTilesPerImage(sWork->array[i].oam.shape, sWork->array[i].oam.size) * sWork->array[i].animNum;
+                SetReservedOamSlotHandles(i + 64, sWork->array[i].tileNum, tileBase, palette);
+#endif
                 sWork->array[i].oam.y = sWork->array[i].y + sWork->array[i].yDelta;
                 sWork->array[i].oam.x = sWork->array[i].x + sWork->array[i].xDelta;
                 sWork->array[i].oam.priority = sWork->array[i].priority;
@@ -156,7 +179,7 @@ u8 ConfettiUtil_AddNew(const struct OamData *oam, u16 tileTag, u16 palTag, s16 x
     structPtr->palTag = palTag;
     structPtr->x = x;
     structPtr->y = y;
-    structPtr->oam.paletteNum = IndexOfSpritePaletteTag(palTag);
+    SetOamPaletteFromTag(&structPtr->oam, palTag);
     if (priority < 4)
     {
         structPtr->priority = priority;
@@ -169,13 +192,13 @@ u8 ConfettiUtil_AddNew(const struct OamData *oam, u16 tileTag, u16 palTag, s16 x
 
 u8 ConfettiUtil_Remove(u8 id)
 {
-    if (sWork == NULL || !sWork->array[id].active)
+    if (sWork == NULL || id >= sWork->count || !sWork->array[id].active)
         return 0xFF;
 
     memset(&sWork->array[id], 0, sizeof(struct ConfettiUtil));
     sWork->array[id].oam.y = DISPLAY_HEIGHT;
     sWork->array[id].oam.x = DISPLAY_WIDTH;
     sWork->array[id].dummied = TRUE;
-    memcpy(&gMain.oamBuffer[id + 64], &gDummyOamData, sizeof(struct OamData));
+    ResetOamRange(id + 64, id + 65);
     return id;
 }

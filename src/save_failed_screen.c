@@ -218,6 +218,9 @@ static void CB2_SaveFailedScreen(void)
         SetWindowTileData(sWindowIds[CLOCK_WIN_ID], &gDecompressionBuffer[0x3D00]);
         DeactivateAllTextPrinters();
         ResetSpriteData();
+#ifdef PLATFORM_SDL2
+        ReserveOamSlots(0, 1);
+#endif
         ResetTasks();
         ResetPaletteFade();
         LoadPalette(gBirchBagGrass_Pal, BG_PLTT_ID(0), 2 * PLTT_SIZE_4BPP);
@@ -328,7 +331,12 @@ static void CB2_ReturnToTitleScreen(void)
     {
         SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#else
         IsDma3ManagerBusyWithBgCopy();
+#endif
         ClearScheduledBgCopiesToVram();
 #endif
         // These windows borrow pixel data from gDecompressionBuffer.
@@ -337,6 +345,7 @@ static void CB2_ReturnToTitleScreen(void)
         FreeAllWindowBuffers();
         UnsetBgTilemapBuffer(0);
 #ifdef PLATFORM_SDL2
+        ReleaseOamSlots(0, 1);
         SetFrameViewToGbaSize(FALSE);
 #endif
         if (gGameContinueCallback == NULL) // no callback exists, so do a soft reset.
@@ -354,22 +363,22 @@ static void CB2_ReturnToTitleScreen(void)
 static void VBlankCB_UpdateClockGraphics(void)
 {
     u32 n = (gMain.vblankCounter2 >> 3) & 7;
+    u16 tile = sClockInfo[CLOCK_RUNNING] ? sClockFrames[n][0] : 1;
 
     gMain.oamBuffer[0] = sClockOamData;
     gMain.oamBuffer[0].x = 112;
     gMain.oamBuffer[0].y = (CLOCK_WIN_TOP + 1) * 8;
+    gMain.oamBuffer[0].tileNum = tile;
 
     if (sClockInfo[CLOCK_RUNNING])
-    {
-        gMain.oamBuffer[0].tileNum = sClockFrames[n][0];
         gMain.oamBuffer[0].matrixNum = (sClockFrames[n][2] << 4) | (sClockFrames[n][1] << 3);
-    }
-    else
-    {
-        gMain.oamBuffer[0].tileNum = 1;
-    }
 
+#ifdef PLATFORM_SDL2
+    SetReservedOamSlotHandles(0, tile, 1, 0);
+    LoadReservedOamSlot(0);
+#else
     CpuFastCopy(gMain.oamBuffer, (void *)OAM, 4);
+#endif
 
     if (sClockInfo[DEBUG_TIMER])
         sClockInfo[DEBUG_TIMER]--;
