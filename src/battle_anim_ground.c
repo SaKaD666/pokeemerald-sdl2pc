@@ -231,7 +231,7 @@ static void AnimDirtScatter(struct Sprite *sprite)
 // arg 2: initial y pixel offset
 static void AnimMudSportDirt(struct Sprite *sprite)
 {
-    sprite->oam.tileNum++;
+    OffsetSpriteTile(sprite, 1);
     if (gBattleAnimArgs[0] == 0)
     {
         sprite->x = GetBattlerSpriteCoord(gBattleAnimAttacker, BATTLER_COORD_X_2) + gBattleAnimArgs[1];
@@ -551,7 +551,7 @@ static void AnimDigDirtMound(struct Sprite *sprite)
 
     sprite->x = GetBattlerSpriteCoord(battler, BATTLER_COORD_X) - 16 + (gBattleAnimArgs[1] * 32);
     sprite->y = GetBattlerYCoordWithElevation(battler) + 32;
-    sprite->oam.tileNum += gBattleAnimArgs[1] * 8;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[1] * 8);
     StoreSpriteCallbackInData6(sprite, DestroyAnimSprite);
     sprite->data[0] = gBattleAnimArgs[2];
     sprite->callback = WaitAnimForDuration;

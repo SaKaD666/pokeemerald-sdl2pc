@@ -23,7 +23,7 @@ struct AnimStatsChangeData
 
 static EWRAM_DATA struct AnimStatsChangeData *sAnimStatsChangeData = {0};
 
-static void StartBlendAnimSpriteColor(u8, u32);
+static void StartBlendAnimSpriteColor(u8, PaletteMask);
 static void AnimTask_BlendSpriteColor_Step2(u8);
 static void AnimTask_HardwarePaletteFade_Step(u8);
 static void AnimTask_TraceMonBlended_Step(u8);
@@ -33,7 +33,7 @@ static void StatsChangeAnimation_Step1(u8);
 static void StatsChangeAnimation_Step2(u8);
 static void StatsChangeAnimation_Step3(u8);
 static void AnimTask_Flash_Step(u8);
-static void SetPalettesToColor(u32, u16);
+static void SetPalettesToColor(PaletteMask, u16);
 static void AnimTask_UpdateSlidingBg(u8);
 static void UpdateMonScrollingBgMask(u8);
 static void AnimTask_WaitAndRestoreVisibility(u8);
@@ -47,7 +47,7 @@ const u8 gBattleAnimBgCntGet[] = {REG_OFFSET_BG0CNT, REG_OFFSET_BG1CNT, REG_OFFS
 
 void AnimTask_BlendBattleAnimPal(u8 taskId)
 {
-    u32 selectedPalettes = UnpackSelectedBattlePalettes(gBattleAnimArgs[0]);
+    PaletteMask selectedPalettes = UnpackSelectedBattlePalettes(gBattleAnimArgs[0]);
     selectedPalettes |= GetBattleMonSpritePalettesMask((gBattleAnimArgs[0] >>  7) & 1,
                                     (gBattleAnimArgs[0] >>  8) & 1,
                                     (gBattleAnimArgs[0] >>  9) & 1,
@@ -58,7 +58,7 @@ void AnimTask_BlendBattleAnimPal(u8 taskId)
 void AnimTask_BlendBattleAnimPalExclude(u8 taskId)
 {
     u8 battler;
-    u32 selectedPalettes;
+    PaletteMask selectedPalettes;
     u8 animBattlers[2];
 
     animBattlers[1] = 0xFF;
@@ -100,7 +100,7 @@ void AnimTask_BlendBattleAnimPalExclude(u8 taskId)
     for (battler = 0; battler < MAX_BATTLERS_COUNT; battler++)
     {
         if (battler != animBattlers[0] && battler != animBattlers[1] && IsBattlerSpriteVisible(battler))
-            selectedPalettes |= 0x10000 << GetSpritePalIdxByBattler(battler);
+            selectedPalettes |= ObjPaletteMask(GetSpritePalIdxByBattler(battler));
     }
 
     StartBlendAnimSpriteColor(taskId, selectedPalettes);
@@ -108,7 +108,7 @@ void AnimTask_BlendBattleAnimPalExclude(u8 taskId)
 
 void AnimTask_SetCamouflageBlend(u8 taskId)
 {
-    u32 selectedPalettes = UnpackSelectedBattlePalettes(gBattleAnimArgs[0]);
+    PaletteMask selectedPalettes = UnpackSelectedBattlePalettes(gBattleAnimArgs[0]);
     switch (gBattleEnvironment)
     {
     case BATTLE_ENVIRONMENT_GRASS:
@@ -149,14 +149,12 @@ void AnimTask_SetCamouflageBlend(u8 taskId)
 void AnimTask_BlendParticle(u8 taskId)
 {
     u8 paletteIndex = IndexOfSpritePaletteTag(gBattleAnimArgs[0]);
-    u32 selectedPalettes = 1 << (paletteIndex + 16);
-    StartBlendAnimSpriteColor(taskId, selectedPalettes);
+    StartBlendAnimSpriteColor(taskId, ObjPaletteMask(paletteIndex));
 }
 
-void StartBlendAnimSpriteColor(u8 taskId, u32 selectedPalettes)
+static void StartBlendAnimSpriteColor(u8 taskId, PaletteMask selectedPalettes)
 {
-    gTasks[taskId].data[0] = selectedPalettes;
-    gTasks[taskId].data[1] = selectedPalettes >> 16;
+    StorePaletteMask(&gTasks[taskId].data[11], selectedPalettes);
     gTasks[taskId].data[2] = gBattleAnimArgs[1];
     gTasks[taskId].data[3] = gBattleAnimArgs[2];
     gTasks[taskId].data[4] = gBattleAnimArgs[3];
@@ -168,20 +166,12 @@ void StartBlendAnimSpriteColor(u8 taskId, u32 selectedPalettes)
 
 static void AnimTask_BlendSpriteColor_Step2(u8 taskId)
 {
-    u32 selectedPalettes;
-    u16 singlePaletteOffset = 0;
-
     if (gTasks[taskId].data[9] == gTasks[taskId].data[2])
     {
+        PaletteMask selectedPalettes = LoadPaletteMask(&gTasks[taskId].data[11]);
+
         gTasks[taskId].data[9] = 0;
-        selectedPalettes = gTasks[taskId].data[0] | (gTasks[taskId].data[1] << 16);
-        while (selectedPalettes != 0)
-        {
-            if (selectedPalettes & 1)
-                BlendPalette(singlePaletteOffset, 16, gTasks[taskId].data[10], gTasks[taskId].data[5]);
-            singlePaletteOffset += 16;
-            selectedPalettes >>= 1;
-        }
+        BlendPalettes(selectedPalettes, gTasks[taskId].data[10], gTasks[taskId].data[5]);
 
         if (gTasks[taskId].data[10] < gTasks[taskId].data[4])
             gTasks[taskId].data[10]++;
@@ -648,13 +638,12 @@ static void StatsChangeAnimation_Step3(u8 taskId)
 
 void AnimTask_Flash(u8 taskId)
 {
-    u32 selectedPalettes = GetBattleMonSpritePalettesMask(1, 1, 1, 1);
-    SetPalettesToColor(selectedPalettes, RGB_BLACK);
-    gTasks[taskId].data[14] = selectedPalettes >> 16;
+    PaletteMask objPalettes = GetBattleMonSpritePalettesMask(1, 1, 1, 1);
+    PaletteMask bgPalettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE) & PALETTES_BG;
 
-    selectedPalettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE) & 0xFFFF;
-    SetPalettesToColor(selectedPalettes, RGB_WHITEALPHA);
-    gTasks[taskId].data[15] = selectedPalettes;
+    SetPalettesToColor(objPalettes, RGB_BLACK);
+    SetPalettesToColor(bgPalettes, RGB_WHITEALPHA);
+    StorePaletteMask(&gTasks[taskId].data[12], objPalettes | bgPalettes);
 
     gTasks[taskId].data[0] = 0;
     gTasks[taskId].data[1] = 0;
@@ -663,7 +652,6 @@ void AnimTask_Flash(u8 taskId)
 
 static void AnimTask_Flash_Step(u8 taskId)
 {
-    u16 i;
     struct Task *task = &gTasks[taskId];
 
     switch (task->data[0])
@@ -679,17 +667,12 @@ static void AnimTask_Flash_Step(u8 taskId)
     case 1:
         if (++task->data[1] > 1)
         {
+            PaletteMask mask = LoadPaletteMask(&task->data[12]);
+
             task->data[1] = 0;
             task->data[2]--;
-
-            for (i = 0; i < 16; i++)
-            {
-                if ((task->data[15] >> i) & 1)
-                    BlendPalette(BG_PLTT_ID(i), 16, task->data[2], 0xFFFF);
-
-                if ((task->data[14] >> i) & 1)
-                    BlendPalette(OBJ_PLTT_ID(i), 16, task->data[2], 0);
-            }
+            BlendPalettes(mask & PALETTES_BG_FULL, task->data[2], RGB_WHITEALPHA);
+            BlendPalettes(mask & PALETTES_OBJECTS_FULL, task->data[2], RGB_BLACK);
 
             if (task->data[2] == 0)
                 task->data[0]++;
@@ -701,15 +684,15 @@ static void AnimTask_Flash_Step(u8 taskId)
     }
 }
 
-static void SetPalettesToColor(u32 selectedPalettes, u16 color)
+static void SetPalettesToColor(PaletteMask selectedPalettes, u16 color)
 {
-    u16 i;
+    u8 i;
 
-    for (i = 0; i < 32; i++)
+    for (i = 0; selectedPalettes; i++)
     {
         if (selectedPalettes & 1)
         {
-            u16 curOffset = PLTT_ID(i);
+            u16 curOffset = PaletteBankOffset(i);
             u16 paletteOffset = curOffset;
             while (curOffset < paletteOffset + 16)
             {
@@ -726,12 +709,12 @@ void AnimTask_BlendNonAttackerPalettes(u8 taskId)
 {
     u32 battler;
     int j;
-    u32 selectedPalettes = 0;
+    PaletteMask selectedPalettes = 0;
 
     for (battler = 0; battler < MAX_BATTLERS_COUNT; battler++)
     {
         if (gBattleAnimAttacker != battler)
-            selectedPalettes |= 1 << (battler + 16);
+            selectedPalettes |= ObjPaletteMask(GetSpritePalIdxByBattler(battler));
     }
 
     for (j = 5; j != 0; j--)
@@ -955,84 +938,60 @@ void AnimTask_FreeBackupPalBuffer(u8 taskId)
     DestroyAnimVisualTask(taskId);
 }
 
+static u8 GetAnimPaletteCopyBank(s16 selector)
+{
+    PaletteMask palettes;
+    u8 bank = 0;
+
+    switch (selector)
+    {
+    case 0:
+        palettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE);
+        if (palettes == 0)
+            return 0xFF;
+        while ((palettes & 1) == 0)
+        {
+            palettes >>= 1;
+            bank++;
+        }
+        return bank;
+    case 1:
+        return ObjPaletteBank(GetSpritePalIdxByBattler(gBattleAnimAttacker));
+    case 2:
+        return ObjPaletteBank(GetSpritePalIdxByBattler(gBattleAnimTarget));
+    default:
+        return 0xFF;
+    }
+}
+
 void AnimTask_CopyPalUnfadedToBackup(u8 taskId)
 {
-    u32 selectedPalettes;
-    int paletteIndex = 0;
+    u8 bank = GetAnimPaletteCopyBank(gBattleAnimArgs[0]);
 
-    if (gBattleAnimArgs[0] == 0)
-    {
-        selectedPalettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE);
-        while ((selectedPalettes & 1) == 0)
-        {
-            selectedPalettes >>= 1;
-            paletteIndex++;
-        }
-    }
-    else if (gBattleAnimArgs[0] == 1)
-    {
-        paletteIndex = gBattleAnimAttacker + 16;
-    }
-    else if (gBattleAnimArgs[0] == 2)
-    {
-        paletteIndex = gBattleAnimTarget + 16;
-    }
-
-    memcpy(&gMonSpritesGfxPtr->buffer[gBattleAnimArgs[1] * 16], &gPlttBufferUnfaded[PLTT_ID(paletteIndex)], PLTT_SIZE_4BPP);
+    if (bank != 0xFF && gMonSpritesGfxPtr->buffer != NULL)
+        memcpy(&gMonSpritesGfxPtr->buffer[gBattleAnimArgs[1] * 16], &gPlttBufferUnfaded[PaletteBankOffset(bank)], PLTT_SIZE_4BPP);
     DestroyAnimVisualTask(taskId);
 }
 
 void AnimTask_CopyPalUnfadedFromBackup(u8 taskId)
 {
-    u32 selectedPalettes;
-    int paletteIndex = 0;
+    u8 bank = GetAnimPaletteCopyBank(gBattleAnimArgs[0]);
 
-    if (gBattleAnimArgs[0] == 0)
-    {
-        selectedPalettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE);
-        while ((selectedPalettes & 1) == 0)
-        {
-            selectedPalettes >>= 1;
-            paletteIndex++;
-        }
-    }
-    else if (gBattleAnimArgs[0] == 1)
-    {
-        paletteIndex = gBattleAnimAttacker + 16;
-    }
-    else if (gBattleAnimArgs[0] == 2)
-    {
-        paletteIndex = gBattleAnimTarget + 16;
-    }
-
-    memcpy(&gPlttBufferUnfaded[PLTT_ID(paletteIndex)], &gMonSpritesGfxPtr->buffer[gBattleAnimArgs[1] * 16], PLTT_SIZE_4BPP);
+    if (bank != 0xFF && gMonSpritesGfxPtr->buffer != NULL)
+        memcpy(&gPlttBufferUnfaded[PaletteBankOffset(bank)], &gMonSpritesGfxPtr->buffer[gBattleAnimArgs[1] * 16], PLTT_SIZE_4BPP);
     DestroyAnimVisualTask(taskId);
 }
 
 void AnimTask_CopyPalFadedToUnfaded(u8 taskId)
 {
-    u32 selectedPalettes;
-    int paletteIndex = 0;
+    u8 bank = GetAnimPaletteCopyBank(gBattleAnimArgs[0]);
 
-    if (gBattleAnimArgs[0] == 0)
+    if (bank != 0xFF)
     {
-        selectedPalettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE);
-        while ((selectedPalettes & 1) == 0)
-        {
-            selectedPalettes >>= 1;
-            paletteIndex++;
-        }
-    }
-    else if (gBattleAnimArgs[0] == 1)
-    {
-        paletteIndex = gBattleAnimAttacker + 16;
-    }
-    else if (gBattleAnimArgs[0] == 2)
-    {
-        paletteIndex = gBattleAnimTarget + 16;
-    }
+        u16 offset = PaletteBankOffset(bank);
 
-    memcpy(&gPlttBufferUnfaded[PLTT_ID(paletteIndex)], &gPlttBufferFaded[PLTT_ID(paletteIndex)], PLTT_SIZE_4BPP);
+        memcpy(&gPlttBufferUnfaded[offset], &gPlttBufferFaded[offset], PLTT_SIZE_4BPP);
+    }
     DestroyAnimVisualTask(taskId);
 }
 

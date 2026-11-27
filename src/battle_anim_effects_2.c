@@ -2012,7 +2012,7 @@ void AnimTask_GrowAndGrayscale(u8 taskId)
     u8 spriteId = GetAnimBattlerSpriteId(ANIM_TARGET);
     PrepareBattlerSpriteForRotScale(spriteId, ST_OAM_OBJ_BLEND);
     SetSpriteRotScale(spriteId, 0xD0, 0xD0, 0);
-    SetGrayscaleOrOriginalPalette(gSprites[spriteId].oam.paletteNum + 16, FALSE);
+    SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], FALSE);
     gTasks[taskId].data[0] = 80;
     gTasks[taskId].func = AnimTask_GrowAndGrayscale_Step;
 }
@@ -2023,7 +2023,7 @@ static void AnimTask_GrowAndGrayscale_Step(u8 taskId)
     {
         u8 spriteId = GetAnimBattlerSpriteId(ANIM_TARGET);
         ResetSpriteRotScale(spriteId);
-        SetGrayscaleOrOriginalPalette(gSprites[spriteId].oam.paletteNum + 16, TRUE);
+        SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], TRUE);
         DestroyAnimVisualTask(taskId);
     }
 }
@@ -2128,7 +2128,7 @@ static void CreateMinimizeSprite(struct Task *task, u8 taskId)
             gSprites[spriteId].oam.objMode = ST_OAM_OBJ_BLEND;
             gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
             gSprites[spriteId].affineAnimPaused = TRUE;
-            gSprites[spriteId].oam.matrixNum = matrixNum;
+            AdoptSpriteMatrixHandle(&gSprites[spriteId], matrixNum);
             gSprites[spriteId].subpriority = task->data[7] - task->data[3];
             task->data[3]++;
             task->data[6]++;
@@ -2148,7 +2148,7 @@ static void ClonedMinizeSprite_Step(struct Sprite *sprite)
     if (--sprite->data[0] == 0)
     {
         gTasks[sprite->data[1]].data[sprite->data[2]]--;
-        FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
         DestroySpriteWithActiveSheet(sprite);
     }
 }
@@ -2734,12 +2734,12 @@ static void AnimSoftBoiledEgg_Step3(struct Sprite *sprite)
         sprite->data[0] = 0;
         if (sprite->data[7] == 0)
         {
-            sprite->oam.tileNum += 16;
+            OffsetSpriteTile(sprite, 16);
             sprite->callback = AnimSoftBoiledEgg_Step3_Callback1;
         }
         else
         {
-            sprite->oam.tileNum += 32;
+            OffsetSpriteTile(sprite, 32);
             sprite->callback = AnimSoftBoiledEgg_Step4;
         }
     }
@@ -3046,8 +3046,8 @@ void AnimTask_FreeMusicNotesPals(u8 taskId)
 static void SetMusicNotePalette(struct Sprite *sprite, u8 a, u8 b)
 {
     u8 tile = (b & 1) ? 32 : 0;
-    sprite->oam.tileNum += tile + a * 4;
-    sprite->oam.paletteNum = IndexOfSpritePaletteTag(sMusicNotePaletteTagsTable[b >> 1]);
+    OffsetSpriteTile(sprite, tile + a * 4);
+    SetSpritePaletteFromTag(sprite, sMusicNotePaletteTagsTable[b >> 1]);
 }
 
 static void AnimHealBellMusicNote(struct Sprite *sprite)
@@ -3692,7 +3692,7 @@ static void AnimJaggedMusicNote(struct Sprite *sprite)
     sprite->data[3] = (gBattleAnimArgs[1] << 3) / 8;
     sprite->data[4] = (gBattleAnimArgs[2] << 3) / 8;
 
-    sprite->oam.tileNum += gBattleAnimArgs[3] * 16;
+    OffsetSpriteTile(sprite, gBattleAnimArgs[3] * 16);
     sprite->callback = AnimJaggedMusicNote_Step;
 }
 
@@ -3715,7 +3715,7 @@ static void AnimPerishSongMusicNote2(struct Sprite *sprite)
     }
 
     if (++sprite->data[0] == sprite->data[1])
-        SetGrayscaleOrOriginalPalette(sprite->oam.paletteNum + 16, FALSE);
+        SetSpriteGrayscaleOrOriginalPalette(sprite, FALSE);
 
     if (sprite->data[0] == sprite->data[1] + 80)
         DestroyAnimSprite(sprite);

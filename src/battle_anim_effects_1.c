@@ -4323,10 +4323,10 @@ static void AnimLockOnTarget_Step4(struct Sprite *sprite)
     BlendPalettes(GetBattlePalettesMask(TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, FALSE), sprite->data[1], RGB_WHITE);
     if (sprite->data[1] == 16)
     {
-        int pal;
+        u8 pal = GetSpritePaletteHandle(sprite);
         sprite->data[2]++;
-        pal = sprite->oam.paletteNum;
-        LoadPalette(&gPlttBufferUnfaded[OBJ_PLTT_ID(pal) + 8], OBJ_PLTT_ID(pal) + 1, PLTT_SIZEOF(2));
+        if (ObjPaletteMask(pal) != 0)
+            LoadPalette(&gPlttBufferUnfaded[OBJ_PLTT_ID(pal) + 8], OBJ_PLTT_ID(pal) + 1, PLTT_SIZEOF(2));
         PlaySE12WithPanning(SE_M_LEER, BattleAnimAdjustPanning(SOUND_PAN_TARGET));
     }
     else if (sprite->data[1] == 0)
@@ -4388,7 +4388,7 @@ static void AnimLockOnMoveTarget(struct Sprite *sprite)
         sprite->oam.matrixNum = ST_OAM_HFLIP | ST_OAM_VFLIP;
     }
 
-    sprite->oam.tileNum += 16;
+    OffsetSpriteTile(sprite, 16);
     sprite->callback = AnimLockOnTarget;
     sprite->callback(sprite);
 }
@@ -4998,27 +4998,23 @@ static void AnimMoonlightSparkle_Step(struct Sprite *sprite)
 
 void AnimTask_MoonlightEndFade(u8 taskId)
 {
-    int a = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE) & 0xFFFF;
-    int b;
-    int c;
-    int d;
+    u16 bgPalettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE) & PALETTES_BG;
+    PaletteMask objPalettes = GetBattleMonSpritePalettesMask(1, 1, 1, 1);
+    PaletteMask effectPalettes = ObjPaletteMask(IndexOfSpritePaletteTag(ANIM_TAG_GREEN_SPARKLE))
+                             | ObjPaletteMask(IndexOfSpritePaletteTag(ANIM_TAG_MOON));
 
     gTasks[taskId].data[0] = 0;
     gTasks[taskId].data[1] = 0;
     gTasks[taskId].data[2] = 0;
-    gTasks[taskId].data[3] = a;
+    gTasks[taskId].data[3] = bgPalettes;
     gTasks[taskId].data[4] = 0;
     gTasks[taskId].data[5] = 0;
     gTasks[taskId].data[6] = 0;
     gTasks[taskId].data[7] = 13;
     gTasks[taskId].data[8] = 14;
     gTasks[taskId].data[9] = 15;
-    b = GetBattleMonSpritePalettesMask(1, 1, 1, 1);
-    c = a | b;
-    gTasks[taskId].ptr.intPtr[0] = c;
-    b = b | (0x10000 << IndexOfSpritePaletteTag(ANIM_TAG_MOON));
-    d = IndexOfSpritePaletteTag(ANIM_TAG_GREEN_SPARKLE);
-    BeginNormalPaletteFade((0x10000 << d) | b, 0, 0, 16, RGB(27, 29, 31));
+    StorePaletteMask(&gTasks[taskId].data[10], bgPalettes | objPalettes);
+    BeginNormalPaletteFade(effectPalettes | objPalettes, 0, 0, 16, RGB(27, 29, 31));
     gTasks[taskId].func = AnimTask_MoonlightEndFade_Step;
     gTasks[taskId].func(taskId);
 }
@@ -5090,7 +5086,7 @@ static void AnimTask_MoonlightEndFade_Step(u8 taskId)
     case 2:
         if (++task->data[1] > 30)
         {
-            BeginNormalPaletteFade((u32)task->ptr.intPtr[0], 0, 16, 0, RGB(27, 29, 31));
+            BeginNormalPaletteFade(LoadPaletteMask(&task->data[10]), 0, 16, 0, RGB(27, 29, 31));
             task->data[0]++;
         }
         break;
@@ -5176,7 +5172,7 @@ void AnimTask_DoubleTeam(u8 taskId)
     task->data[0] = GetAnimBattlerSpriteId(ANIM_ATTACKER);
     task->data[1] = AllocSpritePalette(ANIM_TAG_BENT_SPOON);
     r3 = OBJ_PLTT_ID(task->data[1]);
-    r4 = OBJ_PLTT_ID2(gSprites[task->data[0]].oam.paletteNum);
+    r4 = OBJ_PLTT_ID(GetSpritePaletteHandle(&gSprites[task->data[0]]));
     for (i = 1; i < 16; i++)
         gPlttBufferUnfaded[r3 + i] = gPlttBufferUnfaded[r4 + i];
 
@@ -5185,7 +5181,7 @@ void AnimTask_DoubleTeam(u8 taskId)
     i = 0;
     while (i < 2 && (obj = CloneBattlerSpriteWithBlend(0)) >= 0)
     {
-        gSprites[obj].oam.paletteNum = task->data[1];
+        SetSpritePaletteHandle(&gSprites[obj], task->data[1]);
         gSprites[obj].data[0] = 0;
         gSprites[obj].data[1] = i << 7;
         gSprites[obj].data[2] = taskId;
@@ -5299,7 +5295,7 @@ static void AnimWavyMusicNotes(struct Sprite *sprite)
     SetSpriteCoordsToAnimAttackerCoords(sprite);
     StartSpriteAnim(sprite, cmd->unk0);
     if ((index = IndexOfSpritePaletteTag(gParticlesColorBlendTable[cmd->unk1][0])) != 0xFF)
-        sprite->oam.paletteNum = index;
+        SetSpritePaletteHandle(sprite, index);
 
     sprite->sBlendTableIdx = cmd->unk1;
     sprite->sBlendTimer = 0;
@@ -5365,7 +5361,7 @@ static void AnimWavyMusicNotes_Step(struct Sprite *sprite)
 
             index = IndexOfSpritePaletteTag(gParticlesColorBlendTable[sprite->sBlendTableIdx][0]);
             if (index != 0xFF)
-                sprite->oam.paletteNum = index;
+                SetSpritePaletteHandle(sprite, index);
         }
     }
 }
@@ -5441,7 +5437,7 @@ void AnimSlowFlyingMusicNotes(struct Sprite *sprite)
     StartSpriteAnim(sprite, cmd->unk1);
     index = IndexOfSpritePaletteTag(gParticlesColorBlendTable[cmd->unk2][0]);
     if (index != 0xFF)
-        sprite->oam.paletteNum = index;
+        SetSpritePaletteHandle(sprite, index);
 
     xDiff = (cmd->unk0 == 0) ? -32 : 32;
     sprite->data[0] = 40;

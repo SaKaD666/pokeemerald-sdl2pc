@@ -1059,7 +1059,9 @@ static const struct SwapScreenAction sSwap_EnemyScreenActions[] =
 
 static void SpriteCB_Pokeball(struct Sprite *sprite)
 {
-    if (sprite->oam.paletteNum == IndexOfSpritePaletteTag(PALTAG_BALL_SELECTED))
+    u8 selectedPalette = IndexOfSpritePaletteTag(PALTAG_BALL_SELECTED);
+
+    if (selectedPalette != 0xFF && GetSpritePaletteHandle(sprite) == selectedPalette)
     {
         // Poké Ball selected, do rocking animation
         if (sprite->animEnded)
@@ -1442,7 +1444,7 @@ static void Select_HandleMonSelectionChange(void)
         sFactorySelectScreen->selectingMonsState++;
     }
 
-    gSprites[sFactorySelectScreen->mons[cursorPos].ballSpriteId].oam.paletteNum = paletteNum;
+    SetSpritePaletteHandle(&gSprites[sFactorySelectScreen->mons[cursorPos].ballSpriteId], paletteNum);
 }
 
 static void Select_SetBallSpritePaletteNum(u8 id)
@@ -1454,7 +1456,7 @@ static void Select_SetBallSpritePaletteNum(u8 id)
     else
         palNum = IndexOfSpritePaletteTag(PALTAG_BALL_GRAY);
 
-    gSprites[sFactorySelectScreen->mons[id].ballSpriteId].oam.paletteNum = palNum;
+    SetSpritePaletteHandle(&gSprites[sFactorySelectScreen->mons[id].ballSpriteId], palNum);
 }
 
 static void Select_Task_OpenSummaryScreen(u8 taskId)
@@ -2115,9 +2117,9 @@ static void SpriteCB_CloseChosenMonPics(struct Sprite *sprite)
         && gSprites[sFactorySelectScreen->monPics[0].bgSpriteId].affineAnimEnded
         && gSprites[sFactorySelectScreen->monPics[2].bgSpriteId].affineAnimEnded)
     {
-        FreeOamMatrix(sprite->oam.matrixNum);
-        FreeOamMatrix(gSprites[sFactorySelectScreen->monPics[0].bgSpriteId].oam.matrixNum);
-        FreeOamMatrix(gSprites[sFactorySelectScreen->monPics[2].bgSpriteId].oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
+        FreeSpriteOamMatrix(&gSprites[sFactorySelectScreen->monPics[0].bgSpriteId]);
+        FreeSpriteOamMatrix(&gSprites[sFactorySelectScreen->monPics[2].bgSpriteId]);
 
         sFactorySelectScreen->monPicAnimating = FALSE;
 
@@ -2852,9 +2854,9 @@ static void Swap_Task_SlideCycleBalls(u8 taskId)
                 lastX = gSprites[sFactorySwapScreen->ballSpriteIds[i]].x;
                 gSprites[sFactorySwapScreen->ballSpriteIds[i]].x = -16;
                 if (sFactorySwapScreen->inEnemyScreen == TRUE)
-                    gSprites[sFactorySwapScreen->ballSpriteIds[i]].oam.paletteNum = IndexOfSpritePaletteTag(PALTAG_BALL_SELECTED);
+                    SetSpritePaletteFromTag(&gSprites[sFactorySwapScreen->ballSpriteIds[i]], PALTAG_BALL_SELECTED);
                 else
-                    gSprites[sFactorySwapScreen->ballSpriteIds[i]].oam.paletteNum = IndexOfSpritePaletteTag(PALTAG_BALL_GRAY);
+                    SetSpritePaletteFromTag(&gSprites[sFactorySwapScreen->ballSpriteIds[i]], PALTAG_BALL_GRAY);
 
                 gTasks[taskId].tBallCycled(i) = TRUE;
             }
@@ -4105,7 +4107,7 @@ static void CloseMonPic(struct FactoryMonPic pic, bool8 *animating, bool8 swapSc
 static void HideMonPic(struct FactoryMonPic pic, bool8 *animating)
 {
     FreeAndDestroyMonPicSprite(pic.monSpriteId);
-    FreeOamMatrix(gSprites[pic.bgSpriteId].oam.matrixNum);
+    FreeSpriteOamMatrix(&gSprites[pic.bgSpriteId]);
     DestroySprite(&gSprites[pic.bgSpriteId]);
     *animating = FALSE;
 }
@@ -4183,7 +4185,7 @@ static void SpriteCB_CloseMonPic(struct Sprite *sprite)
 {
     if (sprite->affineAnimEnded)
     {
-        FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
         if (sprite->sIsSwapScreen == TRUE)
             sFactorySwapScreen->monPicAnimating = FALSE;
         else

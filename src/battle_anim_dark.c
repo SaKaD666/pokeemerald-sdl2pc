@@ -364,7 +364,7 @@ static void AnimTearDrop(struct Sprite *sprite)
         battler = gBattleAnimTarget;
 
     xOffset = 20;
-    sprite->oam.tileNum += 4;
+    OffsetSpriteTile(sprite, 4);
 
     switch (cmd->type)
     {
@@ -877,12 +877,12 @@ void AnimTask_MetallicShine(u8 taskId)
 
     gBattle_BG1_X = -gSprites[spriteId].x + 96;
     gBattle_BG1_Y = -gSprites[spriteId].y + 32;
-    paletteNum = 16 + gSprites[spriteId].oam.paletteNum;
+    paletteNum = GetSpritePaletteHandle(&gSprites[spriteId]);
 
     if (cmd->useColor == 0)
-        SetGrayscaleOrOriginalPalette(paletteNum, FALSE);
-    else
-        BlendPalette(BG_PLTT_ID(paletteNum), 16, 11, cmd->color);
+        SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], FALSE);
+    else if (ObjPaletteMask(paletteNum) != 0)
+        BlendPalette(OBJ_PLTT_ID(paletteNum), 16, 11, cmd->color);
 
     gTasks[taskId].data[0] = newSpriteId;
     gTasks[taskId].data[1] = cmd->permanent;
@@ -895,7 +895,6 @@ void AnimTask_MetallicShine(u8 taskId)
 static void AnimTask_MetallicShine_Step(u8 taskId)
 {
     struct BattleAnimBgData animBg;
-    u16 paletteNum;
     u8 spriteId;
 
     gTasks[taskId].data[10] += 4;
@@ -908,9 +907,8 @@ static void AnimTask_MetallicShine_Step(u8 taskId)
         if (gTasks[taskId].data[11] == 2)
         {
             spriteId = GetAnimBattlerSpriteId(ANIM_ATTACKER);
-            paletteNum = 16 + gSprites[spriteId].oam.paletteNum;
             if (gTasks[taskId].data[1] == 0)
-                SetGrayscaleOrOriginalPalette(paletteNum, TRUE);
+                SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], TRUE);
 
             DestroySprite(&gSprites[gTasks[taskId].data[0]]);
             GetBattleAnimBg1Data(&animBg);
@@ -984,7 +982,7 @@ void AnimTask_SetGrayscaleOrOriginalPal(u8 taskId)
     }
 
     if (spriteId != SPRITE_NONE)
-        SetGrayscaleOrOriginalPalette(gSprites[spriteId].oam.paletteNum + 16, cmd->mode);
+        SetSpriteGrayscaleOrOriginalPalette(&gSprites[spriteId], cmd->mode);
 
     DestroyAnimVisualTask(taskId);
 }

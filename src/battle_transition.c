@@ -49,9 +49,13 @@
 static void SetTransitionTile(u16 *tilemap, s16 y, s16 x, u16 tile)
 {
 #ifdef PLATFORM_SDL2
+    u16 *entry;
+
     if ((u16)y >= 32 || (u16)x >= (IsWideFieldUi() ? 64 : 32))
         return;
-    tilemap[(x / 32) * 1024 + y * 32 + x % 32] = tile | 0xF000;
+    entry = &tilemap[(x / 32) * 1024 + y * 32 + x % 32];
+    *entry = tile | 0xF000;
+    InvalidateBgTilemapVramRange(entry, sizeof(*entry));
 #else
     tilemap[y * 32 + x] = tile | 0xF000;
 #endif
@@ -2822,8 +2826,8 @@ static void Mugshots_CreateTrainerPics(struct Task *task)
     opponentSprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
     playerSprite->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
 
-    opponentSprite->oam.matrixNum = AllocOamMatrix();
-    playerSprite->oam.matrixNum = AllocOamMatrix();
+    AdoptSpriteMatrixHandle(opponentSprite, AllocOamMatrix());
+    AdoptSpriteMatrixHandle(playerSprite, AllocOamMatrix());
 
     opponentSprite->oam.shape = SPRITE_SHAPE(64x32);
     playerSprite->oam.shape = SPRITE_SHAPE(64x32);
@@ -2834,8 +2838,8 @@ static void Mugshots_CreateTrainerPics(struct Task *task)
     CalcCenterToCornerVec(opponentSprite, SPRITE_SHAPE(64x32), SPRITE_SIZE(64x32), ST_OAM_AFFINE_DOUBLE);
     CalcCenterToCornerVec(playerSprite, SPRITE_SHAPE(64x32), SPRITE_SIZE(64x32), ST_OAM_AFFINE_DOUBLE);
 
-    SetOamMatrixRotationScaling(opponentSprite->oam.matrixNum, sMugshotsOpponentRotationScales[mugshotId][0], sMugshotsOpponentRotationScales[mugshotId][1], 0);
-    SetOamMatrixRotationScaling(playerSprite->oam.matrixNum, -512, 512, 0);
+    SetOamMatrixRotationScaling(GetSpriteMatrixHandle(opponentSprite), sMugshotsOpponentRotationScales[mugshotId][0], sMugshotsOpponentRotationScales[mugshotId][1], 0);
+    SetOamMatrixRotationScaling(GetSpriteMatrixHandle(playerSprite), -512, 512, 0);
 }
 
 static void SpriteCB_MugshotTrainerPic(struct Sprite *sprite)
@@ -4879,7 +4883,7 @@ static bool8 FrontierSquares_Shrink(struct Task *task)
             }
             break;
         case 1:
-            BlendPalettes(PALETTES_ALL & ~(1 << 15), 16, RGB_BLACK);
+            BlendPalettes(PALETTES_ALL_FULL & ~(PaletteMask)(1 << 15), 16, RGB_BLACK);
             LZ77UnCompVram(sFrontierSquares_EmptyBg_Tileset, tileset);
             break;
         case 2:
@@ -4956,7 +4960,7 @@ static bool8 FrontierSquaresSpiral_Outward(struct Task *task)
 static bool8 FrontierSquaresSpiral_SetBlack(struct Task *task)
 {
     BlendPalette(BG_PLTT_ID(14), 16, 3, RGB_BLACK);
-    BlendPalettes(PALETTES_ALL & ~(1 << 15 | 1 << 14), 16, RGB_BLACK);
+    BlendPalettes(PALETTES_ALL_FULL & ~(PaletteMask)(1 << 15 | 1 << 14), 16, RGB_BLACK);
 
     task->tSquareNum = 0;
     task->tFadeFlag = 0;
@@ -5108,7 +5112,7 @@ static bool8 FrontierSquaresScroll_Draw(struct Task *task)
 // set it to black so it's not revealed when the squares are removed.
 static bool8 FrontierSquaresScroll_SetBlack(struct Task *task)
 {
-    BlendPalettes(PALETTES_ALL & ~(1 << 15), 16, RGB_BLACK);
+    BlendPalettes(PALETTES_ALL_FULL & ~(PaletteMask)(1 << 15), 16, RGB_BLACK);
 
     task->tSquareNum = 0;
 

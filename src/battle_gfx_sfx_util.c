@@ -1000,7 +1000,11 @@ void HandleSpeciesGfxDataChange(u8 battlerAtk, u8 battlerDef, bool8 castform)
             }
         }
 
-        DmaCopy32Defvars(3, gMonSpritesGfxPtr->sprites.ptr[position], (void *)(OBJ_VRAM0 + gSprites[gBattlerSpriteIds[battlerAtk]].oam.tileNum * 32), MON_PIC_SIZE);
+        {
+            u8 *dest = GetSpriteTileVram(&gSprites[gBattlerSpriteIds[battlerAtk]], 0, MON_PIC_SIZE / TILE_SIZE_4BPP);
+            if (dest != NULL)
+                DmaCopy32Defvars(3, gMonSpritesGfxPtr->sprites.ptr[position], dest, MON_PIC_SIZE);
+        }
         paletteOffset = OBJ_PLTT_ID(battlerAtk);
         lzPaletteData = GetMonSpritePalFromSpeciesAndPersonality(targetSpecies, otId, personalityValue);
         LZDecompressWram(lzPaletteData, gDecompressionBuffer);
@@ -1160,16 +1164,19 @@ void SetBattlerSpriteAffineMode(u8 affineMode)
     {
         if (IsBattlerSpritePresent(i))
         {
-            gSprites[gBattlerSpriteIds[i]].oam.affineMode = affineMode;
+            struct Sprite *sprite = &gSprites[gBattlerSpriteIds[i]];
+
             if (affineMode == ST_OAM_AFFINE_OFF)
             {
-                gBattleSpritesDataPtr->healthBoxesData[i].matrixNum = gSprites[gBattlerSpriteIds[i]].oam.matrixNum;
-                gSprites[gBattlerSpriteIds[i]].oam.matrixNum = 0;
+                if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+                    gBattleSpritesDataPtr->healthBoxesData[i].matrixNum = GetSpriteMatrixHandle(sprite);
+                sprite->oam.matrixNum = 0;
             }
             else
             {
-                gSprites[gBattlerSpriteIds[i]].oam.matrixNum = gBattleSpritesDataPtr->healthBoxesData[i].matrixNum;
+                SetSpriteMatrixHandle(sprite, gBattleSpritesDataPtr->healthBoxesData[i].matrixNum);
             }
+            sprite->oam.affineMode = affineMode;
         }
     }
 }

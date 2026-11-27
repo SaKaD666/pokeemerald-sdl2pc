@@ -461,8 +461,8 @@ void AnimTask_UnusedLevelUpHealthBox(u8 taskId)
     gSprites[healthBoxSpriteId].oam.priority = 1;
     gSprites[spriteId1].oam.priority = 1;
     gSprites[spriteId2].oam.priority = 1;
-    gSprites[spriteId3] = gSprites[healthBoxSpriteId];
-    gSprites[spriteId4] = gSprites[spriteId1];
+    CopySpriteState(&gSprites[spriteId3], &gSprites[healthBoxSpriteId]);
+    CopySpriteState(&gSprites[spriteId4], &gSprites[spriteId1]);
     gSprites[spriteId3].oam.objMode = ST_OAM_OBJ_WINDOW;
     gSprites[spriteId4].oam.objMode = ST_OAM_OBJ_WINDOW;
     gSprites[spriteId3].callback = SpriteCallbackDummy;
@@ -553,14 +553,14 @@ static void LoadHealthboxPalsForLevelUp(u8 *paletteId1, u8 *paletteId2, u8 battl
     *paletteId1 = AllocSpritePalette(TAG_HEALTHBOX_PALS_1);
     *paletteId2 = AllocSpritePalette(TAG_HEALTHBOX_PALS_2);
 
-    offset1 = OBJ_PLTT_ID(gSprites[healthBoxSpriteId].oam.paletteNum);
-    offset2 = OBJ_PLTT_ID(gSprites[spriteId2].oam.paletteNum);
+    offset1 = OBJ_PLTT_ID(GetSpritePaletteHandle(&gSprites[healthBoxSpriteId]));
+    offset2 = OBJ_PLTT_ID(GetSpritePaletteHandle(&gSprites[spriteId2]));
     LoadPalette(&gPlttBufferUnfaded[offset1], OBJ_PLTT_ID(*paletteId1), PLTT_SIZE_4BPP);
     LoadPalette(&gPlttBufferUnfaded[offset2], OBJ_PLTT_ID(*paletteId2), PLTT_SIZE_4BPP);
 
-    gSprites[healthBoxSpriteId].oam.paletteNum = *paletteId1;
-    gSprites[spriteId1].oam.paletteNum = *paletteId1;
-    gSprites[spriteId2].oam.paletteNum = *paletteId2;
+    SetSpritePaletteHandle(&gSprites[healthBoxSpriteId], *paletteId1);
+    SetSpritePaletteHandle(&gSprites[spriteId1], *paletteId1);
+    SetSpritePaletteHandle(&gSprites[spriteId2], *paletteId2);
 }
 
 void AnimTask_LoadHealthboxPalsForLevelUp(u8 taskId)
@@ -584,9 +584,9 @@ static void FreeHealthboxPalsForLevelUp(u8 battler)
     FreeSpritePaletteByTag(TAG_HEALTHBOX_PALS_2);
     paletteId1 = IndexOfSpritePaletteTag(TAG_HEALTHBOX_PAL);
     paletteId2 = IndexOfSpritePaletteTag(TAG_HEALTHBAR_PAL);
-    gSprites[healthBoxSpriteId].oam.paletteNum = paletteId1;
-    gSprites[spriteId1].oam.paletteNum = paletteId1;
-    gSprites[spriteId2].oam.paletteNum = paletteId2;
+    SetSpritePaletteHandle(&gSprites[healthBoxSpriteId], paletteId1);
+    SetSpritePaletteHandle(&gSprites[spriteId1], paletteId1);
+    SetSpritePaletteHandle(&gSprites[spriteId2], paletteId2);
 }
 
 void AnimTask_FreeHealthboxPalsForLevelUp(u8 taskId)
@@ -1317,12 +1317,12 @@ static void SpriteCB_Ball_Capture_Step(struct Sprite *sprite)
     if (sprite->sTimer == 40)
     {
         PlaySE(SE_RG_BALL_CLICK);
-        BlendPalettes(0x10000 << sprite->oam.paletteNum, 6, RGB_BLACK);
+        BlendPalettes(ObjPaletteMask(GetSpritePaletteHandle(sprite)), 6, RGB_BLACK);
         MakeCaptureStars(sprite);
     }
     else if (sprite->sTimer == 60)
     {
-        BeginNormalPaletteFade(0x10000 << sprite->oam.paletteNum, 2, 6, 0, RGB_BLACK);
+        BeginNormalPaletteFade(ObjPaletteMask(GetSpritePaletteHandle(sprite)), 2, 6, 0, RGB_BLACK);
     }
     else if (sprite->sTimer == 95)
     {
@@ -1333,7 +1333,7 @@ static void SpriteCB_Ball_Capture_Step(struct Sprite *sprite)
     }
     else if (sprite->sTimer == 315)
     {
-        FreeOamMatrix(gSprites[gBattlerSpriteIds[*battler]].oam.matrixNum);
+        FreeSpriteOamMatrix(&gSprites[gBattlerSpriteIds[*battler]]);
         DestroySprite(&gSprites[gBattlerSpriteIds[*battler]]);
 
         sprite->sState = 0;
@@ -1360,7 +1360,7 @@ static void SpriteCB_Ball_FadeOut(struct Sprite *sprite)
         SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_ALL);
         SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(16, 0));
         paletteIndex = IndexOfSpritePaletteTag(sprite->template->paletteTag);
-        BeginNormalPaletteFade(1 << (paletteIndex + 0x10), 0, 0, 16, RGB_WHITE);
+        BeginNormalPaletteFade(ObjPaletteMask(paletteIndex), 0, 0, 16, RGB_WHITE);
         sprite->sState++;
         break;
     case 1:
@@ -1567,7 +1567,7 @@ static void SpriteCB_Ball_Block_Step(struct Sprite *sprite)
 
 static void LoadBallParticleGfx(u8 ballId)
 {
-    if (GetSpriteTileStartByTag(sBallParticleSpriteSheets[ballId].tag) == 0xFFFF)
+    if (GetSpriteTileStartByTag(sBallParticleSpriteSheets[ballId].tag) == SPRITE_TILE_NONE)
     {
         LoadCompressedSpriteSheetUsingHeap(&sBallParticleSpriteSheets[ballId]);
         LoadCompressedSpritePaletteUsingHeap(&sBallParticlePalettes[ballId]);
@@ -2022,23 +2022,21 @@ static void DestroyBallOpenAnimationParticle(struct Sprite *sprite)
     }
 }
 
-#define tCoeff     data[0]
-#define tdCoeff    data[1]
-#define tTimer     data[2]
-#define tPalOffset data[3]
-#define tPaletteLo data[10]
-#define tPaletteHi data[11]
-#define tBallId    data[15]
+#define tCoeff       data[0]
+#define tdCoeff      data[1]
+#define tTimer       data[2]
+#define tPalOffset   data[3]
+#define tPaletteMask data[10]
+#define tBallId      data[15]
 
-u8 LaunchBallFadeMonTask(bool8 unfadeLater, u8 spritePalNum, u32 selectedPalettes, u8 ballId)
+u8 LaunchBallFadeMonTask(bool8 unfadeLater, u8 spritePalNum, PaletteMask selectedPalettes, u8 ballId)
 {
     u8 taskId;
 
     taskId = CreateTask(Task_FadeMon_ToBallColor, 5);
     gTasks[taskId].tBallId = ballId;
     gTasks[taskId].tPalOffset = spritePalNum;
-    gTasks[taskId].tPaletteLo = selectedPalettes;
-    gTasks[taskId].tPaletteHi = selectedPalettes >> 16;
+    StorePaletteMask(&gTasks[taskId].tPaletteMask, selectedPalettes);
 
     if (!unfadeLater)
     {
@@ -2069,7 +2067,7 @@ static void Task_FadeMon_ToBallColor(u8 taskId)
     }
     else if (!gPaletteFade.active)
     {
-        u32 selectedPalettes = (u16)gTasks[taskId].tPaletteLo | ((u16)gTasks[taskId].tPaletteHi << 16);
+        PaletteMask selectedPalettes = LoadPaletteMask(&gTasks[taskId].tPaletteMask);
         BeginNormalPaletteFade(selectedPalettes, 0, 16, 0, RGB_WHITE);
         DestroyTask(taskId);
     }
@@ -2079,7 +2077,7 @@ static void Task_FadeMon_ToNormal(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
-        u32 selectedPalettes = (u16)gTasks[taskId].tPaletteLo | ((u16)gTasks[taskId].tPaletteHi << 16);
+        PaletteMask selectedPalettes = LoadPaletteMask(&gTasks[taskId].tPaletteMask);
         BeginNormalPaletteFade(selectedPalettes, 0, 16, 0, RGB_WHITE);
         gTasks[taskId].func = Task_FadeMon_ToNormal_Step;
     }
@@ -2105,8 +2103,7 @@ static void Task_FadeMon_ToNormal_Step(u8 taskId)
 #undef tdCoeff
 #undef tTimer
 #undef tPalOffset
-#undef tPaletteLo
-#undef tPaletteHi
+#undef tPaletteMask
 #undef tBallId
 
 // arg0: TRUE to swap to mon, FALSE to swap to substitute
@@ -2195,7 +2192,11 @@ void AnimTask_SubstituteFadeToInvisible(u8 taskId)
         break;
     case 2:
         spriteId = gBattlerSpriteIds[gBattleAnimAttacker];
-        RequestDma3Fill(0, (void *)OBJ_VRAM0 + gSprites[spriteId].oam.tileNum * TILE_SIZE_4BPP, MON_PIC_SIZE, 1);
+        {
+            u8 *dest = GetSpriteTileVram(&gSprites[spriteId], 0, MON_PIC_SIZE / TILE_SIZE_4BPP);
+            if (dest != NULL)
+                RequestDma3Fill(0, dest, MON_PIC_SIZE, 1);
+        }
         ClearBehindSubstituteBit(gBattleAnimAttacker);
         DestroyAnimVisualTask(taskId);
         break;
@@ -2245,7 +2246,7 @@ void TryShinyAnimation(u8 battler, struct Pokemon *mon)
 
         if (isShiny)
         {
-            if (GetSpriteTileStartByTag(ANIM_TAG_GOLD_STARS) == 0xFFFF)
+            if (GetSpriteTileStartByTag(ANIM_TAG_GOLD_STARS) == SPRITE_TILE_NONE)
             {
                 LoadCompressedSpriteSheetUsingHeap(&gBattleAnimPicTable[ANIM_TAG_GOLD_STARS - ANIM_SPRITES_START]);
                 LoadCompressedSpritePaletteUsingHeap(&gBattleAnimPaletteTable[ANIM_TAG_GOLD_STARS - ANIM_SPRITES_START]);
@@ -2299,12 +2300,12 @@ static void Task_ShinyStars(u8 taskId)
     else if (starIdx >= 0 && gTasks[taskId].tStarIdx < 4) // Medium star
     {
         spriteId = CreateSprite(&gMiniTwinklingStarSpriteTemplate, x, y, 5);
-        gSprites[spriteId].oam.tileNum += 4;
+        OffsetSpriteTile(&gSprites[spriteId], 4);
     }
     else // Small star
     {
         spriteId = CreateSprite(&gMiniTwinklingStarSpriteTemplate, x, y, 5);
-        gSprites[spriteId].oam.tileNum += 5;
+        OffsetSpriteTile(&gSprites[spriteId], 5);
     }
 
     if (gTasks[taskId].tStarMove == SHINY_STAR_ENCIRCLE)

@@ -1028,7 +1028,7 @@ static void AnimSmallDriftingBubbles(struct Sprite *sprite)
     s16 randData;
     s16 randData2;
 
-    sprite->oam.tileNum += 8;
+    OffsetSpriteTile(sprite, 8);
     InitSpritePosToAnimTarget(sprite, TRUE);
     randData = (Random2() & 0xFF) | 256;
     randData2 = (Random2() & 0x1FF);
@@ -1349,7 +1349,7 @@ static void AnimWaterSpoutRainHit(struct Sprite *sprite)
         if (++sprite->data[2] == 12)
         {
             gTasks[sprite->data[6]].data[sprite->data[7]]--;
-            FreeOamMatrix(sprite->oam.matrixNum);
+            FreeSpriteOamMatrix(sprite);
             DestroySprite(sprite);
         }
     }

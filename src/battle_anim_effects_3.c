@@ -1613,7 +1613,7 @@ static void AnimClappingHand(struct Sprite *sprite)
 
     sprite->x += gBattleAnimArgs[0];
     sprite->y += gBattleAnimArgs[1];
-    sprite->oam.tileNum += 16;
+    OffsetSpriteTile(sprite, 16);
 
     if (gBattleAnimArgs[2] == 0)
     {
@@ -2146,9 +2146,9 @@ static void AnimMiniTwinklingStar(struct Sprite *sprite)
 
     rand = Random2() & 3;
     if (rand == 0)
-        sprite->oam.tileNum += 4;
+        OffsetSpriteTile(sprite, 4);
     else
-        sprite->oam.tileNum += 5;
+        OffsetSpriteTile(sprite, 5);
 
     y = Random2() & 7;
     if (y > 3)
@@ -3037,7 +3037,7 @@ static void AnimFlatterConfetti(struct Sprite *sprite)
     int rand2;
 
     tileOffset = Random2() % 12;
-    sprite->oam.tileNum += tileOffset;
+    OffsetSpriteTile(sprite, tileOffset);
     rand1 = Random2() & 0x1FF;
     rand2 = Random2() & 0xFF;
 
@@ -3251,7 +3251,8 @@ void AnimTask_RolePlaySilhouette(u8 taskId)
 
     gSprites[spriteId].oam.priority = priority;
     gSprites[spriteId].oam.objMode = ST_OAM_OBJ_BLEND;
-    FillPalette(RGB_WHITE, OBJ_PLTT_ID(gSprites[spriteId].oam.paletteNum), PLTT_SIZE_4BPP);
+    if (ObjPaletteMask(GetSpritePaletteHandle(&gSprites[spriteId])) != 0)
+        FillPalette(RGB_WHITE, OBJ_PLTT_ID(GetSpritePaletteHandle(&gSprites[spriteId])), PLTT_SIZE_4BPP);
     gSprites[spriteId].oam.priority = priority;
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_ALL);
     SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(gTasks[taskId].data[1], 16 - gTasks[taskId].data[1]));
@@ -3879,7 +3880,7 @@ void AnimTask_FacadeColorBlend(u8 taskId)
     gTasks[taskId].data[0] = 0;
     gTasks[taskId].data[1] = gBattleAnimArgs[1];
     spriteId = GetAnimBattlerSpriteId(gBattleAnimArgs[0]);
-    gTasks[taskId].data[2] = OBJ_PLTT_ID(gSprites[spriteId].oam.paletteNum);
+    gTasks[taskId].data[2] = OBJ_PLTT_ID(GetSpritePaletteHandle(&gSprites[spriteId]));
     gTasks[taskId].func = AnimTask_FacadeColorBlend_Step;
 }
 
@@ -4213,7 +4214,7 @@ static void AnimTask_BarrageBall_Step(u8 taskId)
             gSprites[task->data[15]].invisible = task->data[2] & 1;
             if (task->data[2] == 16)
             {
-                FreeOamMatrix(gSprites[task->data[15]].oam.matrixNum);
+                FreeSpriteOamMatrix(&gSprites[task->data[15]]);
                 DestroySprite(&gSprites[task->data[15]]);
                 task->data[0]++;
             }
@@ -4238,7 +4239,7 @@ static void AnimSmellingSaltsHand(struct Sprite *sprite)
     else
         battler = gBattleAnimTarget;
 
-    sprite->oam.tileNum += 16;
+    OffsetSpriteTile(sprite, 16);
     sprite->data[6] = gBattleAnimArgs[2];
     sprite->data[7] = gBattleAnimArgs[1] == 0 ? -1 : 1;
     sprite->y = GetBattlerSpriteCoord(battler, BATTLER_COORD_Y_PIC_OFFSET);
@@ -4459,7 +4460,7 @@ static void AnimHelpingHandClap_Step(struct Sprite *sprite)
         sprite->y += sprite->data[7] * 3;
         sprite->x2 = sprite->data[7] * (gSineTable[sprite->data[1] * 10] >> 3);
         if (sprite->data[1] == 15)
-            sprite->oam.tileNum += 16;
+            OffsetSpriteTile(sprite, 16);
 
         if (sprite->data[1] == 18)
         {
@@ -5144,7 +5145,12 @@ void AnimTask_SnatchOpposingMonMove(u8 taskId)
 
         spriteId2 = CreateAdditionalMonSpriteForMoveAnim(species, isBackPic, 0, x, GetBattlerSpriteCoord(gBattleAnimTarget, BATTLER_COORD_Y), subpriority, personality, otId, gBattleAnimAttacker, FALSE);
         if (gBattleSpritesDataPtr->battlerData[gBattleAnimAttacker].transformSpecies != SPECIES_NONE)
-            BlendPalette(OBJ_PLTT_ID(gSprites[spriteId2].oam.paletteNum), 16, 6, RGB_WHITE);
+        {
+            u8 palette = GetSpritePaletteHandle(&gSprites[spriteId2]);
+
+            if (ObjPaletteMask(palette) != 0)
+                BlendPalette(OBJ_PLTT_ID(palette), 16, 6, RGB_WHITE);
+        }
 
         gTasks[taskId].data[15] = spriteId2;
         gTasks[taskId].data[0]++;

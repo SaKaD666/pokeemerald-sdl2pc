@@ -299,7 +299,7 @@ static void AnimSimplePaletteBlend(struct Sprite *sprite)
 {
     CMD_ARGS(selector, delay, initialBlendY, targetBlendY, color);
 
-    u32 selectedPalettes = UnpackSelectedBattlePalettes(cmd->selector);
+    PaletteMask selectedPalettes = UnpackSelectedBattlePalettes(cmd->selector);
     BeginNormalPaletteFade(selectedPalettes, cmd->delay, cmd->initialBlendY, cmd->targetBlendY, cmd->color);
     sprite->invisible = TRUE;
     sprite->callback = AnimSimplePaletteBlend_Step;
@@ -314,7 +314,7 @@ static void AnimSimplePaletteBlend(struct Sprite *sprite)
 //   4: F_PAL_DEF_PARTNER, gBattleAnimTarget partner OBJ palette
 //   5: F_PAL_ANIM_1, BG palette 8 (or 14, if in Contest)
 //   6: F_PAL_ANIM_2, BG palette 9
-u32 UnpackSelectedBattlePalettes(s16 selector)
+PaletteMask UnpackSelectedBattlePalettes(s16 selector)
 {
     bool8 battleBackground = selector & 1;
     bool8 attacker = (selector >> 1) & 1;
@@ -345,7 +345,7 @@ static void AnimComplexPaletteBlend(struct Sprite *sprite)
 {
     CMD_ARGS(selector, delay, numBlends, color1, blendY1, color2, blendY2);
 
-    u32 selectedPalettes;
+    PaletteMask selectedPalettes;
 
     sprite->sTimer = cmd->delay;
     sprite->sDelay = cmd->delay;
@@ -364,7 +364,7 @@ static void AnimComplexPaletteBlend(struct Sprite *sprite)
 
 static void AnimComplexPaletteBlend_Step1(struct Sprite *sprite)
 {
-    u32 selectedPalettes;
+    PaletteMask selectedPalettes;
 
     if (sprite->sTimer > 0)
     {
@@ -394,7 +394,7 @@ static void AnimComplexPaletteBlend_Step1(struct Sprite *sprite)
 
 static void AnimComplexPaletteBlend_Step2(struct Sprite *sprite)
 {
-    u32 selectedPalettes;
+    PaletteMask selectedPalettes;
 
     if (!gPaletteFade.active)
     {
@@ -436,11 +436,10 @@ static void AnimCirclingSparkle(struct Sprite *sprite)
 #define tDelay         data[1]
 #define tNumBlends     data[2]
 #define tInitialBlendY data[3]
-#define tTargetBlendY  data[4]
-#define tBlendColor    data[5]
-#define tRestoreBlend  data[8]
-#define tPalSelectorHi data[9]
-#define tPalSelectorLo data[10]
+#define tTargetBlendY     data[4]
+#define tBlendColor       data[5]
+#define tRestoreBlend     data[8]
+#define tSavedPaletteMask data[9]
 
 // Blends mon/screen to designated color or back alternately tNumBlends times
 // Many uses of this task only set a tNumBlends of 2, which has the effect of blending to a color and back once
@@ -461,7 +460,7 @@ void AnimTask_BlendColorCycle(u8 taskId)
 
 static void BlendColorCycle(u8 taskId, u8 startBlendAmount, u8 targetBlendAmount)
 {
-    u32 selectedPalettes = UnpackSelectedBattlePalettes(gTasks[taskId].tPalSelector);
+    PaletteMask selectedPalettes = UnpackSelectedBattlePalettes(gTasks[taskId].tPalSelector);
     BeginNormalPaletteFade(
         selectedPalettes,
         gTasks[taskId].tDelay,
@@ -511,7 +510,7 @@ void AnimTask_BlendColorCycleExclude(u8 taskId)
     CMD_ARGS(unk0, delay, numBlends, initialBlendY, targetBlendY, color);
 
     int battler;
-    u32 selectedPalettes = 0;
+    PaletteMask selectedPalettes = 0;
 
     gTasks[taskId].data[0] = cmd->unk0;
     gTasks[taskId].tDelay = cmd->delay;
@@ -524,21 +523,20 @@ void AnimTask_BlendColorCycleExclude(u8 taskId)
     for (battler = 0; battler < gBattlersCount; battler++)
     {
         if (battler != gBattleAnimAttacker && battler != gBattleAnimTarget)
-            selectedPalettes |= 1 << (battler + 16);
+            selectedPalettes |= ObjPaletteMask(battler);
     }
 
     if (cmd->unk0 == 1)
         selectedPalettes |= 0xE;
 
-    gTasks[taskId].tPalSelectorHi = selectedPalettes >> 16;
-    gTasks[taskId].tPalSelectorLo = selectedPalettes & 0xFF;
+    StorePaletteMask(&gTasks[taskId].tSavedPaletteMask, selectedPalettes);
     BlendColorCycleExclude(taskId, 0, gTasks[taskId].tTargetBlendY);
     gTasks[taskId].func = AnimTask_BlendColorCycleExcludeLoop;
 }
 
 static void BlendColorCycleExclude(u8 taskId, u8 startBlendAmount, u8 targetBlendAmount)
 {
-    u32 selectedPalettes = ((u16)gTasks[taskId].tPalSelectorHi << 16) | (u16)gTasks[taskId].tPalSelectorLo;
+    PaletteMask selectedPalettes = LoadPaletteMask(&gTasks[taskId].tSavedPaletteMask);
     BeginNormalPaletteFade(
         selectedPalettes,
         gTasks[taskId].tDelay,
@@ -603,7 +601,7 @@ static void BlendColorCycleByTag(u8 taskId, u8 startBlendAmount, u8 targetBlendA
 {
     u8 paletteIndex = IndexOfSpritePaletteTag(gTasks[taskId].tPalTag);
     BeginNormalPaletteFade(
-        1 << (paletteIndex + 16),
+        ObjPaletteMask(paletteIndex),
         gTasks[taskId].tDelay,
         startBlendAmount,
         targetBlendAmount,
@@ -653,8 +651,7 @@ static void AnimTask_BlendColorCycleByTagLoop(u8 taskId)
 #undef tTargetBlendY
 #undef tBlendColor
 #undef tRestoreBlend
-#undef tPalSelectorHi
-#undef tPalSelectorLo
+#undef tSavedPaletteMask
 
 // Flashes the specified anim tag with given color. Used e.g. to flash the particles red in Hyper Beam
 #define tTimer     data[0]
@@ -682,7 +679,7 @@ void AnimTask_FlashAnimTagWithColor(u8 taskId)
 
     paletteIndex = IndexOfSpritePaletteTag(cmd->tag);
     BeginNormalPaletteFade(
-        1 << (paletteIndex + 16),
+        ObjPaletteMask(paletteIndex),
         0,
         cmd->blendY1,
         cmd->blendY1,
@@ -693,7 +690,7 @@ void AnimTask_FlashAnimTagWithColor(u8 taskId)
 
 static void AnimTask_FlashAnimTagWithColor_Step1(u8 taskId)
 {
-    u32 selectedPalettes;
+    PaletteMask selectedPalettes;
 
     if (gTasks[taskId].tTimer > 0)
     {
@@ -710,7 +707,7 @@ static void AnimTask_FlashAnimTagWithColor_Step1(u8 taskId)
         return;
     }
 
-    selectedPalettes = 1 << (IndexOfSpritePaletteTag(gTasks[taskId].tAnimTag) + 16);
+    selectedPalettes = ObjPaletteMask(IndexOfSpritePaletteTag(gTasks[taskId].tAnimTag));
     if (gTasks[taskId].tDelay & 0x100)
     {
         BeginNormalPaletteFade(
@@ -737,11 +734,11 @@ static void AnimTask_FlashAnimTagWithColor_Step1(u8 taskId)
 
 static void AnimTask_FlashAnimTagWithColor_Step2(u8 taskId)
 {
-    u32 selectedPalettes;
+    PaletteMask selectedPalettes;
 
     if (!gPaletteFade.active)
     {
-        selectedPalettes = 1 << (IndexOfSpritePaletteTag(gTasks[taskId].tAnimTag) + 16);
+        selectedPalettes = ObjPaletteMask(IndexOfSpritePaletteTag(gTasks[taskId].tAnimTag));
         BeginNormalPaletteFade(selectedPalettes, 0, 0, 0, RGB_BLACK);
         DestroyAnimVisualTask(taskId);
     }
@@ -760,7 +757,7 @@ void AnimTask_InvertScreenColor(u8 taskId)
 {
     CMD_ARGS(flagsScenery, flagsAttacker, flagsTarget);
 
-    u32 selectedPalettes = 0;
+    PaletteMask selectedPalettes = 0;
     u8 attackerBattler = gBattleAnimAttacker;
     u8 targetBattler = gBattleAnimTarget;
 
@@ -768,10 +765,10 @@ void AnimTask_InvertScreenColor(u8 taskId)
         selectedPalettes = GetBattlePalettesMask(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE);
 
     if (cmd->flagsAttacker & (1 << 8))
-        selectedPalettes |= (0x10000 << attackerBattler);
+        selectedPalettes |= ObjPaletteMask(attackerBattler);
 
     if (cmd->flagsTarget & (1 << 8))
-        selectedPalettes |= (0x10000 << targetBattler);
+        selectedPalettes |= ObjPaletteMask(targetBattler);
 
     InvertPlttBuffer(selectedPalettes);
     DestroyAnimVisualTask(taskId);
@@ -793,7 +790,7 @@ void AnimTask_TintPalettes(u8 taskId)
     u8 attackerBattler;
     u8 targetBattler;
     u8 paletteIndex;
-    u32 selectedPalettes = 0;
+    PaletteMask selectedPalettes = 0;
 
     if (gTasks[taskId].tTimer == 0)
     {
@@ -816,14 +813,14 @@ void AnimTask_TintPalettes(u8 taskId)
     if (gTasks[taskId].tFlagsScenery & 1)
     {
         paletteIndex = IndexOfSpritePaletteTag(gSprites[gHealthboxSpriteIds[attackerBattler]].template->paletteTag);
-        selectedPalettes |= (1 << paletteIndex) << 16;
+        selectedPalettes |= ObjPaletteMask(paletteIndex);
     }
 
     if (gTasks[taskId].tFlagsAttacker & (1 << 8))
-        selectedPalettes |= (1 << attackerBattler) << 16;
+        selectedPalettes |= ObjPaletteMask(attackerBattler);
 
     if (gTasks[taskId].tFlagsTarget & (1 << 8))
-        selectedPalettes |= (1 << targetBattler) << 16;
+        selectedPalettes |= ObjPaletteMask(targetBattler);
 
     TintPlttBuffer(selectedPalettes, gTasks[taskId].tColorR, gTasks[taskId].tColorG, gTasks[taskId].tColorB);
     if (gTasks[taskId].tTimer == gTasks[taskId].tLength)

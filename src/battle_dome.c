@@ -4830,7 +4830,7 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
     if (flags & MOVE_CARD)
         gSprites[sInfoCard->spriteIds[arrId]].invisible = TRUE;
     if (lost[0])
-        gSprites[sInfoCard->spriteIds[arrId]].oam.paletteNum = 3;
+        SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[arrId]], 3);
 
     // Draw right trainer sprite.
     if (trainerIds[1] == TRAINER_PLAYER)
@@ -4843,7 +4843,7 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
     if (flags & MOVE_CARD)
         gSprites[sInfoCard->spriteIds[1 + arrId]].invisible = TRUE;
     if (lost[1])
-        gSprites[sInfoCard->spriteIds[1 + arrId]].oam.paletteNum = 3;
+        SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[1 + arrId]], 3);
 
     // Draw left trainer's Pokémon icons.
     for (i = 0; i < FRONTIER_PARTY_SIZE; i++)
@@ -4880,7 +4880,7 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
             gSprites[sInfoCard->spriteIds[2 + i + arrId]].invisible = TRUE;
         if (lost[0])
         {
-            gSprites[sInfoCard->spriteIds[2 + i + arrId]].oam.paletteNum = 3;
+            SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[2 + i + arrId]], 3);
             gSprites[sInfoCard->spriteIds[2 + i + arrId]].sMonIconStill = TRUE;
         }
     }
@@ -4920,7 +4920,7 @@ static void DisplayMatchInfoOnCard(u8 flags, u8 matchNo)
             gSprites[sInfoCard->spriteIds[5 + i + arrId]].invisible = TRUE;
         if (lost[1])
         {
-            gSprites[sInfoCard->spriteIds[5 + i + arrId]].oam.paletteNum = 3;
+            SetSpritePaletteHandle(&gSprites[sInfoCard->spriteIds[5 + i + arrId]], 3);
             gSprites[sInfoCard->spriteIds[5 + i + arrId]].sMonIconStill = TRUE;
         }
     }
@@ -5398,8 +5398,8 @@ static void Task_ShowTourneyTree(u8 taskId)
         CopyBgTilemapBufferToVram(1);
         DecompressAndLoadBgGfxUsingHeap(1, gDomeTourneyTree_Gfx, 0x2000, 0, 0);
         DecompressAndLoadBgGfxUsingHeap(2, gDomeTourneyLine_Gfx, 0x2000, 0, 0);
-        DecompressAndLoadBgGfxUsingHeap(2, gDomeTourneyLineDown_Tilemap, 0x2000, 0, 1);
-        DecompressAndLoadBgGfxUsingHeap(3, gDomeTourneyLineUp_Tilemap, 0x2000, 0, 1);
+        DecompressAndLoadBgGfxUsingHeap(2, gDomeTourneyLineDown_Tilemap, 0, 0, 1);
+        DecompressAndLoadBgGfxUsingHeap(3, gDomeTourneyLineUp_Tilemap, 0, 0, 1);
         LoadCompressedPalette(gDomeTourneyTree_Pal, BG_PLTT_OFFSET, BG_PLTT_SIZE);
         LoadCompressedPalette(gDomeTourneyTreeButtons_Pal, OBJ_PLTT_OFFSET, OBJ_PLTT_SIZE);
         LoadCompressedPalette(gBattleWindowTextPalette, BG_PLTT_ID(15), PLTT_SIZE_4BPP);

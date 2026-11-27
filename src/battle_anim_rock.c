@@ -733,7 +733,7 @@ static void CreateRolloutDirtSprite(struct Task *task)
         gSprites[spriteId].data[2] = ((task->data[12] * 20) + x) + (task->data[1] * 3);
         gSprites[spriteId].data[4] = y;
         gSprites[spriteId].data[5] = -16 - (task->data[1] * 2);
-        gSprites[spriteId].oam.tileNum += tileOffset;
+        OffsetSpriteTile(&gSprites[spriteId], tileOffset);
 
         InitAnimArcTranslation(&gSprites[spriteId]);
         task->data[11]++;

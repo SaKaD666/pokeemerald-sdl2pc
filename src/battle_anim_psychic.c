@@ -676,8 +676,7 @@ static void AnimQuestionMark_Step2(struct Sprite *sprite)
     case 0:
         if (sprite->affineAnimEnded)
         {
-            FreeOamMatrix(sprite->oam.matrixNum);
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+            FreeSpriteOamMatrix(sprite);
             sprite->data[1] = 18;
             sprite->data[0]++;
         }
@@ -944,7 +943,7 @@ static void AnimSkillSwapOrb(struct Sprite *sprite)
 {
     if (TranslateAnimHorizontalArc(sprite))
     {
-        FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
         DestroySprite(sprite);
     }
 }
@@ -1072,7 +1071,7 @@ void AnimTask_TransparentCloneGrowAndShrink(u8 taskId)
 
     gSprites[spriteId].callback = SpriteCallbackDummy;
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-    gSprites[spriteId].oam.matrixNum = matrixNum;
+    SetSpriteMatrixHandle(&gSprites[spriteId], matrixNum);
     gSprites[spriteId].affineAnimPaused = 1;
     gSprites[spriteId].subpriority++;
     SetSpriteRotScale(spriteId, 256, 256, 0);

@@ -895,7 +895,7 @@ static void SpriteCB_BallThrow_CaptureMon(struct Sprite *sprite)
     }
     else if (sprite->data[4] == 315)
     {
-        FreeOamMatrix(gSprites[gBattlerSpriteIds[sprite->sBattler]].oam.matrixNum);
+        FreeSpriteOamMatrix(&gSprites[gBattlerSpriteIds[sprite->sBattler]]);
         DestroySprite(&gSprites[gBattlerSpriteIds[sprite->sBattler]]);
         DestroySpriteAndFreeResources(sprite);
         if (gMain.inBattle)
@@ -1004,7 +1004,7 @@ static u8 AnimateBallOpenParticlesForPokeball(u8 x, u8 y, u8 kindOfStars, u8 sub
     return AnimateBallOpenParticles(x, y, kindOfStars, subpriority, BALL_POKE);
 }
 
-static u8 LaunchBallFadeMonTaskForPokeball(bool8 unFadeLater, u8 spritePalNum, u32 selectedPalettes)
+static u8 LaunchBallFadeMonTaskForPokeball(bool8 unFadeLater, u8 spritePalNum, PaletteMask selectedPalettes)
 {
     return LaunchBallFadeMonTask(unFadeLater, spritePalNum, selectedPalettes, BALL_POKE);
 }
@@ -1014,16 +1014,14 @@ static u8 LaunchBallFadeMonTaskForPokeball(bool8 unFadeLater, u8 spritePalNum, u
 
 // Sprite data for the Poké Ball
 #define sMonSpriteId data[0]
-#define sDelay       data[1]
-#define sMonPalNum   data[2]
-#define sFadePalsLo  data[3]
-#define sFadePalsHi  data[4]
-#define sFinalMonX   data[5]
-#define sFinalMonY   data[6]
-#define sTrigIdx     data[7]
+#define sFadeDelayAndPalette data[1] // delay in the low byte, palette in the high byte
+#define sFadePaletteMask     data[2] // up to four consecutive words
+#define sFinalMonX           data[6]
+#define sFinalMonY           data[7]
+#define sTrigIdx             data[1] // after starting the fade
 
 // Poké Ball in Birch intro, and when receiving via trade
-void CreatePokeballSpriteToReleaseMon(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, u8 oamPriority, u8 subpriority, u8 delay, u32 fadePalettes, u16 species)
+void CreatePokeballSpriteToReleaseMon(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, u8 oamPriority, u8 subpriority, u8 delay, PaletteMask fadePalettes, u16 species)
 {
     u8 spriteId;
 
@@ -1039,10 +1037,8 @@ void CreatePokeballSpriteToReleaseMon(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, 
     gSprites[monSpriteId].y = y;
     gSprites[monSpriteId].sSpecies = species;
 
-    gSprites[spriteId].sDelay = delay;
-    gSprites[spriteId].sMonPalNum = monPalNum;
-    gSprites[spriteId].sFadePalsLo = fadePalettes;
-    gSprites[spriteId].sFadePalsHi = fadePalettes >> 16;
+    gSprites[spriteId].sFadeDelayAndPalette = ((u16)monPalNum << 8) | delay;
+    StorePaletteMask(&gSprites[spriteId].sFadePaletteMask, fadePalettes);
     gSprites[spriteId].oam.priority = oamPriority;
     gSprites[spriteId].callback = SpriteCB_PokeballReleaseMon;
 
@@ -1051,12 +1047,12 @@ void CreatePokeballSpriteToReleaseMon(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, 
 
 static void SpriteCB_PokeballReleaseMon(struct Sprite *sprite)
 {
-    if (sprite->sDelay == 0)
+    if ((u8)sprite->sFadeDelayAndPalette == 0)
     {
         u8 subpriority;
         u8 spriteId = sprite->sMonSpriteId;
-        u8 monPalNum = sprite->sMonPalNum;
-        u32 selectedPalettes = (u16)sprite->sFadePalsLo | ((u16)sprite->sFadePalsHi << 16);
+        u8 monPalNum = (u16)sprite->sFadeDelayAndPalette >> 8;
+        PaletteMask selectedPalettes = LoadPaletteMask(&sprite->sFadePaletteMask);
 
         if (sprite->subpriority != 0)
             subpriority = sprite->subpriority - 1;
@@ -1065,8 +1061,7 @@ static void SpriteCB_PokeballReleaseMon(struct Sprite *sprite)
 
         StartSpriteAnim(sprite, 1);
         AnimateBallOpenParticlesForPokeball(sprite->x, sprite->y - 5, sprite->oam.priority, subpriority);
-        // sDelay re-used to store task id but never read
-        sprite->sDelay = LaunchBallFadeMonTaskForPokeball(TRUE, monPalNum, selectedPalettes);
+        LaunchBallFadeMonTaskForPokeball(TRUE, monPalNum, selectedPalettes);
         sprite->callback = SpriteCB_ReleasedMonFlyOut;
         gSprites[spriteId].invisible = FALSE;
         StartSpriteAffineAnim(&gSprites[spriteId], BATTLER_AFFINE_EMERGE);
@@ -1076,7 +1071,7 @@ static void SpriteCB_PokeballReleaseMon(struct Sprite *sprite)
     }
     else
     {
-        sprite->sDelay--;
+        sprite->sFadeDelayAndPalette--;
     }
 }
 
@@ -1133,9 +1128,9 @@ static void SpriteCB_ReleasedMonFlyOut(struct Sprite *sprite)
 #undef sFinalMonY
 #undef sTrigIdx
 
-#define sTimer       data[5]
+#define sTimer       data[1] // after starting the fade
 
-u8 CreateTradePokeballSprite(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, u8 oamPriority, u8 subPriority, u8 delay, u32 fadePalettes)
+u8 CreateTradePokeballSprite(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, u8 oamPriority, u8 subPriority, u8 delay, PaletteMask fadePalettes)
 {
     u8 spriteId;
 
@@ -1143,10 +1138,8 @@ u8 CreateTradePokeballSprite(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, u8 oamPri
     LoadCompressedSpritePaletteUsingHeap(&gBallSpritePalettes[BALL_POKE]);
     spriteId = CreateSprite(&gBallSpriteTemplates[BALL_POKE], x, y, subPriority);
     gSprites[spriteId].sMonSpriteId = monSpriteId;
-    gSprites[spriteId].sDelay = delay;
-    gSprites[spriteId].sMonPalNum = monPalNum;
-    gSprites[spriteId].sFadePalsLo = fadePalettes;
-    gSprites[spriteId].sFadePalsHi = fadePalettes >> 16;
+    gSprites[spriteId].sFadeDelayAndPalette = ((u16)monPalNum << 8) | delay;
+    StorePaletteMask(&gSprites[spriteId].sFadePaletteMask, fadePalettes);
     gSprites[spriteId].oam.priority = oamPriority;
     gSprites[spriteId].callback = SpriteCB_TradePokeball;
     return spriteId;
@@ -1154,12 +1147,12 @@ u8 CreateTradePokeballSprite(u8 monSpriteId, u8 monPalNum, u8 x, u8 y, u8 oamPri
 
 static void SpriteCB_TradePokeball(struct Sprite *sprite)
 {
-    if (sprite->sDelay == 0)
+    if ((u8)sprite->sFadeDelayAndPalette == 0)
     {
         u8 subpriority;
         u8 monSpriteId = sprite->sMonSpriteId;
-        u8 monPalNum = sprite->sMonPalNum;
-        u32 selectedPalettes = (u16)sprite->sFadePalsLo | ((u16)sprite->sFadePalsHi << 16);
+        u8 monPalNum = (u16)sprite->sFadeDelayAndPalette >> 8;
+        PaletteMask selectedPalettes = LoadPaletteMask(&sprite->sFadePaletteMask);
 
         if (sprite->subpriority != 0)
             subpriority = sprite->subpriority - 1;
@@ -1168,8 +1161,8 @@ static void SpriteCB_TradePokeball(struct Sprite *sprite)
 
         StartSpriteAnim(sprite, 1);
         AnimateBallOpenParticlesForPokeball(sprite->x, sprite->y - 5, sprite->oam.priority, subpriority);
-        // sDelay re-used to store task id but never read
-        sprite->sDelay = LaunchBallFadeMonTaskForPokeball(TRUE, monPalNum, selectedPalettes);
+        LaunchBallFadeMonTaskForPokeball(TRUE, monPalNum, selectedPalettes);
+        sprite->sTimer = 0;
         sprite->callback = SpriteCB_TradePokeballSendOff;
 #ifdef BUGFIX
         // FIX: If this is used on a sprite that has previously had an affine animation, it will not
@@ -1182,7 +1175,7 @@ static void SpriteCB_TradePokeball(struct Sprite *sprite)
     }
     else
     {
-        sprite->sDelay--;
+        sprite->sFadeDelayAndPalette--;
     }
 }
 
@@ -1305,7 +1298,7 @@ void LoadBallGfx(u8 ballId)
 {
     u16 var;
 
-    if (GetSpriteTileStartByTag(gBallSpriteSheets[ballId].tag) == 0xFFFF)
+    if (GetSpriteTileStartByTag(gBallSpriteSheets[ballId].tag) == SPRITE_TILE_NONE)
     {
         LoadCompressedSpriteSheetUsingHeap(&gBallSpriteSheets[ballId]);
         LoadCompressedSpritePaletteUsingHeap(&gBallSpritePalettes[ballId]);

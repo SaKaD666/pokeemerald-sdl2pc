@@ -621,7 +621,7 @@ static void AnimTask_SpiteTargetShadow_Step1(u8 taskId)
             else
             {
                 s16 mask2;
-                gSprites[task->data[0]].oam.paletteNum = task->data[14];
+                SetSpritePaletteHandle(&gSprites[task->data[0]], task->data[14]);
                 gSprites[task->data[0]].oam.objMode = ST_OAM_OBJ_NORMAL;
                 gSprites[task->data[0]].oam.priority = 3;
                 gSprites[task->data[0]].invisible = (gBattleSpritesDataPtr->battlerData[gBattleAnimTarget].invisible);
@@ -629,7 +629,7 @@ static void AnimTask_SpiteTargetShadow_Step1(u8 taskId)
                 task->data[2] = 0;
                 task->data[3] = 16;
                 task->data[13] = GetAnimBattlerSpriteId(ANIM_TARGET);
-                task->data[4] = OBJ_PLTT_ID2(gSprites[task->data[13]].oam.paletteNum);
+                task->data[4] = OBJ_PLTT_ID(GetSpritePaletteHandle(&gSprites[task->data[13]]));
                 if (position == 1)
                 {
                     u16 mask = DISPCNT_BG1_ON;
@@ -1073,7 +1073,7 @@ static void AnimCurseNail_Step1(struct Sprite *sprite)
         {
             sprite->x += sprite->x2;
             sprite->x2 = 0;
-            sprite->oam.tileNum += 8;
+            OffsetSpriteTile(sprite, 8);
             if (++sprite->data[2] == 3)
             {
                 sprite->data[0] = 30;
