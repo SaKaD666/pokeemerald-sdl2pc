@@ -1,6 +1,5 @@
 #include "global.h"
 #include "dma3.h"
-#include "platform/framedraw.h"
 #include "naming_screen.h"
 #include "malloc.h"
 #include "palette.h"
@@ -153,11 +152,27 @@ struct NamingScreenTemplate
     const u8 *title;
 };
 
+#ifdef PLATFORM_SDL2
+#define NAMING_X_OFFSET_TILES   5
+#define NAMING_Y_OFFSET_TILES   1
+#define NAMING_X_OFFSET_PX      (NAMING_X_OFFSET_TILES * 8)
+#define NAMING_Y_OFFSET_PX      (NAMING_Y_OFFSET_TILES * 8)
+#define NAMING_BG3_TILEMAP_SIZE (2 * BG_SCREEN_SIZE)
+#define NAMING_ENTRY_BASE_X     DISPLAY_WIDTH
+#else
+#define NAMING_X_OFFSET_TILES   0
+#define NAMING_Y_OFFSET_TILES   0
+#define NAMING_X_OFFSET_PX      0
+#define NAMING_Y_OFFSET_PX      0
+#define NAMING_BG3_TILEMAP_SIZE BG_SCREEN_SIZE
+#define NAMING_ENTRY_BASE_X     GBA_DISPLAY_WIDTH
+#endif
+
 struct NamingScreenData
 {
     u8 tilemapBuffer1[0x800];
     u8 tilemapBuffer2[0x800];
-    u8 tilemapBuffer3[0x800];
+    u8 tilemapBuffer3[NAMING_BG3_TILEMAP_SIZE];
     u8 textBuffer[16];
     u8 tileBuffer[0x600];
     u8 state;
@@ -205,6 +220,9 @@ static const struct BgTemplate sBgTemplates[] =
         .bg = 0,
         .charBaseIndex = 0,
         .mapBaseIndex = 30,
+#ifdef PLATFORM_SDL2
+        .screenSize = 1,
+#endif
         .priority = 0
     },
     {
@@ -222,7 +240,12 @@ static const struct BgTemplate sBgTemplates[] =
     {
         .bg = 3,
         .charBaseIndex = 3,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 26,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
+#endif
         .priority = 3
     }
 };
@@ -231,8 +254,8 @@ static const struct WindowTemplate sWindowTemplates[WIN_COUNT + 1] =
 {
     [WIN_KB_PAGE_1] = {
         .bg = 1,
-        .tilemapLeft = 3,
-        .tilemapTop = 10,
+        .tilemapLeft = 3 + NAMING_X_OFFSET_TILES,
+        .tilemapTop = 10 + NAMING_Y_OFFSET_TILES,
         .width = 19,
         .height = 8,
         .paletteNum = 10,
@@ -240,8 +263,8 @@ static const struct WindowTemplate sWindowTemplates[WIN_COUNT + 1] =
     },
     [WIN_KB_PAGE_2] = {
         .bg = 2,
-        .tilemapLeft = 3,
-        .tilemapTop = 10,
+        .tilemapLeft = 3 + NAMING_X_OFFSET_TILES,
+        .tilemapTop = 10 + NAMING_Y_OFFSET_TILES,
         .width = 19,
         .height = 8,
         .paletteNum = 10,
@@ -249,8 +272,8 @@ static const struct WindowTemplate sWindowTemplates[WIN_COUNT + 1] =
     },
     [WIN_TEXT_ENTRY] = {
         .bg = 3,
-        .tilemapLeft = 8,
-        .tilemapTop = 6,
+        .tilemapLeft = 8 + NAMING_X_OFFSET_TILES,
+        .tilemapTop = 6 + NAMING_Y_OFFSET_TILES,
         .width = 17,
         .height = 2,
         .paletteNum = 10,
@@ -258,8 +281,8 @@ static const struct WindowTemplate sWindowTemplates[WIN_COUNT + 1] =
     },
     [WIN_TEXT_ENTRY_BOX] = {
         .bg = 3,
-        .tilemapLeft = 8,
-        .tilemapTop = 4,
+        .tilemapLeft = 8 + NAMING_X_OFFSET_TILES,
+        .tilemapTop = 4 + NAMING_Y_OFFSET_TILES,
         .width = 17,
         .height = 2,
         .paletteNum = 10,
@@ -422,9 +445,6 @@ static void CB2_LoadNamingScreen(void)
     switch (gMain.state)
     {
     case 0:
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(TRUE);
-#endif
         ResetVHBlank();
         NamingScreen_Init();
         gMain.state++;
@@ -478,7 +498,7 @@ static void NamingScreen_Init(void)
     sNamingScreen->bgToHide = 1;
     sNamingScreen->template = sNamingScreenTemplates[sNamingScreen->templateNum];
     sNamingScreen->currentPage = sNamingScreen->template->initialPage;
-    sNamingScreen->inputCharBaseXPos = (GBA_DISPLAY_WIDTH - sNamingScreen->template->maxChars * 8) / 2 + 6;
+    sNamingScreen->inputCharBaseXPos = (NAMING_ENTRY_BASE_X - sNamingScreen->template->maxChars * 8) / 2 + 6;
     if (sNamingScreen->templateNum == NAMING_SCREEN_WALDA)
         sNamingScreen->inputCharBaseXPos += 11;
     sNamingScreen->keyRepeatStartDelayCopy = gKeyRepeatStartDelay;
@@ -536,7 +556,11 @@ static void NamingScreen_InitBGs(void)
 
     FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 0x20, 0x20);
     FillBgTilemapBufferRect_Palette0(2, 0, 0, 0, 0x20, 0x20);
+#ifdef PLATFORM_SDL2
+    FillBgTilemapBufferRect_Palette0(3, 0, 0, 0, 0x40, 0x20);
+#else
     FillBgTilemapBufferRect_Palette0(3, 0, 0, 0, 0x20, 0x20);
+#endif
 }
 
 static void CreateNamingScreenTask(void)
@@ -707,9 +731,6 @@ static bool8 MainState_Exit(void)
 #ifndef PORTABLE // See note on TID generation in InitPlayerTrainerId in new_game.c
         if (sNamingScreen->templateNum == NAMING_SCREEN_PLAYER)
             SeedRngAndSetTrainerId();
-#endif
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(FALSE);
 #endif
         SetMainCallback2(sNamingScreen->returnCallback);
         DestroyTask(FindTaskIdByFunc(Task_NamingScreen));
@@ -1139,7 +1160,7 @@ static void CreateSprites(void)
 
 static void CreateCursorSprite(void)
 {
-    sNamingScreen->cursorSpriteId = CreateSprite(&sSpriteTemplate_Cursor, 38, 88, 1);
+    sNamingScreen->cursorSpriteId = CreateSprite(&sSpriteTemplate_Cursor, 38 + NAMING_X_OFFSET_PX, 88 + NAMING_Y_OFFSET_PX, 1);
     SetCursorInvisibility(TRUE);
     gSprites[sNamingScreen->cursorSpriteId].oam.priority = 1;
     gSprites[sNamingScreen->cursorSpriteId].oam.objMode = ST_OAM_OBJ_BLEND;
@@ -1153,11 +1174,11 @@ static void SetCursorPos(s16 x, s16 y)
     struct Sprite *cursorSprite = &gSprites[sNamingScreen->cursorSpriteId];
 
     if (x < sPageColumnCounts[CurrentPageToKeyboardId()])
-        cursorSprite->x = sPageColumnXPos[CurrentPageToKeyboardId()][x] + 38;
+        cursorSprite->x = sPageColumnXPos[CurrentPageToKeyboardId()][x] + 38 + NAMING_X_OFFSET_PX;
     else
         cursorSprite->x = 0;
 
-    cursorSprite->y = y * 16 + 88;
+    cursorSprite->y = y * 16 + 88 + NAMING_Y_OFFSET_PX;
     cursorSprite->sPrevX = cursorSprite->sX;
     cursorSprite->sPrevY = cursorSprite->sY;
     cursorSprite->sX = x;
@@ -1246,17 +1267,17 @@ static void CreatePageSwapButtonSprites(void)
     u8 textSpriteId;
     u8 buttonSpriteId;
 
-    frameSpriteId = CreateSprite(&sSpriteTemplate_PageSwapFrame, 204, 88, 0);
+    frameSpriteId = CreateSprite(&sSpriteTemplate_PageSwapFrame, 204 + NAMING_X_OFFSET_PX, 88 + NAMING_Y_OFFSET_PX, 0);
     sNamingScreen->swapBtnFrameSpriteId = frameSpriteId;
     SetSubspriteTables(&gSprites[frameSpriteId], sSubspriteTable_PageSwapFrame);
     gSprites[frameSpriteId].invisible = TRUE;
 
-    textSpriteId = CreateSprite(&sSpriteTemplate_PageSwapText, 204, 84, 1);
+    textSpriteId = CreateSprite(&sSpriteTemplate_PageSwapText, 204 + NAMING_X_OFFSET_PX, 84 + NAMING_Y_OFFSET_PX, 1);
     gSprites[frameSpriteId].sTextSpriteId = textSpriteId;
     SetSubspriteTables(&gSprites[textSpriteId], sSubspriteTable_PageSwapText);
     gSprites[textSpriteId].invisible = TRUE;
 
-    buttonSpriteId = CreateSprite(&sSpriteTemplate_PageSwapButton, 204, 83, 2);
+    buttonSpriteId = CreateSprite(&sSpriteTemplate_PageSwapButton, 204 + NAMING_X_OFFSET_PX, 83 + NAMING_Y_OFFSET_PX, 2);
     gSprites[buttonSpriteId].oam.priority = 1;
     gSprites[frameSpriteId].sButtonSpriteId = buttonSpriteId;
     gSprites[buttonSpriteId].invisible = TRUE;
@@ -1359,11 +1380,11 @@ static void CreateBackOkSprites(void)
 {
     u8 spriteId;
 
-    spriteId = CreateSprite(&sSpriteTemplate_BackButton, 204, 116, 0);
+    spriteId = CreateSprite(&sSpriteTemplate_BackButton, 204 + NAMING_X_OFFSET_PX, 116 + NAMING_Y_OFFSET_PX, 0);
     SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_Button);
     gSprites[spriteId].invisible = TRUE;
 
-    spriteId = CreateSprite(&sSpriteTemplate_OkButton, 204, 140, 0);
+    spriteId = CreateSprite(&sSpriteTemplate_OkButton, 204 + NAMING_X_OFFSET_PX, 140 + NAMING_Y_OFFSET_PX, 0);
     SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_Button);
     gSprites[spriteId].invisible = TRUE;
 }
@@ -1375,13 +1396,13 @@ static void CreateTextEntrySprites(void)
     u8 i;
 
     xPos = sNamingScreen->inputCharBaseXPos - 5;
-    spriteId = CreateSprite(&sSpriteTemplate_InputArrow, xPos, 56, 0);
+    spriteId = CreateSprite(&sSpriteTemplate_InputArrow, xPos, 56 + NAMING_Y_OFFSET_PX, 0);
     gSprites[spriteId].oam.priority = 3;
     gSprites[spriteId].invisible = TRUE;
     xPos = sNamingScreen->inputCharBaseXPos;
     for (i = 0; i < sNamingScreen->template->maxChars; i++, xPos += 8)
     {
-        spriteId = CreateSprite(&sSpriteTemplate_Underscore, xPos + 3, 60, 0);
+        spriteId = CreateSprite(&sSpriteTemplate_Underscore, xPos + 3, 60 + NAMING_Y_OFFSET_PX, 0);
         gSprites[spriteId].oam.priority = 3;
         gSprites[spriteId].data[0] = i;
         gSprites[spriteId].invisible = TRUE;
@@ -1423,7 +1444,7 @@ static void NamingScreen_CreatePlayerIcon(void)
     u8 spriteId;
 
     rivalGfxId = GetRivalAvatarGraphicsIdByStateIdAndGender(PLAYER_AVATAR_STATE_NORMAL, sNamingScreen->monSpecies);
-    spriteId = CreateObjectGraphicsSprite(rivalGfxId, SpriteCallbackDummy, 56, 37, 0);
+    spriteId = CreateObjectGraphicsSprite(rivalGfxId, SpriteCallbackDummy, 56 + NAMING_X_OFFSET_PX, 37 + NAMING_Y_OFFSET_PX, 0);
     gSprites[spriteId].oam.priority = 3;
     StartSpriteAnim(&gSprites[spriteId], ANIM_STD_GO_SOUTH);
 }
@@ -1432,7 +1453,7 @@ static void NamingScreen_CreatePCIcon(void)
 {
     u8 spriteId;
 
-    spriteId = CreateSprite(&sSpriteTemplate_PCIcon, 56, 41, 0);
+    spriteId = CreateSprite(&sSpriteTemplate_PCIcon, 56 + NAMING_X_OFFSET_PX, 41 + NAMING_Y_OFFSET_PX, 0);
     SetSubspriteTables(&gSprites[spriteId], sSubspriteTable_PCIcon);
     gSprites[spriteId].oam.priority = 3;
 }
@@ -1442,7 +1463,7 @@ static void NamingScreen_CreateMonIcon(void)
     u8 spriteId;
 
     LoadMonIconPalettes();
-    spriteId = CreateMonIcon(sNamingScreen->monSpecies, SpriteCallbackDummy, 56, 40, 0, sNamingScreen->monPersonality, 1);
+    spriteId = CreateMonIcon(sNamingScreen->monSpecies, SpriteCallbackDummy, 56 + NAMING_X_OFFSET_PX, 40 + NAMING_Y_OFFSET_PX, 0, sNamingScreen->monPersonality, 1);
     gSprites[spriteId].oam.priority = 3;
 }
 
@@ -1450,7 +1471,7 @@ static void NamingScreen_CreateWaldaDadIcon(void)
 {
     u8 spriteId;
 
-    spriteId = CreateObjectGraphicsSprite(OBJ_EVENT_GFX_MAN_1, SpriteCallbackDummy, 56, 37, 0);
+    spriteId = CreateObjectGraphicsSprite(OBJ_EVENT_GFX_MAN_1, SpriteCallbackDummy, 56 + NAMING_X_OFFSET_PX, 37 + NAMING_Y_OFFSET_PX, 0);
     gSprites[spriteId].oam.priority = 3;
     StartSpriteAnim(&gSprites[spriteId], ANIM_STD_GO_SOUTH);
 }
@@ -1909,9 +1930,82 @@ static void LoadPalettes(void)
     LoadPalette(GetTextWindowPalette(2), BG_PLTT_ID(11), PLTT_SIZE_4BPP);
 }
 
+#ifdef PLATFORM_SDL2
+#define NAMING_BG3_TILE_OFFSET(x, y) ((((x) >> 5) << 10) | ((y) << 5) | ((x) & 31))
+
+static void ExpandNamingBackgroundTilemap(void)
+{
+    u16 *map = (u16 *)sNamingScreen->tilemapBuffer3;
+    u16 entryBox[6][22];
+    u8 x, y;
+
+    for (y = 0; y < 6; y++)
+    {
+        for (x = 0; x < 22; x++)
+            entryBox[y][x] = map[(3 + y) * 32 + (4 + x)];
+    }
+
+    memset(map, 0, sizeof(sNamingScreen->tilemapBuffer3));
+    for (y = 0; y < 23; y++)
+    {
+        for (x = 0; x < 40; x++)
+            map[NAMING_BG3_TILE_OFFSET(x, y)] = (y < 2) ? 0xF00F : 0x0002;
+    }
+
+    map[NAMING_BG3_TILE_OFFSET(0, 2)] = 0x0003;
+    map[NAMING_BG3_TILE_OFFSET(1, 2)] = 0x0004;
+    map[NAMING_BG3_TILE_OFFSET(38, 2)] = 0x0404;
+    map[NAMING_BG3_TILE_OFFSET(39, 2)] = 0x0403;
+    for (y = 3; y < 21; y++)
+    {
+        map[NAMING_BG3_TILE_OFFSET(0, y)] = 0x0001;
+        map[NAMING_BG3_TILE_OFFSET(39, y)] = 0x0401;
+    }
+    map[NAMING_BG3_TILE_OFFSET(0, 21)] = 0x0803;
+    map[NAMING_BG3_TILE_OFFSET(1, 21)] = 0x0804;
+    map[NAMING_BG3_TILE_OFFSET(38, 21)] = 0x0C04;
+    map[NAMING_BG3_TILE_OFFSET(39, 21)] = 0x0C03;
+
+    for (y = 0; y < 6; y++)
+    {
+        for (x = 0; x < 22; x++)
+            map[NAMING_BG3_TILE_OFFSET(4 + NAMING_X_OFFSET_TILES + x, 3 + NAMING_Y_OFFSET_TILES + y)] = entryBox[y][x];
+    }
+}
+
+static void ShiftNamingKeyboardTilemap(u8 bg)
+{
+    u16 *map = GetBgTilemapBuffer(bg);
+    u16 kbBox[10][22];
+    u8 x, y;
+
+    if (map == NULL)
+        return;
+
+    for (y = 0; y < 10; y++)
+    {
+        for (x = 0; x < 22; x++)
+            kbBox[y][x] = map[(9 + y) * 32 + (2 + x)];
+    }
+
+    memset(map, 0, BG_SCREEN_SIZE);
+    for (y = 0; y < 10; y++)
+    {
+        for (x = 0; x < 22; x++)
+            map[(9 + NAMING_Y_OFFSET_TILES + y) * 32 + (2 + NAMING_X_OFFSET_TILES + x)] = kbBox[y][x];
+    }
+}
+#endif
+
 static void DrawBgTilemap(u8 bg, const void *src)
 {
     CopyToBgTilemapBuffer(bg, src, 0, 0);
+#ifdef PLATFORM_SDL2
+    if (bg == 3)
+        ExpandNamingBackgroundTilemap();
+    else
+        ShiftNamingKeyboardTilemap(bg);
+#endif
 }
 
 static void NamingScreen_Dummy(u8 bg, u8 page)
@@ -1925,7 +2019,7 @@ static void DrawTextEntry(void)
     u8 temp[2];
     u16 extraWidth;
     u8 maxChars = sNamingScreen->template->maxChars;
-    u16 x = sNamingScreen->inputCharBaseXPos - 0x40;
+    u16 x = sNamingScreen->inputCharBaseXPos - (8 + NAMING_X_OFFSET_TILES) * 8;
 
     FillWindowPixelBuffer(sNamingScreen->windows[WIN_TEXT_ENTRY], PIXEL_FILL(1));
 
