@@ -121,6 +121,7 @@ enum {
 #define DEX_LIST_MON_WHEEL_Y 0x58
 #define DEX_LIST_ENTRY_X     19
 static EWRAM_DATA s16 sLastStartMenuY = -1;
+static EWRAM_DATA u16 sPokedexListEdgeBorderTile[16];
 #else
 #define DEX_LIST_Y_OFFSET    0
 #define DEX_LIST_MON_WHEEL_Y 0x50
@@ -2116,10 +2117,18 @@ static void WritePokedexListTilemapEntry(u16 *buf, u16 x, u16 y, u16 entry)
 
 static void LoadPokedexListBgTilemaps_SDL2(void)
 {
+    u8 *gfxBuf = Alloc(0x2000);
     u16 *src = Alloc(20 * 32 * sizeof(u16));
     u16 *bg1 = GetBgTilemapBuffer(1);
     u16 *bg3 = GetBgTilemapBuffer(3);
     u16 x, y;
+
+    // Derive a clean vertical divider tile at 0x100 from tile 0xFE without its bottom curved white pixels.
+    LZ77UnCompWram(gPokedexMenu_Gfx, gfxBuf);
+    memcpy(sPokedexListEdgeBorderTile, gfxBuf + 0xFE * 32, 32);
+    memcpy(&sPokedexListEdgeBorderTile[12], &sPokedexListEdgeBorderTile[4], 8);
+    Free(gfxBuf);
+    LoadBgTiles(1, sPokedexListEdgeBorderTile, sizeof(sPokedexListEdgeBorderTile), 0x100);
 
     // BG1: pokedex frame + vertical list separator + scrollbar track (40x23)
     LZ77UnCompWram(gPokedexList_Tilemap, src);
@@ -2142,7 +2151,7 @@ static void LoadPokedexListBgTilemaps_SDL2(void)
         {
             for (x = 0; x <= 15; x++)
                 WritePokedexListTilemapEntry(bg1, x, y, 0x0001);
-            WritePokedexListTilemapEntry(bg1, 16, y, 0x000c);
+            WritePokedexListTilemapEntry(bg1, 16, y, 0x0100);
             for (x = 17; x <= 37; x++)
                 WritePokedexListTilemapEntry(bg1, x, y, 0x0000);
             WritePokedexListTilemapEntry(bg1, 38, y, 0x0009);
@@ -2999,9 +3008,9 @@ static void CreateInterfaceSprites(u8 page)
 
     // Scroll arrows
 #ifdef PLATFORM_SDL2
-    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 220, 12, 0);
+    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 220, 4, 0);
     gSprites[spriteId].sIsDownArrow = FALSE;
-    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 220, 164, 0);
+    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 220, 172, 0);
     gSprites[spriteId].sIsDownArrow = TRUE;
     gSprites[spriteId].vFlip = TRUE;
 
