@@ -1357,7 +1357,7 @@ static void LoadCenteredBirchSpeechBgMap(void)
             dst[dstIdx] = fillTile;
         }
     }
-    for (y = 0; y < 20; y++)
+    for (y = 4; y < 20; y++)
     {
         u16 dstY = y + 1;
         for (x = 0; x < DISPLAY_TILE_WIDTH; x++)
