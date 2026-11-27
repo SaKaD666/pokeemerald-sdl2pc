@@ -1445,7 +1445,11 @@ u8 CreatePartyStatusSummarySprites(u8 battler, struct HpAndStatus *partyInfo, bo
         if (GetBattlerSide(battler) == B_SIDE_PLAYER)
         {
             isOpponent = FALSE;
+#ifdef PLATFORM_SDL2
+            bar_X = 136 + (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH), bar_Y = 96 + BATTLE_PLAYER_MON_Y_SHIFT;
+#else
             bar_X = 136, bar_Y = 96;
+#endif
             bar_pos2_X = 100;
             bar_data0 = -5;
         }
@@ -1877,7 +1881,7 @@ static void SpriteCB_StatusSummaryBalls_Exit(struct Sprite *sprite)
         sprite->x2 += var2 >> 4;
     else
         sprite->x2 -= var2 >> 4;
-    if (sprite->x2 + sprite->x > 248
+    if (sprite->x2 + sprite->x > DISPLAY_WIDTH + 8
      || sprite->x2 + sprite->x < -8)
     {
         sprite->invisible = TRUE;

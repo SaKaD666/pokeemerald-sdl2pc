@@ -1290,7 +1290,11 @@ static void LinkOpponentHandleDrawTrainerPic(void)
     SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate,
                                                xPos + BATTLE_OPPONENT_TRAINER_X_SHIFT,
+#ifdef PLATFORM_SDL2
+                                               (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40 - BATTLE_TERRAIN_SCROLL_Y_OFFSET,
+#else
                                                (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40,
+#endif
                                                GetBattlerSpriteSubpriority(gActiveBattler));
 
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -DISPLAY_WIDTH;
@@ -1313,10 +1317,16 @@ static void LinkOpponentHandleTrainerSlide(void)
 
     DecompressTrainerFrontPic(trainerPicId, gActiveBattler);
     SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
-    gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, 176 + BATTLE_OPPONENT_TRAINER_X_SHIFT, (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40, 0x1E);
+#ifdef PLATFORM_SDL2
+    gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, DISPLAY_WIDTH - 32, (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40 - BATTLE_TERRAIN_SCROLL_Y_OFFSET, 0x1E);
+
+    gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = 96;
+#else
+    gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate, 176, (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40, 0x1E);
 
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = 96;
     gSprites[gBattlerSpriteIds[gActiveBattler]].x += 32;
+#endif
     gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = -2;
     SetSpritePaletteFromTag(&gSprites[gBattlerSpriteIds[gActiveBattler]], gTrainerFrontPicPaletteTable[trainerPicId].tag);
     gSprites[gBattlerSpriteIds[gActiveBattler]].oam.affineParam = trainerPicId;
@@ -1693,7 +1703,7 @@ static void LinkOpponentHandleIntroTrainerBallThrow(void)
     SetSpritePrimaryCoordsFromSecondaryCoords(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
 
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[0] = 35;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = 280;
+    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = DISPLAY_WIDTH + 40;
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[4] = gSprites[gBattlerSpriteIds[gActiveBattler]].y;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = StartAnimLinearTranslation;
 

@@ -1240,7 +1240,11 @@ static void RecordedOpponentHandleDrawTrainerPic(void)
     SetMultiuseSpriteTemplateToTrainerBack(trainerPicId, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate,
                                                xPos + BATTLE_OPPONENT_TRAINER_X_SHIFT,
+#ifdef PLATFORM_SDL2
+                                               (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40 - BATTLE_TERRAIN_SCROLL_Y_OFFSET,
+#else
                                                (8 - gTrainerFrontPicCoords[trainerPicId].size) * 4 + 40,
+#endif
                                                GetBattlerSpriteSubpriority(gActiveBattler));
 
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -DISPLAY_WIDTH;
@@ -1636,7 +1640,7 @@ static void RecordedOpponentHandleIntroTrainerBallThrow(void)
     SetSpritePrimaryCoordsFromSecondaryCoords(&gSprites[gBattlerSpriteIds[gActiveBattler]]);
 
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[0] = 35;
-    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = 280;
+    gSprites[gBattlerSpriteIds[gActiveBattler]].data[2] = DISPLAY_WIDTH + 40;
     gSprites[gBattlerSpriteIds[gActiveBattler]].data[4] = gSprites[gBattlerSpriteIds[gActiveBattler]].y;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = StartAnimLinearTranslation;
 

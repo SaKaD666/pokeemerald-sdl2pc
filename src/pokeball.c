@@ -382,8 +382,13 @@ static void Task_DoPokeballSendOutAnim(u8 taskId)
     {
     case POKEBALL_PLAYER_SENDOUT:
         gBattlerTarget = battler;
+#ifdef PLATFORM_SDL2
+        gSprites[ballSpriteId].x = 24 + (!IsDoubleBattle() ? BATTLE_PLAYER_PLATFORM_SHIFT : 0);
+        gSprites[ballSpriteId].y = 68 + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0);
+#else
         gSprites[ballSpriteId].x = 24;
         gSprites[ballSpriteId].y = 68;
+#endif
         gSprites[ballSpriteId].callback = SpriteCB_PlayerMonSendOut_1;
         break;
     case POKEBALL_OPPONENT_SENDOUT:

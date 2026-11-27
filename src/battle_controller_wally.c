@@ -1038,9 +1038,14 @@ static void WallyHandleDrawTrainerPic(void)
     DecompressTrainerBackPic(TRAINER_BACK_PIC_WALLY, gActiveBattler);
     SetMultiuseSpriteTemplateToTrainerBack(TRAINER_BACK_PIC_WALLY, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate,
-                                               80,
+#ifdef PLATFORM_SDL2
+                                               80 + (!IsDoubleBattle() ? BATTLE_PLAYER_PLATFORM_SHIFT : 0),
                                                80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size)
                                                  + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0),
+#else
+                                               80,
+                                               80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size),
+#endif
                                                30);
     SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
@@ -1054,12 +1059,21 @@ static void WallyHandleTrainerSlide(void)
     DecompressTrainerBackPic(TRAINER_BACK_PIC_WALLY, gActiveBattler);
     SetMultiuseSpriteTemplateToTrainerBack(TRAINER_BACK_PIC_WALLY, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(&gMultiuseSpriteTemplate,
-                                               80,
+#ifdef PLATFORM_SDL2
+                                               80 + (!IsDoubleBattle() ? BATTLE_PLAYER_PLATFORM_SHIFT : 0),
                                                80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size)
                                                  + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0),
+#else
+                                               80,
+                                               80 + 4 * (8 - gTrainerBackPicCoords[TRAINER_BACK_PIC_WALLY].size),
+#endif
                                                30);
     SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
+#ifdef PLATFORM_SDL2
+    gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -96 - (!IsDoubleBattle() ? BATTLE_PLAYER_PLATFORM_SHIFT : 0);
+#else
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = -96;
+#endif
     gSprites[gBattlerSpriteIds[gActiveBattler]].sSpeedX = 2;
     gSprites[gBattlerSpriteIds[gActiveBattler]].callback = SpriteCB_TrainerSlideIn;
     gBattlerControllerFuncs[gActiveBattler] = CompleteOnBankSpriteCallbackDummy2;

@@ -357,9 +357,14 @@ static void SafariHandleDrawTrainerPic(void)
     SetMultiuseSpriteTemplateToTrainerBack(gSaveBlock2Ptr->playerGender, GetBattlerPosition(gActiveBattler));
     gBattlerSpriteIds[gActiveBattler] = CreateSprite(
       &gMultiuseSpriteTemplate,
-      80,
+#ifdef PLATFORM_SDL2
+      80 + (!IsDoubleBattle() ? BATTLE_PLAYER_PLATFORM_SHIFT : 0),
       (8 - gTrainerBackPicCoords[gSaveBlock2Ptr->playerGender].size) * 4 + 80
         + (!IsDoubleBattle() ? BATTLE_PLAYER_MON_Y_SHIFT : 0),
+#else
+      80,
+      (8 - gTrainerBackPicCoords[gSaveBlock2Ptr->playerGender].size) * 4 + 80,
+#endif
       30);
     SetSpritePaletteHandle(&gSprites[gBattlerSpriteIds[gActiveBattler]], gActiveBattler);
     gSprites[gBattlerSpriteIds[gActiveBattler]].x2 = DISPLAY_WIDTH;
