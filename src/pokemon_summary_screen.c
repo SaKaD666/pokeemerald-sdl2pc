@@ -107,7 +107,11 @@ enum {
 #define PSS_DATA_WINDOW_MOVE_PP 1
 #define PSS_DATA_WINDOW_MOVE_DESCRIPTION 2
 
+#ifdef PLATFORM_SDL2
+#define MOVE_SELECTOR_SPRITES_COUNT 15
+#else
 #define MOVE_SELECTOR_SPRITES_COUNT 10
+#endif
 #define TYPE_ICON_SPRITE_COUNT (MAX_MON_MOVES + 1)
 // for the spriteIds field in PokemonSummaryScreenData
 enum
@@ -168,6 +172,9 @@ static EWRAM_DATA struct PokemonSummaryScreenData
         u32 OTID; // 0x48
     } summary;
     u16 bgTilemapBuffers[PSS_PAGE_COUNT][2][0x400];
+#ifdef PLATFORM_SDL2
+    u16 infoEggTilemapBuffer[2][0x400];
+#endif
     u8 mode;
     bool8 isBoxMon;
     u8 curMonIndex;
@@ -395,7 +402,11 @@ static const struct SlidingWindow sStatusSlidingWindow1 =
     .width = 10,
     .height = 2,
     .left = 0,
+#ifdef PLATFORM_SDL2
+    .top = 20
+#else
     .top = 18
+#endif
 };
 static const struct SlidingWindow sStatusSlidingWindow2 =
 {
@@ -413,7 +424,11 @@ static const struct SlidingWindow sPowerAccSlidingWindow =
     .width = 10,
     .height = 7,
     .left = 0,
+#ifdef PLATFORM_SDL2
+    .top = 15
+#else
     .top = 45
+#endif
 };
 static const struct SlidingWindow sAppealJamSlidingWindow =
 {
@@ -422,7 +437,11 @@ static const struct SlidingWindow sAppealJamSlidingWindow =
     .width = 10,
     .height = 7,
     .left = 0,
+#ifdef PLATFORM_SDL2
+    .top = 15
+#else
     .top = 45
+#endif
 };
 static const s8 sMultiBattleOrder[] = {0, 2, 3, 1, 4, 5};
 static const struct WindowTemplate sSummaryTemplate[] =
@@ -465,7 +484,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
     },
     [PSS_LABEL_WINDOW_PROMPT_CANCEL] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 32,
+#else
         .tilemapLeft = 22,
+#endif
         .tilemapTop = 0,
         .width = 8,
         .height = 2,
@@ -474,7 +497,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
     },
     [PSS_LABEL_WINDOW_PROMPT_INFO] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 32,
+#else
         .tilemapLeft = 22,
+#endif
         .tilemapTop = 0,
         .width = 8,
         .height = 2,
@@ -483,7 +510,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
     },
     [PSS_LABEL_WINDOW_PROMPT_SWITCH] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 32,
+#else
         .tilemapLeft = 22,
+#endif
         .tilemapTop = 0,
         .width = 8,
         .height = 2,
@@ -521,55 +552,103 @@ static const struct WindowTemplate sSummaryTemplate[] =
         .bg = 0,
         .tilemapLeft = 10,
         .tilemapTop = 7,
+#ifdef PLATFORM_SDL2
+        .width = 7,
+        .height = 6,
+        .paletteNum = 6,
+        .baseBlock = 209,
+#else
         .width = 6,
         .height = 6,
         .paletteNum = 6,
         .baseBlock = 209,
+#endif
     },
     [PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 25,
+        .tilemapTop = 7,
+        .width = 7,
+        .height = 6,
+        .paletteNum = 6,
+        .baseBlock = 251,
+#else
         .tilemapLeft = 22,
         .tilemapTop = 7,
         .width = 5,
         .height = 6,
         .paletteNum = 6,
         .baseBlock = 245,
+#endif
     },
     [PSS_LABEL_WINDOW_POKEMON_SKILLS_EXP] = {
         .bg = 0,
         .tilemapLeft = 10,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 15,
+        .width = 13,
+        .height = 4,
+        .paletteNum = 6,
+        .baseBlock = 293,
+#else
         .tilemapTop = 14,
         .width = 11,
         .height = 4,
         .paletteNum = 6,
         .baseBlock = 275,
+#endif
     },
     [PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS] = {
         .bg = 0,
         .tilemapLeft = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 20,
+        .width = 6,
+        .height = 2,
+        .paletteNum = 6,
+        .baseBlock = 345,
+#else
         .tilemapTop = 18,
         .width = 6,
         .height = 2,
         .paletteNum = 6,
         .baseBlock = 319,
+#endif
     },
     [PSS_LABEL_WINDOW_MOVES_POWER_ACC] = {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 17,
+        .width = 9,
+        .height = 4,
+        .paletteNum = 6,
+        .baseBlock = 357,
+#else
         .tilemapTop = 15,
         .width = 9,
         .height = 4,
         .paletteNum = 6,
         .baseBlock = 331,
+#endif
     },
     [PSS_LABEL_WINDOW_MOVES_APPEAL_JAM] = {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 17,
+        .width = 5,
+        .height = 4,
+        .paletteNum = 6,
+        .baseBlock = 393,
+#else
         .tilemapTop = 15,
         .width = 5,
         .height = 4,
         .paletteNum = 6,
         .baseBlock = 367,
+#endif
     },
     [PSS_LABEL_WINDOW_UNUSED2] = {
         .bg = 0,
@@ -578,7 +657,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
         .width = 0,
         .height = 2,
         .paletteNum = 6,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 413,
+#else
         .baseBlock = 387,
+#endif
     },
     [PSS_LABEL_WINDOW_PORTRAIT_DEX_NUMBER] = {
         .bg = 0,
@@ -587,7 +670,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
         .width = 4,
         .height = 2,
         .paletteNum = 7,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 413,
+#else
         .baseBlock = 387,
+#endif
     },
     [PSS_LABEL_WINDOW_PORTRAIT_NICKNAME] = {
         .bg = 0,
@@ -596,7 +683,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
         .width = 9,
         .height = 2,
         .paletteNum = 6,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 421,
+#else
         .baseBlock = 395,
+#endif
     },
     [PSS_LABEL_WINDOW_PORTRAIT_SPECIES] = {
         .bg = 0,
@@ -605,7 +696,11 @@ static const struct WindowTemplate sSummaryTemplate[] =
         .width = 9,
         .height = 4,
         .paletteNum = 6,
+#ifdef PLATFORM_SDL2
+        .baseBlock = 439,
+#else
         .baseBlock = 413,
+#endif
     },
     [PSS_LABEL_WINDOW_END] = DUMMY_WIN_TEMPLATE
 };
@@ -615,37 +710,67 @@ static const struct WindowTemplate sPageInfoTemplate[] =
         .bg = 0,
         .tilemapLeft = 11,
         .tilemapTop = 4,
+#ifdef PLATFORM_SDL2
+        .width = 15,
+        .height = 2,
+        .paletteNum = 6,
+        .baseBlock = 475,
+#else
         .width = 11,
         .height = 2,
         .paletteNum = 6,
         .baseBlock = 449,
+#endif
     },
     [PSS_DATA_WINDOW_INFO_ID] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 32,
+        .tilemapTop = 4,
+        .width = 7,
+        .height = 2,
+        .paletteNum = 6,
+        .baseBlock = 505,
+#else
         .tilemapLeft = 22,
         .tilemapTop = 4,
         .width = 7,
         .height = 2,
         .paletteNum = 6,
         .baseBlock = 471,
+#endif
     },
     [PSS_DATA_WINDOW_INFO_ABILITY] = {
         .bg = 0,
         .tilemapLeft = 11,
         .tilemapTop = 9,
+#ifdef PLATFORM_SDL2
+        .width = 28,
+        .height = 4,
+        .paletteNum = 6,
+        .baseBlock = 519,
+#else
         .width = 18,
         .height = 4,
         .paletteNum = 6,
         .baseBlock = 485,
+#endif
     },
     [PSS_DATA_WINDOW_INFO_MEMO] = {
         .bg = 0,
         .tilemapLeft = 11,
         .tilemapTop = 14,
+#ifdef PLATFORM_SDL2
+        .width = 28,
+        .height = 7,
+        .paletteNum = 6,
+        .baseBlock = 631,
+#else
         .width = 18,
         .height = 6,
         .paletteNum = 6,
         .baseBlock = 557,
+#endif
     },
 };
 static const struct WindowTemplate sPageSkillsTemplate[] =
@@ -654,46 +779,89 @@ static const struct WindowTemplate sPageSkillsTemplate[] =
         .bg = 0,
         .tilemapLeft = 10,
         .tilemapTop = 4,
+#ifdef PLATFORM_SDL2
+        .width = 15,
+        .height = 2,
+        .paletteNum = 6,
+        .baseBlock = 475,
+#else
         .width = 10,
         .height = 2,
         .paletteNum = 6,
         .baseBlock = 449,
+#endif
     },
     [PSS_DATA_WINDOW_SKILLS_RIBBON_COUNT] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 25,
+        .tilemapTop = 4,
+        .width = 15,
+        .height = 2,
+        .paletteNum = 6,
+        .baseBlock = 505,
+#else
         .tilemapLeft = 20,
         .tilemapTop = 4,
         .width = 10,
         .height = 2,
         .paletteNum = 6,
         .baseBlock = 469,
+#endif
     },
     [PSS_DATA_WINDOW_SKILLS_STATS_LEFT] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 18,
+        .tilemapTop = 7,
+        .width = 7,
+        .height = 6,
+        .paletteNum = 6,
+        .baseBlock = 535,
+#else
         .tilemapLeft = 16,
         .tilemapTop = 7,
         .width = 6,
         .height = 6,
         .paletteNum = 6,
         .baseBlock = 489,
+#endif
     },
     [PSS_DATA_WINDOW_SKILLS_STATS_RIGHT] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 33,
+        .tilemapTop = 7,
+        .width = 6,
+        .height = 6,
+        .paletteNum = 6,
+        .baseBlock = 577,
+#else
         .tilemapLeft = 27,
         .tilemapTop = 7,
         .width = 3,
         .height = 6,
         .paletteNum = 6,
         .baseBlock = 525,
+#endif
     },
     [PSS_DATA_WINDOW_EXP] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 31,
+        .tilemapTop = 15,
+        .width = 8,
+        .height = 4,
+        .paletteNum = 6,
+        .baseBlock = 613,
+#else
         .tilemapLeft = 24,
         .tilemapTop = 14,
         .width = 6,
         .height = 4,
         .paletteNum = 6,
         .baseBlock = 543,
+#endif
     },
 };
 static const struct WindowTemplate sPageMovesTemplate[] = // This is used for both battle and contest moves
@@ -702,28 +870,51 @@ static const struct WindowTemplate sPageMovesTemplate[] = // This is used for bo
         .bg = 0,
         .tilemapLeft = 15,
         .tilemapTop = 4,
+#ifdef PLATFORM_SDL2
+        .width = 17,
+        .height = 10,
+        .paletteNum = 6,
+        .baseBlock = 475,
+#else
         .width = 9,
         .height = 10,
         .paletteNum = 6,
         .baseBlock = 449,
+#endif
     },
     [PSS_DATA_WINDOW_MOVE_PP] = {
         .bg = 0,
+#ifdef PLATFORM_SDL2
+        .tilemapLeft = 33,
+        .tilemapTop = 4,
+        .width = 6,
+        .height = 10,
+        .paletteNum = 8,
+        .baseBlock = 645,
+#else
         .tilemapLeft = 24,
         .tilemapTop = 4,
         .width = 6,
         .height = 10,
         .paletteNum = 8,
         .baseBlock = 539,
+#endif
     },
     [PSS_DATA_WINDOW_MOVE_DESCRIPTION] = {
         .bg = 0,
         .tilemapLeft = 10,
         .tilemapTop = 15,
+#ifdef PLATFORM_SDL2
+        .width = 30,
+        .height = 6,
+        .paletteNum = 6,
+        .baseBlock = 705,
+#else
         .width = 20,
         .height = 4,
         .paletteNum = 6,
         .baseBlock = 599,
+#endif
     },
 };
 static const u8 sTextColors[][3] =
@@ -1320,6 +1511,185 @@ static bool8 LoadGraphics(void)
     return FALSE;
 }
 
+#ifdef PLATFORM_SDL2
+#define SUMMARY_BG_OFFSCREEN_X 0x11000
+#define SUMMARY_BG_SCROLL_WRAP_X 0x20000
+#define SUMMARY_BG_SCROLL_STEP 0x1E00
+
+static inline u16 SummaryTileIndex(u16 x, u16 y)
+{
+    return (x < 32) ? (y * 32 + x) : (0x400 + y * 32 + (x - 32));
+}
+
+static void FillSummaryTilemapSpan(u16 *dst, u16 y, u16 xStart, u16 xEnd, u16 tile)
+{
+    u16 x;
+
+    for (x = xStart; x < xEnd; x++)
+        dst[SummaryTileIndex(x, y)] = tile;
+}
+
+static void CopySummaryTilemapSpan(u16 *dst, const u16 *src, u16 dstY, u16 dstX, u16 srcY, u16 srcX, u16 count)
+{
+    u16 i;
+
+    for (i = 0; i < count; i++)
+        dst[SummaryTileIndex(dstX + i, dstY)] = src[srcY * 32 + srcX + i];
+}
+
+static void ExpandSummaryInfoRow(u16 *dst, const u16 *src, u16 dstY, u16 srcY)
+{
+    dst[SummaryTileIndex(10, dstY)] = src[srcY * 32 + 10];
+    FillSummaryTilemapSpan(dst, dstY, 11, 39, src[srcY * 32 + 12]);
+    dst[SummaryTileIndex(39, dstY)] = src[srcY * 32 + 29];
+}
+
+static void ExpandSummaryInfoTilemap(u16 *dst, const u16 *src, bool8 isEgg)
+{
+    static const u8 sNormalMemoSrcRows[8] = { 14, 15, 16, 17, 17, 17, 18, 19 };
+    static const u8 sEggMemoSrcRows[8] = { 14, 15, 16, 16, 17, 17, 18, 19 };
+    const u8 *memoSrcRows = isEgg ? sEggMemoSrcRows : sNormalMemoSrcRows;
+    u16 y;
+
+    CpuFill16(0, dst, 0x1000);
+    for (y = 0; y < 18; y++)
+        CopySummaryTilemapSpan(dst, src, y, 0, y, 0, 10);
+    for (y = 18; y < 23; y++)
+        FillSummaryTilemapSpan(dst, y, 0, 10, 0x0001);
+
+    CopySummaryTilemapSpan(dst, src, 0, 10, 0, 10, 20);
+    FillSummaryTilemapSpan(dst, 0, 30, 40, src[0 * 32 + 29]);
+    CopySummaryTilemapSpan(dst, src, 1, 10, 1, 10, 20);
+    FillSummaryTilemapSpan(dst, 1, 30, 40, src[1 * 32 + 29]);
+
+    dst[SummaryTileIndex(10, 2)] = src[2 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 2, 11, 40, src[2 * 32 + 11]);
+
+    for (y = 3; y <= 13; y++)
+    {
+        if (y == 3 || y == 8 || y == 13)
+        {
+            CopySummaryTilemapSpan(dst, src, y, 10, y, 10, 14);
+            FillSummaryTilemapSpan(dst, y, 24, 40, src[y * 32 + 24]);
+        }
+        else
+        {
+            dst[SummaryTileIndex(10, y)] = src[y * 32 + 10];
+            FillSummaryTilemapSpan(dst, y, 11, 37, src[y * 32 + 12]);
+            CopySummaryTilemapSpan(dst, src, y, 37, y, 27, 3);
+        }
+    }
+
+    for (y = 0; y < ARRAY_COUNT(sNormalMemoSrcRows); y++)
+        ExpandSummaryInfoRow(dst, src, 14 + y, memoSrcRows[y]);
+    FillSummaryTilemapSpan(dst, 22, 10, 40, 0x0001);
+}
+
+static void ExpandSummarySkillsTilemap(u16 *dst, const u16 *src)
+{
+    static const u8 sExpSrcRows[6] = { 14, 15, 16, 16, 15, 17 };
+    u16 y;
+
+    CpuFill16(0, dst, 0x1000);
+    dst[SummaryTileIndex(10, 2)] = src[2 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 2, 11, 40, src[2 * 32 + 11]);
+
+    CopySummaryTilemapSpan(dst, src, 3, 10, 3, 10, 10);
+    FillSummaryTilemapSpan(dst, 3, 20, 25, 0x2021);
+    CopySummaryTilemapSpan(dst, src, 3, 25, 3, 20, 10);
+    FillSummaryTilemapSpan(dst, 3, 35, 40, 0x2021);
+
+    for (y = 4; y <= 5; y++)
+    {
+        dst[SummaryTileIndex(10, y)] = src[y * 32 + 10];
+        FillSummaryTilemapSpan(dst, y, 11, 24, src[y * 32 + 12]);
+        dst[SummaryTileIndex(24, y)] = src[y * 32 + 19];
+        dst[SummaryTileIndex(25, y)] = src[y * 32 + 20];
+        FillSummaryTilemapSpan(dst, y, 26, 39, src[y * 32 + 22]);
+        dst[SummaryTileIndex(39, y)] = src[y * 32 + 29];
+    }
+
+    CopySummaryTilemapSpan(dst, src, 6, 10, 6, 10, 10);
+    FillSummaryTilemapSpan(dst, 6, 20, 40, src[6 * 32 + 20]);
+
+    for (y = 7; y <= 12; y++)
+    {
+        dst[SummaryTileIndex(10, y)] = src[y * 32 + 10];
+        FillSummaryTilemapSpan(dst, y, 11, 17, src[y * 32 + 12]);
+        dst[SummaryTileIndex(17, y)] = src[y * 32 + 16];
+        FillSummaryTilemapSpan(dst, y, 18, 25, src[y * 32 + 18]);
+        FillSummaryTilemapSpan(dst, y, 25, 32, src[y * 32 + 22]);
+        dst[SummaryTileIndex(32, y)] = src[y * 32 + 16];
+        FillSummaryTilemapSpan(dst, y, 33, 39, src[y * 32 + 27]);
+        dst[SummaryTileIndex(39, y)] = src[y * 32 + 29];
+    }
+
+    CopySummaryTilemapSpan(dst, src, 13, 10, 13, 10, 10);
+    FillSummaryTilemapSpan(dst, 13, 20, 40, src[13 * 32 + 20]);
+
+    for (y = 0; y < ARRAY_COUNT(sExpSrcRows); y++)
+    {
+        u16 s = sExpSrcRows[y];
+        dst[SummaryTileIndex(10, 14 + y)] = src[s * 32 + 10];
+        FillSummaryTilemapSpan(dst, 14 + y, 11, 24, src[s * 32 + 12]);
+        FillSummaryTilemapSpan(dst, 14 + y, 24, 39, src[s * 32 + 25]);
+        dst[SummaryTileIndex(39, 14 + y)] = src[s * 32 + 29];
+    }
+
+    dst[SummaryTileIndex(10, 20)] = src[18 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 20, 11, 29, src[18 * 32 + 11]);
+    dst[SummaryTileIndex(29, 20)] = src[18 * 32 + 19];
+    dst[SummaryTileIndex(30, 20)] = src[18 * 32 + 20];
+    FillSummaryTilemapSpan(dst, 20, 31, 39, src[18 * 32 + 21]);
+    dst[SummaryTileIndex(39, 20)] = src[18 * 32 + 29];
+
+    dst[SummaryTileIndex(10, 21)] = src[19 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 21, 11, 40, src[19 * 32 + 11]);
+}
+
+static void ExpandSummaryMovesTilemap(u16 *dst, const u16 *src)
+{
+    static const u8 sDescSrcRows[6] = { 15, 16, 17, 16, 17, 18 };
+    u16 y;
+
+    CpuFill16(0, dst, 0x1000);
+    dst[SummaryTileIndex(10, 2)] = src[2 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 2, 11, 40, src[2 * 32 + 11]);
+
+    CopySummaryTilemapSpan(dst, src, 3, 10, 3, 10, 14);
+    FillSummaryTilemapSpan(dst, 3, 24, 40, src[3 * 32 + 24]);
+
+    for (y = 4; y <= 11; y++)
+    {
+        CopySummaryTilemapSpan(dst, src, y, 10, y, 10, 5);
+        FillSummaryTilemapSpan(dst, y, 15, 32, src[y * 32 + 15]);
+        dst[SummaryTileIndex(32, y)] = src[y * 32 + 24];
+        FillSummaryTilemapSpan(dst, y, 33, 39, src[y * 32 + 25]);
+        dst[SummaryTileIndex(39, y)] = src[y * 32 + 29];
+    }
+
+    for (y = 12; y <= 13; y++)
+    {
+        dst[SummaryTileIndex(10, y)] = src[y * 32 + 10];
+        FillSummaryTilemapSpan(dst, y, 11, 40, src[y * 32 + 11]);
+    }
+
+    CopySummaryTilemapSpan(dst, src, 14, 10, 14, 10, 14);
+    FillSummaryTilemapSpan(dst, 14, 24, 40, src[14 * 32 + 24]);
+
+    for (y = 0; y < ARRAY_COUNT(sDescSrcRows); y++)
+    {
+        u16 s = sDescSrcRows[y];
+        dst[SummaryTileIndex(10, 15 + y)] = src[s * 32 + 10];
+        FillSummaryTilemapSpan(dst, 15 + y, 11, 39, src[s * 32 + 11]);
+        dst[SummaryTileIndex(39, 15 + y)] = src[s * 32 + 29];
+    }
+
+    dst[SummaryTileIndex(10, 21)] = src[19 * 32 + 10];
+    FillSummaryTilemapSpan(dst, 21, 11, 40, src[19 * 32 + 11]);
+}
+#endif
+
 static void InitBGs(void)
 {
     u8 bg;
@@ -1332,9 +1702,21 @@ static void InitBGs(void)
     SetBgTilemapBuffer(3, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0]);
     ResetAllBgsCoordinates();
 #ifdef PLATFORM_SDL2
-    SetCenteredGbaWindow0();
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 80, DISPLAY_WIDTH);
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(0, DISPLAY_HEIGHT));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN1H, 0, 80);
+    SetGpuReg(REG_OFFSET_WIN1V, WIN_RANGE(120, DISPLAY_HEIGHT));
+    SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN1_BG_ALL | WININ_WIN1_OBJ);
+    SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG0 | WINOUT_WIN01_BG3 | WINOUT_WIN01_OBJ);
     display |= DISPCNT_WIN0_ON;
-#endif
+    for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
+    {
+        ChangeBgX(bg, (bg == 1 || bg == 2) ? SUMMARY_BG_OFFSCREEN_X : 0, BG_COORD_SET);
+        ChangeBgY(bg, 0, BG_COORD_SET);
+    }
+    gSpriteCoordOffsetX = 0;
+    gSpriteCoordOffsetY = 0;
+#else
     for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
     {
         ChangeBgX(bg, GBA_VIEW_BG_X, BG_COORD_SET);
@@ -1342,6 +1724,7 @@ static void InitBGs(void)
     }
     gSpriteCoordOffsetX = GBA_VIEW_X;
     gSpriteCoordOffsetY = GBA_VIEW_Y;
+#endif
     ScheduleBgCopyTilemapToVram(1);
     ScheduleBgCopyTilemapToVram(2);
     ScheduleBgCopyTilemapToVram(3);
@@ -1365,24 +1748,67 @@ static bool8 DecompressGraphics(void)
     case 1:
         if (FreeTempTileDataBuffersIfPossible() != 1)
         {
+#ifdef PLATFORM_SDL2
+            u16 *tmp = Alloc(0x800);
+            LZDecompressWram(gSummaryPage_Info_Tilemap, tmp);
+            ExpandSummaryInfoTilemap(sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0], tmp, FALSE);
+            Free(tmp);
+#else
             LZDecompressWram(gSummaryPage_Info_Tilemap, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0]);
+#endif
             sMonSummaryScreen->switchCounter++;
         }
         break;
     case 2:
+#ifdef PLATFORM_SDL2
+        {
+            u16 *tmp = Alloc(0x800);
+            LZDecompressWram(gSummaryPage_InfoEgg_Tilemap, tmp);
+            ExpandSummaryInfoTilemap(sMonSummaryScreen->infoEggTilemapBuffer[0], tmp, TRUE);
+            Free(tmp);
+        }
+#else
         LZDecompressWram(gSummaryPage_InfoEgg_Tilemap, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][1]);
+#endif
         sMonSummaryScreen->switchCounter++;
         break;
     case 3:
+#ifdef PLATFORM_SDL2
+        {
+            u16 *tmp = Alloc(0x800);
+            LZDecompressWram(gSummaryPage_Skills_Tilemap, tmp);
+            ExpandSummarySkillsTilemap(sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_SKILLS][0], tmp);
+            Free(tmp);
+        }
+#else
         LZDecompressWram(gSummaryPage_Skills_Tilemap, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_SKILLS][1]);
+#endif
         sMonSummaryScreen->switchCounter++;
         break;
     case 4:
+#ifdef PLATFORM_SDL2
+        {
+            u16 *tmp = Alloc(0x800);
+            LZDecompressWram(gSummaryPage_BattleMoves_Tilemap, tmp);
+            ExpandSummaryMovesTilemap(sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_BATTLE_MOVES][0], tmp);
+            Free(tmp);
+        }
+#else
         LZDecompressWram(gSummaryPage_BattleMoves_Tilemap, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_BATTLE_MOVES][1]);
+#endif
         sMonSummaryScreen->switchCounter++;
         break;
     case 5:
+#ifdef PLATFORM_SDL2
+        {
+            u16 *tmp = Alloc(0x800);
+            LZDecompressWram(gSummaryPage_ContestMoves_Tilemap, tmp);
+            ExpandSummaryMovesTilemap(sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_CONTEST_MOVES][0], tmp);
+            Free(tmp);
+        }
+#else
         LZDecompressWram(gSummaryPage_ContestMoves_Tilemap, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_CONTEST_MOVES][1]);
+#endif
         sMonSummaryScreen->switchCounter++;
         break;
     case 6:
@@ -1520,7 +1946,15 @@ static void SetDefaultTilemaps(void)
         TilemapFiveMovesDisplay(sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_CONTEST_MOVES][0], 1, FALSE);
         SetBgTilemapBuffer(1, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_CONTEST_MOVES][0]);
         SetBgTilemapBuffer(2, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_BATTLE_MOVES][0]);
+#ifdef PLATFORM_SDL2
+        PositionPowerAccSlidingWindow(0, 0);
+        PositionAppealJamSlidingWindow(0, 0, sMonSummaryScreen->summary.moves[sMonSummaryScreen->firstMoveIndex]);
+        ChangeBgX(1, SUMMARY_BG_OFFSCREEN_X, BG_COORD_SET);
+        ChangeBgX(2, 0, BG_COORD_SET);
+        SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#else
         ChangeBgX(2, 0x10000, BG_COORD_ADD);
+#endif
         ClearWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
         ClearWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
     }
@@ -1542,7 +1976,7 @@ static void FreeSummaryScreen(void)
     ClearDma3Requests();
     ResetAllBgsCoordinates();
 #ifdef PLATFORM_SDL2
-    ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
+    ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON | DISPCNT_WIN1_ON);
 #endif
     FreeAllWindowBuffers();
     for (bg = 0; bg < NUM_BACKGROUNDS; bg++)
@@ -1832,6 +2266,9 @@ static void PssScrollRight(u8 taskId) // Scroll right
     s16 *data = gTasks[taskId].data;
     if (data[0] == 0)
     {
+#ifdef PLATFORM_SDL2
+        ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
         if (sMonSummaryScreen->bgDisplayOrder == 0)
         {
             data[1] = 1;
@@ -1846,15 +2283,29 @@ static void PssScrollRight(u8 taskId) // Scroll right
             SetBgAttribute(1, BG_ATTR_PRIORITY, 2);
             ScheduleBgCopyTilemapToVram(2);
         }
+#ifdef PLATFORM_SDL2
+        ChangeBgX(data[1], SUMMARY_BG_OFFSCREEN_X, BG_COORD_SET);
+#else
         ChangeBgX(data[1], GBA_VIEW_BG_X, BG_COORD_SET);
+#endif
         SetBgTilemapBuffer(data[1], sMonSummaryScreen->bgTilemapBuffers[sMonSummaryScreen->currPageIndex][0]);
         ShowBg(1);
         ShowBg(2);
     }
+#ifdef PLATFORM_SDL2
+    ChangeBgX(data[1], SUMMARY_BG_SCROLL_STEP, BG_COORD_ADD);
+    data[0] += 30;
+    if (data[0] >= 240)
+    {
+        ChangeBgX(data[1], 0, BG_COORD_SET);
+        gTasks[taskId].func = PssScrollRightEnd;
+    }
+#else
     ChangeBgX(data[1], 0x2000, BG_COORD_ADD);
     data[0] += 32;
     if (data[0] > 0xFF)
         gTasks[taskId].func = PssScrollRightEnd;
+#endif
 }
 
 static void PssScrollRightEnd(u8 taskId) // display right
@@ -1863,6 +2314,10 @@ static void PssScrollRightEnd(u8 taskId) // display right
     sMonSummaryScreen->bgDisplayOrder ^= 1;
     data[1] = 0;
     data[0] = 0;
+#ifdef PLATFORM_SDL2
+    if (sMonSummaryScreen->mode == SUMMARY_MODE_SELECT_MOVE)
+        SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
     DrawPagination();
     PutPageWindowTilemaps(sMonSummaryScreen->currPageIndex);
     SetTypeIcons();
@@ -1875,16 +2330,33 @@ static void PssScrollLeft(u8 taskId) // Scroll left
     s16 *data = gTasks[taskId].data;
     if (data[0] == 0)
     {
+#ifdef PLATFORM_SDL2
+        ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
         if (sMonSummaryScreen->bgDisplayOrder == 0)
             data[1] = 2;
         else
             data[1] = 1;
+#ifdef PLATFORM_SDL2
+        ChangeBgX(data[1], SUMMARY_BG_SCROLL_WRAP_X, BG_COORD_SET);
+#else
         ChangeBgX(data[1], GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
+#endif
     }
+#ifdef PLATFORM_SDL2
+    ChangeBgX(data[1], SUMMARY_BG_SCROLL_STEP, BG_COORD_SUB);
+    data[0] += 30;
+    if (data[0] >= 240)
+    {
+        ChangeBgX(data[1], SUMMARY_BG_OFFSCREEN_X, BG_COORD_SET);
+        gTasks[taskId].func = PssScrollLeftEnd;
+    }
+#else
     ChangeBgX(data[1], 0x2000, BG_COORD_SUB);
     data[0] += 32;
     if (data[0] > 0xFF)
         gTasks[taskId].func = PssScrollLeftEnd;
+#endif
 }
 
 static void PssScrollLeftEnd(u8 taskId) // display left
@@ -1905,13 +2377,21 @@ static void PssScrollLeftEnd(u8 taskId) // display left
     if (sMonSummaryScreen->currPageIndex > 1)
     {
         SetBgTilemapBuffer(data[1], sMonSummaryScreen->bgTilemapBuffers[sMonSummaryScreen->currPageIndex - 1][0]);
+#ifdef PLATFORM_SDL2
+        ChangeBgX(data[1], 0, BG_COORD_SET);
+#else
         ChangeBgX(data[1], GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
+#endif
     }
     ShowBg(1);
     ShowBg(2);
     sMonSummaryScreen->bgDisplayOrder ^= 1;
     data[1] = 0;
     data[0] = 0;
+#ifdef PLATFORM_SDL2
+    if (sMonSummaryScreen->mode == SUMMARY_MODE_SELECT_MOVE)
+        SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
     DrawPagination();
     PutPageWindowTilemaps(sMonSummaryScreen->currPageIndex);
     SetTypeIcons();
@@ -2489,6 +2969,10 @@ static void PositionPowerAccSlidingWindow(u16 visibleColumns, s16 speed)
         u8 taskId = FindTaskIdByFunc(Task_SlidePowerAccWindow);
         if (taskId == TASK_NONE)
             taskId = CreateTask(Task_SlidePowerAccWindow, 8);
+#ifdef PLATFORM_SDL2
+        if (speed < 0)
+            SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
         gTasks[taskId].tScrollingSpeed = speed;
         gTasks[taskId].tVisibleColumns = visibleColumns;
     }
@@ -2516,6 +3000,10 @@ static void Task_SlidePowerAccWindow(u8 taskId)
         }
         else
         {
+#ifdef PLATFORM_SDL2
+            if (sMonSummaryScreen->mode != SUMMARY_MODE_SELECT_MOVE)
+                ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
             if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
                 PutWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
             PutWindowTilemap(PSS_LABEL_WINDOW_PORTRAIT_SPECIES);
@@ -2541,6 +3029,10 @@ static void PositionAppealJamSlidingWindow(u16 visibleColumns, s16 speed, u16 mo
         u8 taskId = FindTaskIdByFunc(Task_SlideAppealJamWindow);
         if (taskId == TASK_NONE)
             taskId = CreateTask(Task_SlideAppealJamWindow, 8);
+#ifdef PLATFORM_SDL2
+        if (speed < 0)
+            SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
         gTasks[taskId].tScrollingSpeed = speed;
         gTasks[taskId].tVisibleColumns = visibleColumns;
         gTasks[taskId].tMove = move;
@@ -2570,6 +3062,10 @@ static void Task_SlideAppealJamWindow(u8 taskId)
         }
         else
         {
+#ifdef PLATFORM_SDL2
+            if (sMonSummaryScreen->mode != SUMMARY_MODE_SELECT_MOVE)
+                ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN1_ON);
+#endif
             if (!gSprites[sMonSummaryScreen->spriteIds[SPRITE_ARR_ID_STATUS]].invisible)
             {
                 PutWindowTilemap(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS);
@@ -2590,7 +3086,9 @@ static void PositionStatusSlidingWindow(u16 visibleColumns, s16 speed)
     if (speed == 0 || speed == sStatusSlidingWindow1.width)
     {
         CopyNColumnsToTilemap(&sStatusSlidingWindow1, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0], speed, FALSE);
+#ifndef PLATFORM_SDL2
         CopyNColumnsToTilemap(&sStatusSlidingWindow2, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0], speed, FALSE);
+#endif
     }
     else
     {
@@ -2609,7 +3107,9 @@ static void Task_SlideStatusWindow(u8 taskId)
     else if (tVisibleColumns > sStatusSlidingWindow1.width)
         tVisibleColumns = sStatusSlidingWindow1.width;
     CopyNColumnsToTilemap(&sStatusSlidingWindow1, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0], tVisibleColumns, FALSE);
+#ifndef PLATFORM_SDL2
     CopyNColumnsToTilemap(&sStatusSlidingWindow2, sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0], tVisibleColumns, FALSE);
+#endif
     ScheduleBgCopyTilemapToVram(3);
     if (tVisibleColumns <= 0 || tVisibleColumns >= sStatusSlidingWindow1.width)
     {
@@ -2630,6 +3130,35 @@ static void Task_SlideStatusWindow(u8 taskId)
 // Toggles the "Cancel" window that appears when selecting a move
 static void TilemapFiveMovesDisplay(u16 *dst, u16 palette, bool8 remove)
 {
+#ifdef PLATFORM_SDL2
+    u16 rowOff, col;
+
+    palette *= 0x1000;
+    for (rowOff = 0; rowOff < 3; rowOff++)
+    {
+        u16 y = 11 + rowOff;
+
+        if (!remove || rowOff == 0)
+        {
+            u16 srcOff = (!remove) ? (rowOff == 2 ? 20 : 0) : 20;
+
+            for (col = 0; col < 5; col++)
+                dst[SummaryTileIndex(10 + col, y)] = gSummaryScreen_MoveEffect_Cancel_Tilemap[srcOff + col] + palette;
+            for (col = 5; col < 22; col++)
+                dst[SummaryTileIndex(10 + col, y)] = gSummaryScreen_MoveEffect_Cancel_Tilemap[srcOff + 5] + palette;
+            dst[SummaryTileIndex(32, y)] = gSummaryScreen_MoveEffect_Cancel_Tilemap[srcOff + 14] + palette;
+            for (col = 23; col < 29; col++)
+                dst[SummaryTileIndex(10 + col, y)] = gSummaryScreen_MoveEffect_Cancel_Tilemap[srcOff + 16] + palette;
+            dst[SummaryTileIndex(39, y)] = gSummaryScreen_MoveEffect_Cancel_Tilemap[srcOff + 19] + palette;
+        }
+        else
+        {
+            dst[SummaryTileIndex(10, y)] = gSummaryScreen_MoveEffect_Cancel_Tilemap[40] + palette;
+            for (col = 1; col < 30; col++)
+                dst[SummaryTileIndex(10 + col, y)] = gSummaryScreen_MoveEffect_Cancel_Tilemap[41] + palette;
+        }
+    }
+#else
     u16 i, id;
 
     palette *= 0x1000;
@@ -2652,6 +3181,7 @@ static void TilemapFiveMovesDisplay(u16 *dst, u16 palette, bool8 remove)
             dst[id + i + 0x40] = gSummaryScreen_MoveEffect_Cancel_Tilemap[i + 40] + palette;
         }
     }
+#endif
 }
 
 static void DrawPokerusCuredSymbol(struct Pokemon *mon) // This checks if the mon has been cured of pokerus
@@ -2659,12 +3189,20 @@ static void DrawPokerusCuredSymbol(struct Pokemon *mon) // This checks if the mo
     if (!CheckPartyPokerus(mon, 0) && CheckPartyHasHadPokerus(mon, 0)) // If yes it draws the cured symbol
     {
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0][0x223] = 0x2C;
+#ifdef PLATFORM_SDL2
+        sMonSummaryScreen->infoEggTilemapBuffer[0][0x223] = 0x2C;
+#else
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][1][0x223] = 0x2C;
+#endif
     }
     else
     {
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0][0x223] = 0x81A;
+#ifdef PLATFORM_SDL2
+        sMonSummaryScreen->infoEggTilemapBuffer[0][0x223] = 0x81A;
+#else
         sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][1][0x223] = 0x81A;
+#endif
     }
     ScheduleBgCopyTilemapToVram(3);
 }
@@ -2702,6 +3240,17 @@ static void DrawExperienceProgressBar(struct Pokemon *unused)
         numExpProgressBarTicks = 0;
     }
 
+#ifdef PLATFORM_SDL2
+    dst = sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_SKILLS][0];
+    for (i = 0; i < 8; i++)
+    {
+        u16 tile = (numExpProgressBarTicks > 7) ? 0x206A : 0x2062 + (numExpProgressBarTicks % 8);
+        dst[SummaryTileIndex(31 + i, 20)] = tile;
+        numExpProgressBarTicks -= 8;
+        if (numExpProgressBarTicks < 0)
+            numExpProgressBarTicks = 0;
+    }
+#else
     dst = &sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_SKILLS][1][0x255];
     for (i = 0; i < 8; i++)
     {
@@ -2713,6 +3262,7 @@ static void DrawExperienceProgressBar(struct Pokemon *unused)
         if (numExpProgressBarTicks < 0)
             numExpProgressBarTicks = 0;
     }
+#endif
 
     if (GetBgTilemapBuffer(1) == sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_SKILLS][0])
         ScheduleBgCopyTilemapToVram(1);
@@ -2722,7 +3272,11 @@ static void DrawExperienceProgressBar(struct Pokemon *unused)
 
 static void DrawContestMoveHearts(u16 move)
 {
+#ifdef PLATFORM_SDL2
+    u16 *tilemap = sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_CONTEST_MOVES][0];
+#else
     u16 *tilemap = sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_CONTEST_MOVES][1];
+#endif
     u8 i;
 
     if (move != MOVE_NONE)
@@ -2734,10 +3288,15 @@ static void DrawContestMoveHearts(u16 move)
 
         for (i = 0; i < MAX_CONTEST_MOVE_HEARTS; i++)
         {
+#ifdef PLATFORM_SDL2
+            u16 idx = SummaryTileIndex(6 + (i & 3), 17 + (i / 4));
+#else
+            u16 idx = (i / 4 * 32) + (i & 3) + 0x1E6;
+#endif
             if (effectValue != 0xFF && i < effectValue)
-                tilemap[(i / 4 * 32) + (i & 3) + 0x1E6] = TILE_FILLED_APPEAL_HEART;
+                tilemap[idx] = TILE_FILLED_APPEAL_HEART;
             else
-                tilemap[(i / 4 * 32) + (i & 3) + 0x1E6] = TILE_EMPTY_APPEAL_HEART;
+                tilemap[idx] = TILE_EMPTY_APPEAL_HEART;
         }
 
         // Draw jam hearts
@@ -2747,20 +3306,32 @@ static void DrawContestMoveHearts(u16 move)
 
         for (i = 0; i < MAX_CONTEST_MOVE_HEARTS; i++)
         {
+#ifdef PLATFORM_SDL2
+            u16 idx = SummaryTileIndex(6 + (i & 3), 19 + (i / 4));
+#else
+            u16 idx = (i / 4 * 32) + (i & 3) + 0x226;
+#endif
             if (effectValue != 0xFF && i < effectValue)
-                tilemap[(i / 4 * 32) + (i & 3) + 0x226] = TILE_FILLED_JAM_HEART;
+                tilemap[idx] = TILE_FILLED_JAM_HEART;
             else
-                tilemap[(i / 4 * 32) + (i & 3) + 0x226] = TILE_EMPTY_JAM_HEART;
+                tilemap[idx] = TILE_EMPTY_JAM_HEART;
         }
     }
 }
 
 static void LimitEggSummaryPageDisplay(void) // If the Pokémon is an egg, limit the number of pages displayed to 1
 {
+#ifdef PLATFORM_SDL2
+    SetBgTilemapBuffer(3, sMonSummaryScreen->summary.isEgg
+        ? sMonSummaryScreen->infoEggTilemapBuffer[0]
+        : sMonSummaryScreen->bgTilemapBuffers[PSS_PAGE_INFO][0]);
+    ScheduleBgCopyTilemapToVram(3);
+#else
     if (sMonSummaryScreen->summary.isEgg)
         ChangeBgX(3, GBA_VIEW_BG_X + 0x10000, BG_COORD_SET);
     else
         ChangeBgX(3, GBA_VIEW_BG_X, BG_COORD_SET);
+#endif
 }
 
 static void ResetWindows(void)
@@ -2908,6 +3479,20 @@ static void PrintPageNamesAndStats(void)
 
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_INFO_RENTAL, gText_RentalPkmn, 0, 1, 0, 1);
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_INFO_TYPE, gText_TypeSlash, 0, 1, 0, 0);
+#ifdef PLATFORM_SDL2
+    statsXPos = 4 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_HP4, 48);
+    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_HP4, statsXPos, 1, 0, 1);
+    statsXPos = 4 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_Attack3, 48);
+    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_Attack3, statsXPos, 17, 0, 1);
+    statsXPos = 4 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_Defense3, 48);
+    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_Defense3, statsXPos, 33, 0, 1);
+    statsXPos = 4 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_SpAtk4, 48);
+    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT, gText_SpAtk4, statsXPos, 1, 0, 1);
+    statsXPos = 4 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_SpDef4, 48);
+    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT, gText_SpDef4, statsXPos, 17, 0, 1);
+    statsXPos = 4 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_Speed2, 48);
+    PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT, gText_Speed2, statsXPos, 33, 0, 1);
+#else
     statsXPos = 6 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_HP4, 42);
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_LEFT, gText_HP4, statsXPos, 1, 0, 1);
     statsXPos = 6 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_Attack3, 42);
@@ -2920,6 +3505,7 @@ static void PrintPageNamesAndStats(void)
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT, gText_SpDef4, statsXPos, 17, 0, 1);
     statsXPos = 2 + GetStringCenterAlignXOffset(FONT_NORMAL, gText_Speed2, 36);
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATS_RIGHT, gText_Speed2, statsXPos, 33, 0, 1);
+#endif
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_EXP, gText_ExpPoints, 6, 1, 0, 1);
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_EXP, gText_NextLv, 6, 17, 0, 1);
     PrintTextOnWindow(PSS_LABEL_WINDOW_POKEMON_SKILLS_STATUS, gText_Status, 2, 1, 0, 1);
@@ -3409,7 +3995,11 @@ static void PrintHeldItemName(void)
         text = gStringVar1;
     }
 
+#ifdef PLATFORM_SDL2
+    x = GetStringCenterAlignXOffset(FONT_NORMAL, text, 112) + 4;
+#else
     x = GetStringCenterAlignXOffset(FONT_NORMAL, text, 72) + 6;
+#endif
     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_HELD_ITEM), text, x, 1, 0, 0);
 }
 
@@ -3429,7 +4019,11 @@ static void PrintRibbonCount(void)
         text = gStringVar4;
     }
 
+#ifdef PLATFORM_SDL2
+    x = GetStringCenterAlignXOffset(FONT_NORMAL, text, 112) + 4;
+#else
     x = GetStringCenterAlignXOffset(FONT_NORMAL, text, 70) + 6;
+#endif
     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_RIBBON_COUNT), text, x, 1, 0, 0);
 }
 
@@ -3460,7 +4054,11 @@ static void BufferLeftColumnStats(void)
 
 static void PrintLeftColumnStats(void)
 {
+#ifdef PLATFORM_SDL2
+    PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_LEFT), gStringVar4, 7, 1, 0, 0);
+#else
     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_LEFT), gStringVar4, 4, 1, 0, 0);
+#endif
 }
 
 static void BufferRightColumnStats(void)
@@ -3478,7 +4076,11 @@ static void BufferRightColumnStats(void)
 
 static void PrintRightColumnStats(void)
 {
+#ifdef PLATFORM_SDL2
+    PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_RIGHT), gStringVar4, 15, 1, 0, 0);
+#else
     PrintTextOnWindow(AddWindowFromTemplateList(sPageSkillsTemplate, PSS_DATA_WINDOW_SKILLS_STATS_RIGHT), gStringVar4, 2, 1, 0, 0);
+#endif
 }
 
 static void PrintExpPointsNextLevel(void)
@@ -3489,7 +4091,11 @@ static void PrintExpPointsNextLevel(void)
     u32 expToNextLevel;
 
     ConvertIntToDecimalStringN(gStringVar1, sum->exp, STR_CONV_MODE_RIGHT_ALIGN, 7);
+#ifdef PLATFORM_SDL2
+    x = GetStringRightAlignXOffset(FONT_NORMAL, gStringVar1, 56) + 2;
+#else
     x = GetStringRightAlignXOffset(FONT_NORMAL, gStringVar1, 42) + 2;
+#endif
     PrintTextOnWindow(windowId, gStringVar1, x, 1, 0, 0);
 
     if (sum->level < MAX_LEVEL)
@@ -3498,7 +4104,11 @@ static void PrintExpPointsNextLevel(void)
         expToNextLevel = 0;
 
     ConvertIntToDecimalStringN(gStringVar1, expToNextLevel, STR_CONV_MODE_RIGHT_ALIGN, 6);
+#ifdef PLATFORM_SDL2
+    x = GetStringRightAlignXOffset(FONT_NORMAL, gStringVar1, 56) + 2;
+#else
     x = GetStringRightAlignXOffset(FONT_NORMAL, gStringVar1, 42) + 2;
+#endif
     PrintTextOnWindow(windowId, gStringVar1, x, 17, 0, 0);
 }
 
@@ -3758,7 +4368,11 @@ static void PrintNewMoveDetailsOrCancelText(void)
 static void AddAndFillMoveNamesWindow(void)
 {
     u8 windowId = AddWindowFromTemplateList(sPageMovesTemplate, PSS_DATA_WINDOW_MOVE_NAMES);
+#ifdef PLATFORM_SDL2
+    FillWindowPixelRect(windowId, PIXEL_FILL(0), 0, 66, 136, 16);
+#else
     FillWindowPixelRect(windowId, PIXEL_FILL(0), 0, 66, 72, 16);
+#endif
     CopyWindowToVram(windowId, COPYWIN_GFX);
 }
 
@@ -3767,8 +4381,13 @@ static void SwapMovesNamesPP(u8 moveIndex1, u8 moveIndex2)
     u8 windowId1 = AddWindowFromTemplateList(sPageMovesTemplate, PSS_DATA_WINDOW_MOVE_NAMES);
     u8 windowId2 = AddWindowFromTemplateList(sPageMovesTemplate, PSS_DATA_WINDOW_MOVE_PP);
 
+#ifdef PLATFORM_SDL2
+    FillWindowPixelRect(windowId1, PIXEL_FILL(0), 0, moveIndex1 * 16, 136, 16);
+    FillWindowPixelRect(windowId1, PIXEL_FILL(0), 0, moveIndex2 * 16, 136, 16);
+#else
     FillWindowPixelRect(windowId1, PIXEL_FILL(0), 0, moveIndex1 * 16, 72, 16);
     FillWindowPixelRect(windowId1, PIXEL_FILL(0), 0, moveIndex2 * 16, 72, 16);
+#endif
 
     FillWindowPixelRect(windowId2, PIXEL_FILL(0), 0, moveIndex1 * 16, 48, 16);
     FillWindowPixelRect(windowId2, PIXEL_FILL(0), 0, moveIndex2 * 16, 48, 16);
@@ -4135,7 +4754,11 @@ static void CreateSetStatusSprite(void)
     u8 statusAnim;
 
     if (*spriteId == SPRITE_NONE)
+#ifdef PLATFORM_SDL2
+        *spriteId = UseSummarySpriteOffset(CreateSprite(&sSpriteTemplate_StatusCondition, 64, 168, 0));
+#else
         *spriteId = UseSummarySpriteOffset(CreateSprite(&sSpriteTemplate_StatusCondition, 64, 152, 0));
+#endif
 
     statusAnim = GetMonAilment(&sMonSummaryScreen->currentMon);
     if (statusAnim != 0)
@@ -4165,7 +4788,7 @@ static void CreateMoveSelectorSprites(u8 idArrayStart)
             spriteIds[i] = UseSummarySpriteOffset(CreateSprite(&sMoveSelectorSpriteTemplate, i * 16 + 89, 40, subpriority));
             if (i == 0)
                 StartSpriteAnim(&gSprites[spriteIds[i]], 4); // left
-            else if (i == 9)
+            else if (i == MOVE_SELECTOR_SPRITES_COUNT - 1)
                 StartSpriteAnim(&gSprites[spriteIds[i]], 5); // right, actually the same as left, but flipped
             else
                 StartSpriteAnim(&gSprites[spriteIds[i]], 6); // middle
@@ -4216,7 +4839,7 @@ static void SetMainMoveSelectorColor(u8 which)
     {
         if (i == 0)
             StartSpriteAnim(&gSprites[spriteIds[i]], which + 4);
-        else if (i == 9)
+        else if (i == MOVE_SELECTOR_SPRITES_COUNT - 1)
             StartSpriteAnim(&gSprites[spriteIds[i]], which + 5);
         else
             StartSpriteAnim(&gSprites[spriteIds[i]], which + 6);
