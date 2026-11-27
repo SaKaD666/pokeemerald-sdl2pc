@@ -2688,7 +2688,7 @@ static void SpriteCB_LinkMonShadow(struct Sprite *sprite)
         if (++sprite->data[0] == 12)
             sprite->data[0] = 0;
 
-        LoadPalette(&sLinkMonShadow_Pal[sprite->data[0]], OBJ_PLTT_ID2(sprite->oam.paletteNum) + 4, PLTT_SIZEOF(1));
+        LoadPalette(&sLinkMonShadow_Pal[sprite->data[0]], OBJ_PLTT_ID(GetSpritePaletteHandle(sprite)) + 4, PLTT_SIZEOF(1));
     }
 }
 
@@ -3498,7 +3498,7 @@ static bool8 DoTradeAnim_Cable(void)
     case STATE_BYE_BYE:
         if (++sTradeAnim->timer == 80)
         {
-            sTradeAnim->releasePokeballSpriteId = CreateTradePokeballSprite(sTradeAnim->monSpriteIds[TRADE_PLAYER], gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].oam.paletteNum, 120, 32, 2, 1, 0x14, 0xfffff);
+            sTradeAnim->releasePokeballSpriteId = CreateTradePokeballSprite(sTradeAnim->monSpriteIds[TRADE_PLAYER], GetSpritePaletteHandle(&gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]]), 120, 32, 2, 1, 0x14, 0xfffff);
             sTradeAnim->state++;
             StringExpandPlaceholders(gStringVar4, gText_ByeByeVar1);
             DrawTextOnTradeWindow(0, gStringVar4, 0);
@@ -3814,12 +3814,12 @@ static bool8 DoTradeAnim_Cable(void)
         gSprites[sTradeAnim->bouncingPokeballSpriteId].callback = SpriteCB_BouncingPokeballArrive;
         StartSpriteAnim(&gSprites[sTradeAnim->bouncingPokeballSpriteId], 1);
         StartSpriteAffineAnim(&gSprites[sTradeAnim->bouncingPokeballSpriteId], 2);
-        BlendPalettes(1 << (16 + gSprites[sTradeAnim->bouncingPokeballSpriteId].oam.paletteNum), 16, RGB_WHITEALPHA);
+        BlendPalettes(ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sTradeAnim->bouncingPokeballSpriteId])), 16, RGB_WHITEALPHA);
         sTradeAnim->state++;
         sTradeAnim->timer = 0;
         break;
     case STATE_FADE_POKEBALL_TO_NORMAL:
-        BeginNormalPaletteFade(1 << (16 + gSprites[sTradeAnim->bouncingPokeballSpriteId].oam.paletteNum), 1, 16, 0, RGB_WHITEALPHA);
+        BeginNormalPaletteFade(ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sTradeAnim->bouncingPokeballSpriteId])), 1, 16, 0, RGB_WHITEALPHA);
         sTradeAnim->state++;
         break;
     case STATE_POKEBALL_ARRIVE_WAIT:
@@ -3838,7 +3838,7 @@ static bool8 DoTradeAnim_Cable(void)
         gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].x2 = 0;
         gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].y2 = 0;
         StartSpriteAnim(&gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]], 0);
-        CreatePokeballSpriteToReleaseMon(sTradeAnim->monSpriteIds[TRADE_PARTNER], gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].oam.paletteNum, 120, 84, 2, 1, 20, PALETTES_BG | (0xF << 16), sTradeAnim->monSpecies[TRADE_PARTNER]);
+        CreatePokeballSpriteToReleaseMon(sTradeAnim->monSpriteIds[TRADE_PARTNER], GetSpritePaletteHandle(&gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]]), 120, 84, 2, 1, 20, PALETTES_BG | (0xF << 16), sTradeAnim->monSpecies[TRADE_PARTNER]);
         FreeSpriteOamMatrix(&gSprites[sTradeAnim->bouncingPokeballSpriteId]);
         DestroySprite(&gSprites[sTradeAnim->bouncingPokeballSpriteId]);
         sTradeAnim->state++;
@@ -3906,6 +3906,14 @@ static bool8 DoTradeAnim_Cable(void)
     case STATE_WAIT_FADE_OUT_END:
         if (!gPaletteFade.active)
         {
+            const u8 backgrounds[] = {3, 1, 0};
+            u8 i;
+
+#ifdef PLATFORM_SDL2
+            if (IsDma3ManagerBusyWithBgCopy())
+                return FALSE;
+            ClearScheduledBgCopiesToVram();
+#endif
             PlayNewMapMusic(sTradeAnim->cachedMapMusic);
             SetVBlankCallback(NULL);
 #ifdef PLATFORM_SDL2
@@ -3914,9 +3922,14 @@ static bool8 DoTradeAnim_Cable(void)
             if (sTradeAnim)
             {
                 FreeAllWindowBuffers();
-                Free(GetBgTilemapBuffer(3));
-                Free(GetBgTilemapBuffer(1));
-                Free(GetBgTilemapBuffer(0));
+                for (i = 0; i < ARRAY_COUNT(backgrounds); i++)
+                {
+                    u8 bg = backgrounds[i];
+                    void *tilemap = GetBgTilemapBuffer(bg);
+
+                    UnsetBgTilemapBuffer(bg);
+                    Free(tilemap);
+                }
                 FreeMonSpritesGfx();
                 FREE_AND_SET_NULL(sTradeAnim);
             }
@@ -3973,7 +3986,7 @@ static bool8 DoTradeAnim_Wireless(void)
     case STATE_BYE_BYE:
         if (++sTradeAnim->timer == 80)
         {
-            sTradeAnim->releasePokeballSpriteId = CreateTradePokeballSprite(sTradeAnim->monSpriteIds[TRADE_PLAYER], gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]].oam.paletteNum, 120, 32, 2, 1, 0x14, 0xfffff);
+            sTradeAnim->releasePokeballSpriteId = CreateTradePokeballSprite(sTradeAnim->monSpriteIds[TRADE_PLAYER], GetSpritePaletteHandle(&gSprites[sTradeAnim->monSpriteIds[TRADE_PLAYER]]), 120, 32, 2, 1, 0x14, 0xfffff);
             sTradeAnim->state++;
             StringExpandPlaceholders(gStringVar4, gText_ByeByeVar1);
             DrawTextOnTradeWindow(0, gStringVar4, 0);
@@ -4315,12 +4328,12 @@ static bool8 DoTradeAnim_Wireless(void)
         gSprites[sTradeAnim->bouncingPokeballSpriteId].callback = SpriteCB_BouncingPokeballArrive;
         StartSpriteAnim(&gSprites[sTradeAnim->bouncingPokeballSpriteId], 1);
         StartSpriteAffineAnim(&gSprites[sTradeAnim->bouncingPokeballSpriteId], 2);
-        BlendPalettes(1 << (16 + gSprites[sTradeAnim->bouncingPokeballSpriteId].oam.paletteNum), 16, RGB_WHITEALPHA);
+        BlendPalettes(ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sTradeAnim->bouncingPokeballSpriteId])), 16, RGB_WHITEALPHA);
         sTradeAnim->state++;
         sTradeAnim->timer = 0;
         break;
     case STATE_FADE_POKEBALL_TO_NORMAL:
-        BeginNormalPaletteFade(1 << (16 + gSprites[sTradeAnim->bouncingPokeballSpriteId].oam.paletteNum), 1, 16, 0, RGB_WHITEALPHA);
+        BeginNormalPaletteFade(ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sTradeAnim->bouncingPokeballSpriteId])), 1, 16, 0, RGB_WHITEALPHA);
         sTradeAnim->state++;
         break;
     case STATE_POKEBALL_ARRIVE_WAIT:
@@ -4339,7 +4352,7 @@ static bool8 DoTradeAnim_Wireless(void)
         gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].x2 = 0;
         gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].y2 = 0;
         StartSpriteAnim(&gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]], 0);
-        CreatePokeballSpriteToReleaseMon(sTradeAnim->monSpriteIds[TRADE_PARTNER], gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]].oam.paletteNum, 120, 84, 2, 1, 20, PALETTES_BG | (0xF << 16), sTradeAnim->monSpecies[TRADE_PARTNER]);
+        CreatePokeballSpriteToReleaseMon(sTradeAnim->monSpriteIds[TRADE_PARTNER], GetSpritePaletteHandle(&gSprites[sTradeAnim->monSpriteIds[TRADE_PARTNER]]), 120, 84, 2, 1, 20, PALETTES_BG | (0xF << 16), sTradeAnim->monSpecies[TRADE_PARTNER]);
         FreeSpriteOamMatrix(&gSprites[sTradeAnim->bouncingPokeballSpriteId]);
         DestroySprite(&gSprites[sTradeAnim->bouncingPokeballSpriteId]);
         sTradeAnim->state++;
@@ -4407,6 +4420,14 @@ static bool8 DoTradeAnim_Wireless(void)
     case STATE_WAIT_FADE_OUT_END:
         if (!gPaletteFade.active)
         {
+            const u8 backgrounds[] = {3, 1, 0};
+            u8 i;
+
+#ifdef PLATFORM_SDL2
+            if (IsDma3ManagerBusyWithBgCopy())
+                return FALSE;
+            ClearScheduledBgCopiesToVram();
+#endif
             PlayNewMapMusic(sTradeAnim->cachedMapMusic);
             SetVBlankCallback(NULL);
 #ifdef PLATFORM_SDL2
@@ -4415,9 +4436,14 @@ static bool8 DoTradeAnim_Wireless(void)
             if (sTradeAnim)
             {
                 FreeAllWindowBuffers();
-                Free(GetBgTilemapBuffer(3));
-                Free(GetBgTilemapBuffer(1));
-                Free(GetBgTilemapBuffer(0));
+                for (i = 0; i < ARRAY_COUNT(backgrounds); i++)
+                {
+                    u8 bg = backgrounds[i];
+                    void *tilemap = GetBgTilemapBuffer(bg);
+
+                    UnsetBgTilemapBuffer(bg);
+                    Free(tilemap);
+                }
                 FreeMonSpritesGfx();
                 FREE_AND_SET_NULL(sTradeAnim);
             }
@@ -4514,7 +4540,7 @@ static void SpriteCB_BouncingPokeballDepart(struct Sprite *sprite)
         PlaySE(SE_M_MEGA_KICK);
         sprite->callback = SpriteCB_BouncingPokeballDepartEnd;
         sprite->data[0] = 0;
-        BeginNormalPaletteFade(1 << (16 + sprite->oam.paletteNum), -1, 0, 16, RGB_WHITEALPHA);
+        BeginNormalPaletteFade(ObjPaletteMask(GetSpritePaletteHandle(sprite)), -1, 0, 16, RGB_WHITEALPHA);
     }
 }
 
@@ -4855,11 +4881,24 @@ static void CB2_FreeTradeAnim(void)
 {
     if (!gPaletteFade.active)
     {
+        const u8 backgrounds[] = {3, 1, 0};
+        u8 i;
+
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+        ClearScheduledBgCopiesToVram();
+#endif
         SetVBlankCallback(NULL);
         FreeAllWindowBuffers();
-        Free(GetBgTilemapBuffer(3));
-        Free(GetBgTilemapBuffer(1));
-        Free(GetBgTilemapBuffer(0));
+        for (i = 0; i < ARRAY_COUNT(backgrounds); i++)
+        {
+            u8 bg = backgrounds[i];
+            void *tilemap = GetBgTilemapBuffer(bg);
+
+            UnsetBgTilemapBuffer(bg);
+            Free(tilemap);
+        }
         FreeMonSpritesGfx();
         FREE_AND_SET_NULL(sTradeAnim);
         if (gWirelessCommType)

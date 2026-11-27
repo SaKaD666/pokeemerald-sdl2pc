@@ -18,6 +18,9 @@
 #include "palette.h"
 #include "window.h"
 #include "decompress.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#endif
 #include "menu_helpers.h"
 #include "menu.h"
 #include "bg.h"
@@ -861,6 +864,10 @@ static bool32 HideFrontierPass(void)
         FreeCursorAndSymbolSprites();
         break;
     case 4:
+#ifdef PLATFORM_SDL2
+        ClearScheduledBgCopiesToVram();
+        ClearDma3Requests();
+#endif
         ResetGpuRegsAndBgs();
         ResetTasks();
         ResetSpriteData();
@@ -870,6 +877,7 @@ static bool32 HideFrontierPass(void)
         UnsetBgTilemapBuffer(0);
         UnsetBgTilemapBuffer(1);
         UnsetBgTilemapBuffer(2);
+        UnsetBgTilemapBuffer(3);
         FreeFrontierPassGfx();
         sPassData->state = 0;
         return TRUE;

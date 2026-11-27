@@ -50,7 +50,13 @@ static u32 ShowDisguiseFieldEffect(u8, u8, u8);
 void SetUpReflection(struct ObjectEvent *objectEvent, struct Sprite *sprite, bool8 stillReflection)
 {
     struct Sprite *reflectionSprite;
-    u8 spriteId = CreateCopySpriteAt(sprite, sprite->x, sprite->y, 152);
+    u8 palette = GetSpritePaletteHandle(sprite);
+    u8 spriteId;
+
+    if (palette >= ARRAY_COUNT(gReflectionEffectPaletteMap))
+        return;
+
+    spriteId = CreateCopySpriteAt(sprite, sprite->x, sprite->y, 152);
 
     if (spriteId == MAX_SPRITES)
         return;
@@ -58,7 +64,7 @@ void SetUpReflection(struct ObjectEvent *objectEvent, struct Sprite *sprite, boo
     reflectionSprite = &gSprites[spriteId];
     reflectionSprite->callback = UpdateObjectReflectionSprite;
     reflectionSprite->oam.priority = 3;
-    reflectionSprite->oam.paletteNum = gReflectionEffectPaletteMap[reflectionSprite->oam.paletteNum];
+    SetSpritePaletteHandle(reflectionSprite, gReflectionEffectPaletteMap[palette]);
     reflectionSprite->usingSheet = TRUE;
     reflectionSprite->anims = gDummySpriteAnimTable;
     StartSpriteAnim(reflectionSprite, 0);
@@ -97,11 +103,11 @@ static void LoadObjectReflectionPalette(struct ObjectEvent *objectEvent, struct 
       || (bridgeType = MetatileBehavior_GetBridgeType(objectEvent->currentMetatileBehavior))))
     {
         reflectionSprite->sReflectionVerticalOffset = bridgeReflectionVerticalOffsets[bridgeType - 1];
-        LoadObjectHighBridgeReflectionPalette(objectEvent, reflectionSprite->oam.paletteNum);
+        LoadObjectHighBridgeReflectionPalette(objectEvent, GetSpritePaletteHandle(reflectionSprite));
     }
     else
     {
-        LoadObjectRegularReflectionPalette(objectEvent, reflectionSprite->oam.paletteNum);
+        LoadObjectRegularReflectionPalette(objectEvent, GetSpritePaletteHandle(reflectionSprite));
     }
 }
 
@@ -145,12 +151,13 @@ static void UpdateObjectReflectionSprite(struct Sprite *reflectionSprite)
     else
     {
         struct Sprite *mainSprite = &gSprites[objectEvent->spriteId];
+        u8 palette = GetSpritePaletteHandle(mainSprite);
 
-        reflectionSprite->oam.paletteNum = gReflectionEffectPaletteMap[mainSprite->oam.paletteNum];
+        if (palette < ARRAY_COUNT(gReflectionEffectPaletteMap))
+            SetSpritePaletteHandle(reflectionSprite, gReflectionEffectPaletteMap[palette]);
         reflectionSprite->oam.shape = mainSprite->oam.shape;
         reflectionSprite->oam.size = mainSprite->oam.size;
-        reflectionSprite->oam.matrixNum = mainSprite->oam.matrixNum | ST_OAM_VFLIP;
-        reflectionSprite->oam.tileNum = mainSprite->oam.tileNum;
+        BorrowSpriteTiles(reflectionSprite, mainSprite);
         reflectionSprite->subspriteTables = mainSprite->subspriteTables;
         reflectionSprite->subspriteTableNum = mainSprite->subspriteTableNum;
         reflectionSprite->invisible = mainSprite->invisible;
@@ -173,9 +180,20 @@ static void UpdateObjectReflectionSprite(struct Sprite *reflectionSprite)
             if (matrixId != 0xFF)
             {
                 reflectionSprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
-                reflectionSprite->oam.matrixNum = matrixId;
+                SetSpriteMatrixHandle(reflectionSprite, matrixId);
             }
         }
+        else if ((reflectionSprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+              && (mainSprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK))
+        {
+            SetSpriteMatrixHandle(reflectionSprite, GetSpriteMatrixHandle(mainSprite));
+        }
+        else
+        {
+            reflectionSprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+        }
+        if (!(reflectionSprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK))
+            reflectionSprite->oam.matrixNum = mainSprite->oam.matrixNum | ST_OAM_VFLIP;
     }
 }
 
@@ -1038,7 +1056,7 @@ u32 FldEff_SurfBlob(void)
     {
         struct Sprite *sprite = &gSprites[spriteId];
         sprite->coordOffsetEnabled = TRUE;
-        sprite->oam.paletteNum = 0;
+        SetSpritePaletteHandle(sprite, 0);
         sprite->sPlayerObjId = gFieldEffectArguments[2];
         sprite->sVelocity = -1;
         sprite->sPrevX = -1;
@@ -1345,7 +1363,7 @@ u32 FldEff_BerryTreeGrowthSparkle(void)
         struct Sprite *sprite = &gSprites[spriteId];
         sprite->coordOffsetEnabled = TRUE;
         sprite->oam.priority = gFieldEffectArguments[3];
-        sprite->oam.paletteNum = 5;
+        SetSpritePaletteHandle(sprite, 5);
         sprite->sWaitFldEff = FLDEFF_BERRY_TREE_GROWTH_SPARKLE;
     }
     else
@@ -1392,7 +1410,7 @@ static u32 ShowDisguiseFieldEffect(u8 fldEff, u8 fldEffObj, u8 paletteNum)
     {
         struct Sprite *sprite = &gSprites[spriteId];
         sprite->coordOffsetEnabled ++;
-        sprite->oam.paletteNum = paletteNum;
+        SetSpritePaletteHandle(sprite, paletteNum);
         sprite->sFldEff = fldEff;
         sprite->sLocalId = gFieldEffectArguments[0];
         sprite->sMapNum = gFieldEffectArguments[1];

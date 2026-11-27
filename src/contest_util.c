@@ -1170,7 +1170,7 @@ static void TryCreateWirelessSprites(void)
         CreateWirelessStatusIndicatorSprite(8, 8);
         gSprites[gWirelessStatusIndicatorSpriteId].subpriority = 1;
         sheet = LoadSpriteSheet(&sSpriteSheet_WirelessIndicatorWindow);
-        RequestDma3Fill(0xFFFFFFFF, (void *)BG_CHAR_ADDR(4) + sheet * 0x20, 0x80, 1);
+        RequestDma3Fill(0xFFFFFFFF, (void *)(OBJ_VRAM0 + sheet * TILE_SIZE_4BPP), 0x80, 1);
         spriteId = CreateSprite(&sSpriteTemplate_WirelessIndicatorWindow, 8, 8, 0);
         gSprites[spriteId].oam.objMode = ST_OAM_OBJ_WINDOW;
     }
@@ -1205,13 +1205,14 @@ static s32 DrawResultsTextWindow(const u8 *text, u8 spriteId)
         src = (u8 *)sResultsTextWindow_Gfx;
 
         sprite = &gSprites[spriteId];
-        spriteTilePtrs[0] = (u8 *)(sprite->oam.tileNum * 32 + OBJ_VRAM0);
+        spriteTilePtrs[0] = GetSpriteTileVram(sprite, 0, 0x400 / TILE_SIZE_4BPP);
 
         for (i = 1; i < (int)ARRAY_COUNT(spriteTilePtrs); i++)
-            spriteTilePtrs[i] = (void *)(gSprites[sprite->data[i - 1]].oam.tileNum * 32 + OBJ_VRAM0);
+            spriteTilePtrs[i] = GetSpriteTileVram(&gSprites[sprite->data[i - 1]], 0, 0x400 / TILE_SIZE_4BPP);
 
         for (i = 0; i < (int)ARRAY_COUNT(spriteTilePtrs); i++)
-            CpuFill32(0, spriteTilePtrs[i], 0x400);
+            if (spriteTilePtrs[i] != NULL)
+                CpuFill32(0, spriteTilePtrs[i], 0x400);
 
         dst = spriteTilePtrs[0];
         CpuCopy32(src, dst, 0x20);
@@ -1640,7 +1641,7 @@ static void Task_CreateConfetti(u8 taskId)
             gSprites[spriteId].data[0] = Random() % 512;
             gSprites[spriteId].data[1] = (Random() % 24) + 16;
             gSprites[spriteId].data[2] = (Random() % 256) + 48;
-            gSprites[spriteId].oam.tileNum += Random() % 17;
+            SetSpriteSheetTileOffset(&gSprites[spriteId], Random() % 17);
             sContestResults->data->confettiCount++;
         }
     }
@@ -2537,7 +2538,7 @@ void LoadLinkContestPlayerPalettes(void)
         {
             objectEventId = GetObjectEventIdByLocalIdAndMap(sContestantLocalIds[i], gSaveBlock1Ptr->location.mapNum, gSaveBlock1Ptr->location.mapGroup);
             sprite = &gSprites[gObjectEvents[objectEventId].spriteId];
-            sprite->oam.paletteNum = 6 + i;
+            SetSpritePaletteHandle(sprite, 6 + i);
             version = (u8)gLinkPlayers[i].version;
             if (version == VERSION_RUBY || version == VERSION_SAPPHIRE)
             {
@@ -2663,10 +2664,9 @@ static void Task_ShowContestEntryMonPic(u8 taskId)
         break;
     case 3:
         sprite = &gSprites[task->data[2]];
-        FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(sprite->oam.paletteNum));
+        FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(GetSpritePaletteHandle(sprite)));
 
-        if(sprite->oam.affineMode)
-            FreeOamMatrix(sprite->oam.matrixNum);
+        FreeSpriteOamMatrix(sprite);
 
         DestroySprite(sprite);
         task->data[0]++;

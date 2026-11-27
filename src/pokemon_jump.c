@@ -562,9 +562,15 @@ static void CB2_ExitPokemonJump(void)
 {
     MainCallback exitCallback = sPokemonJump->exitCallback;
 
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+#endif
     SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifndef PLATFORM_SDL2
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeWindowsAndDigitObj();
@@ -3006,7 +3012,7 @@ static void UpdateVineAnim(struct PokemonJumpGfx *jumpGfx, int vineState)
     {
         jumpGfx->vineSprites[count]->y = sVineYCoords[i][vineState];
         jumpGfx->vineSprites[count]->oam.priority = priority;
-        jumpGfx->vineSprites[count]->oam.paletteNum = palNum;
+        SetSpritePaletteHandle(jumpGfx->vineSprites[count], palNum);
         StartSpriteAnim(jumpGfx->vineSprites[count], vineState);
         count++;
     }
@@ -3015,7 +3021,7 @@ static void UpdateVineAnim(struct PokemonJumpGfx *jumpGfx, int vineState)
     {
         jumpGfx->vineSprites[count]->y = sVineYCoords[i][vineState];
         jumpGfx->vineSprites[count]->oam.priority = priority;
-        jumpGfx->vineSprites[count]->oam.paletteNum = palNum;
+        SetSpritePaletteHandle(jumpGfx->vineSprites[count], palNum);
         StartSpriteAnim(jumpGfx->vineSprites[count], vineState);
         count++;
     }

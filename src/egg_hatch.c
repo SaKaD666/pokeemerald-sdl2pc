@@ -584,7 +584,9 @@ static void FreeEggHatchScene(void)
     void *platformTilemap = GetBgTilemapBuffer(1);
 
     // Complete copies while the scene still owns their source buffers.
+#ifndef PLATFORM_SDL2
     IsDma3ManagerBusyWithBgCopy();
+#endif
     SetVBlankCallback(NULL);
     FreeAllWindowBuffers();
     UnsetBgTilemapBuffer(0);
@@ -710,6 +712,10 @@ static void CB2_EggHatch(void)
         switch (Menu_ProcessInputNoWrap())
         {
         case 0: // Yes
+#ifdef PLATFORM_SDL2
+            if (IsDma3ManagerBusyWithBgCopy())
+                return;
+#endif
             GetMonNickname2(&gPlayerParty[sEggHatchData->eggPartyId], gStringVar3);
             species = GetMonData(&gPlayerParty[sEggHatchData->eggPartyId], MON_DATA_SPECIES);
             gender = GetMonGender(&gPlayerParty[sEggHatchData->eggPartyId]);
@@ -731,6 +737,10 @@ static void CB2_EggHatch(void)
     case 12:
         if (!gPaletteFade.active)
         {
+#ifdef PLATFORM_SDL2
+            if (IsDma3ManagerBusyWithBgCopy())
+                return;
+#endif
             FreeEggHatchScene();
             SetMainCallback2(CB2_ReturnToField);
             return;

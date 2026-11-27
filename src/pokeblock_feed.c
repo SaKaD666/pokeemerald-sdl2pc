@@ -130,7 +130,6 @@ static void SpriteCB_MonJumpForPokeblock(struct Sprite *);
 static void CalculateMonAnimMovement(void);
 static void CalculateMonAnimMovementEnd(void);
 static bool8 InitMonAnimStage(void);
-static bool8 FreeMonSpriteOamMatrix(void);
 static bool8 DoMonAnimStep(void);
 static bool8 LoadMonAndSceneGfx(struct Pokemon *);
 static u8 CreatePokeblockSprite(void);
@@ -963,7 +962,7 @@ static u8 CreatePokeblockCaseSpriteForFeeding(void)
 
 static void DoPokeblockCaseThrowEffect(u8 spriteId, bool8 horizontalThrow)
 {
-    FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
+    FreeSpriteOamMatrix(&gSprites[spriteId]);
     gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_DOUBLE;
 
     if (!horizontalThrow)
@@ -1028,8 +1027,8 @@ static void UpdateMonAnim(void)
         if (sNatureToMonPokeblockAnim[pokeblockFeed->nature][1] != AFFINE_NONE)
         {
             // Initialize affine anim
+            FreeSpriteOamMatrix(pokeblockFeed->monSpritePtr);
             pokeblockFeed->monSpritePtr->oam.affineMode = ST_OAM_AFFINE_DOUBLE;
-            pokeblockFeed->monSpritePtr->oam.matrixNum = 0;
             pokeblockFeed->monSpritePtr->affineAnims = sAffineAnims_Mon;
             InitSpriteAffineAnim(pokeblockFeed->monSpritePtr);
         }
@@ -1058,13 +1057,12 @@ static void UpdateMonAnim(void)
             else
             {
                 // End animation
-                FreeOamMatrix(pokeblockFeed->monSpritePtr->oam.matrixNum);
+                FreeSpriteOamMatrix(pokeblockFeed->monSpritePtr);
                 pokeblockFeed->animRunState = 70;
             }
         }
         break;
     case 70:
-        FreeMonSpriteOamMatrix();
         pokeblockFeed->animId = 0;
         pokeblockFeed->animRunState = 0;
         break;
@@ -1116,12 +1114,6 @@ static bool8 DoMonAnimStep(void)
         return TRUE;
     else
         return FALSE;
-}
-
-static bool8 FreeMonSpriteOamMatrix(void)
-{
-    FreeSpriteOamMatrix(sPokeblockFeed->monSpritePtr);
-    return FALSE;
 }
 
 static void CalculateMonAnimMovementEnd(void)

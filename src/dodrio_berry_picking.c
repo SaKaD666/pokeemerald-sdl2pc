@@ -1315,9 +1315,15 @@ static void CB2_ExitDodrioGame(void)
 {
     MainCallback exitCallback = sGame->exitCallback;
 
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+#endif
     SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifndef PLATFORM_SDL2
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeAllWindowBuffers();

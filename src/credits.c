@@ -15,6 +15,9 @@
 #include "trainer_pokemon_sprites.h"
 #include "starter_choose.h"
 #include "decompress.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#endif
 #include "intro_credits_graphics.h"
 #include "sound.h"
 #include "trig.h"
@@ -381,7 +384,9 @@ static void FreeCreditsBgsAndWindows(void)
     void *tilemap = GetBgTilemapBuffer(0);
 
 #ifdef PORTABLE
+#ifndef PLATFORM_SDL2
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeAllWindowBuffers();
@@ -422,6 +427,9 @@ void CB2_StartCreditsSequence(void)
 
     SetVBlankCallback(NULL);
 #ifdef PLATFORM_SDL2
+    ClearDma3Requests();
+    ClearScheduledBgCopiesToVram();
+    ResetTempTileDataBuffers();
     SetFrameViewToGbaSize(TRUE);
 #endif
     ResetGpuAndVram();
@@ -827,6 +835,10 @@ static void Task_UpdatePage(u8 taskId)
         }
         return;
     case 10:
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#endif
         gTasks[gTasks[taskId].tMainTaskId].tEndCredits = TRUE;
         DestroyTask(taskId);
         FreeCreditsBgsAndWindows();
@@ -1308,6 +1320,9 @@ static void LoadTheEndScreen(u16 tileOffsetLoad, u16 tileOffsetWrite, u16 palOff
 
     for (i = 0; i < 32 * 32; i++)
         ((u16 *) (VRAM + tileOffsetWrite))[i] = baseTile + 1;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange((void *)(VRAM + tileOffsetWrite), BG_SCREEN_SIZE);
+#endif
 }
 
 static u16 GetLetterMapTile(u8 baseTiles)
@@ -1332,8 +1347,13 @@ static void DrawLetterMapTiles(const u8 baseTiles[], u8 baseX, u8 baseY, u16 off
 
     for (y = 0; y < 5; y++)
     {
+        u16 *row = (u16 *)(VRAM + offset + (baseY + y) * 64);
+
         for (x = 0; x < 3; x++)
-            ((u16 *) (VRAM + offset + (baseY + y) * 64))[baseX + x] = tileOffset + GetLetterMapTile(baseTiles[y * 3 + x]);
+            row[baseX + x] = tileOffset + GetLetterMapTile(baseTiles[y * 3 + x]);
+#ifdef PLATFORM_SDL2
+        InvalidateBgTilemapVramRange(&row[baseX], 3 * sizeof(*row));
+#endif
     }
 }
 
@@ -1344,6 +1364,9 @@ static void DrawTheEnd(u16 offset, u16 palette)
 
     for (pos = 0; pos < 32 * 32; pos++)
         ((u16 *) (VRAM + offset))[pos] = baseTile + 1;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange((void *)(VRAM + offset), BG_SCREEN_SIZE);
+#endif
 
     DrawLetterMapTiles(sTheEnd_LetterMap_T, 3, 7, offset, palette);
     DrawLetterMapTiles(sTheEnd_LetterMap_H, 7, 7, offset, palette);
@@ -1430,13 +1453,30 @@ static void SpriteCB_Rival(struct Sprite *sprite)
 }
 
 #define sPosition data[1]
+#define sBgSpriteId data[5]
 #define sSpriteId data[6]
+#define sMonSpriteId data[0]
+
+static void DestroyCreditsMonSprite(struct Sprite *sprite)
+{
+#ifdef PLATFORM_SDL2
+    u16 matrix = sprite->sPosition;
+#endif
+    struct Sprite *bg = &gSprites[sprite->sBgSpriteId];
+
+    if (bg->inUse && bg->callback == SpriteCB_CreditsMonBg && bg->sMonSpriteId == sprite->sSpriteId)
+        DestroySprite(bg);
+    FreeAndDestroyMonPicSprite(sprite->sSpriteId);
+#ifdef PLATFORM_SDL2
+    ReleaseOamMatrices(matrix, 1);
+#endif
+}
 
 static void SpriteCB_CreditsMon(struct Sprite *sprite)
 {
     if (gIntroCredits_MovingSceneryState != INTROCRED_SCENERY_NORMAL)
     {
-        FreeAndDestroyMonPicSprite(sprite->sSpriteId);
+        DestroyCreditsMonSprite(sprite);
         return;
     }
 
@@ -1446,9 +1486,9 @@ static void SpriteCB_CreditsMon(struct Sprite *sprite)
     case 0:
     default:
         sprite->oam.affineMode = ST_OAM_AFFINE_NORMAL;
-        sprite->oam.matrixNum = sprite->sPosition;
+        SetSpriteMatrixHandle(sprite, sprite->sPosition);
         sprite->data[2] = 16;
-        SetOamMatrix(sprite->sPosition, 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
+        SetOamMatrix(GetSpriteMatrixHandle(sprite), 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
         sprite->invisible = FALSE;
         sprite->sState = 1;
         break;
@@ -1456,7 +1496,7 @@ static void SpriteCB_CreditsMon(struct Sprite *sprite)
         if (sprite->data[2] < 256)
         {
             sprite->data[2] += 8;
-            SetOamMatrix(sprite->sPosition, 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
+            SetOamMatrix(GetSpriteMatrixHandle(sprite), 0x10000 / sprite->data[2], 0, 0, 0x10000 / sprite->data[2]);
         }
         else
         {
@@ -1514,18 +1554,20 @@ static void SpriteCB_CreditsMon(struct Sprite *sprite)
     case 10:
         SetGpuReg(REG_OFFSET_BLDCNT, 0);
         SetGpuReg(REG_OFFSET_BLDALPHA, 0);
-        FreeAndDestroyMonPicSprite(sprite->data[6]);
+        DestroyCreditsMonSprite(sprite);
         break;
     }
 }
-
-#define sMonSpriteId data[0]
 
 static u8 CreateCreditsMonSprite(u16 nationalDexNum, s16 x, s16 y, u16 position)
 {
     u8 monSpriteId;
     u8 bgSpriteId;
 
+#ifdef PLATFORM_SDL2
+    if (!ReserveOamMatrices(position + 1, 1))
+        return MAX_SPRITES;
+#endif
     monSpriteId = CreateMonSpriteFromNationalDexNumber(nationalDexNum, x, y, position);
     gSprites[monSpriteId].oam.priority = 1;
     gSprites[monSpriteId].sPosition = position + 1;
@@ -1534,6 +1576,7 @@ static u8 CreateCreditsMonSprite(u16 nationalDexNum, s16 x, s16 y, u16 position)
     gSprites[monSpriteId].sSpriteId = monSpriteId;
 
     bgSpriteId = CreateSprite(&sSpriteTemplate_CreditsMonBg, gSprites[monSpriteId].x, gSprites[monSpriteId].y, 1);
+    gSprites[monSpriteId].sBgSpriteId = bgSpriteId;
     gSprites[bgSpriteId].sMonSpriteId = monSpriteId;
 
     StartSpriteAnimIfDifferent(&gSprites[bgSpriteId], position);
@@ -1543,20 +1586,22 @@ static u8 CreateCreditsMonSprite(u16 nationalDexNum, s16 x, s16 y, u16 position)
 
 static void SpriteCB_CreditsMonBg(struct Sprite *sprite)
 {
-    if (gSprites[sprite->sMonSpriteId].data[0] == 10
-     || gIntroCredits_MovingSceneryState != INTROCRED_SCENERY_NORMAL)
+    struct Sprite *mon = &gSprites[sprite->sMonSpriteId];
+
+    if (mon->data[0] == 10 || gIntroCredits_MovingSceneryState != INTROCRED_SCENERY_NORMAL)
     {
         DestroySprite(sprite);
         return;
     }
 
     // Copy sprite data from the associated Pokémon
-    sprite->invisible = gSprites[sprite->sMonSpriteId].invisible;
-    sprite->oam.objMode = gSprites[sprite->sMonSpriteId].oam.objMode;
-    sprite->oam.affineMode = gSprites[sprite->sMonSpriteId].oam.affineMode;
-    sprite->oam.matrixNum = gSprites[sprite->sMonSpriteId].oam.matrixNum;
-    sprite->x = gSprites[sprite->sMonSpriteId].x;
-    sprite->y = gSprites[sprite->sMonSpriteId].y;
+    sprite->invisible = mon->invisible;
+    sprite->oam.objMode = mon->oam.objMode;
+    sprite->oam.affineMode = mon->oam.affineMode;
+    if (sprite->oam.affineMode & ST_OAM_AFFINE_ON_MASK)
+        SetSpriteMatrixHandle(sprite, GetSpriteMatrixHandle(mon));
+    sprite->x = mon->x;
+    sprite->y = mon->y;
 }
 
 static void DeterminePokemonToShow(void)

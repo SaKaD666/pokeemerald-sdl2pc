@@ -52,6 +52,9 @@ static void SpriteCB_AMIndicator(struct Sprite *sprite);
 #define tMoveDir         data[4]
 #define tPeriod          data[5]
 #define tMoveSpeed       data[6]
+#ifdef PLATFORM_SDL2
+#define tHandsReserved   data[7]
+#endif
 
 #define GFXTAG_WALL_CLOCK_HAND   0x1000
 #define PALTAG_WALL_CLOCK_MALE   0x1000
@@ -688,10 +691,44 @@ static void WallClockInit(void)
     ShowBg(3);
 }
 
+static u8 CreateWallClockHand(const struct SpriteTemplate *template, u8 taskId, u8 subpriority, u8 matrix)
+{
+    u8 spriteId = CreateSprite(template, 120, 80, subpriority);
+
+    gSprites[spriteId].sTaskId = taskId;
+    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
+    SetSpriteMatrixHandle(&gSprites[spriteId], matrix);
+    return spriteId;
+}
+
+static void CreateWallClockSprites(u8 taskId, u8 pmAngle, u8 amAngle)
+{
+    u8 spriteId;
+
+#ifdef PLATFORM_SDL2
+    gTasks[taskId].tHandsReserved = ReserveOamMatrices(0, 2);
+    if (gTasks[taskId].tHandsReserved)
+    {
+        CreateWallClockHand(&sSpriteTemplate_MinuteHand, taskId, 1, 0);
+        CreateWallClockHand(&sSpriteTemplate_HourHand, taskId, 0, 1);
+    }
+#else
+    CreateWallClockHand(&sSpriteTemplate_MinuteHand, taskId, 1, 0);
+    CreateWallClockHand(&sSpriteTemplate_HourHand, taskId, 0, 1);
+#endif
+
+    spriteId = CreateSprite(&sSpriteTemplate_PM, 120, 80, 2);
+    gSprites[spriteId].sTaskId = taskId;
+    gSprites[spriteId].data[1] = pmAngle;
+
+    spriteId = CreateSprite(&sSpriteTemplate_AM, 120, 80, 2);
+    gSprites[spriteId].sTaskId = taskId;
+    gSprites[spriteId].data[1] = amAngle;
+}
+
 void CB2_StartWallClock(void)
 {
     u8 taskId;
-    u8 spriteId;
 
     LoadWallClockGraphics();
     LZ77UnCompVram(gWallClockStart_Tilemap, (u16 *)BG_SCREEN_ADDR(7));
@@ -705,23 +742,7 @@ void CB2_StartWallClock(void)
     gTasks[taskId].tMinuteHandAngle = 0;
     gTasks[taskId].tHourHandAngle = 300;
 
-    spriteId = CreateSprite(&sSpriteTemplate_MinuteHand, 120, 80, 1);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[spriteId].oam.matrixNum = 0;
-
-    spriteId = CreateSprite(&sSpriteTemplate_HourHand, 120, 80, 0);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[spriteId].oam.matrixNum = 1;
-
-    spriteId = CreateSprite(&sSpriteTemplate_PM, 120, 80, 2);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].data[1] = 45;
-
-    spriteId = CreateSprite(&sSpriteTemplate_AM, 120, 80, 2);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].data[1] = 90;
+    CreateWallClockSprites(taskId, 45, 90);
 
     WallClockInit();
 
@@ -733,7 +754,6 @@ void CB2_StartWallClock(void)
 void CB2_ViewWallClock(void)
 {
     u8 taskId;
-    u8 spriteId;
     u8 angle1;
     u8 angle2;
 
@@ -753,23 +773,7 @@ void CB2_ViewWallClock(void)
         angle2 = 135;
     }
 
-    spriteId = CreateSprite(&sSpriteTemplate_MinuteHand, 120, 80, 1);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[spriteId].oam.matrixNum = 0;
-
-    spriteId = CreateSprite(&sSpriteTemplate_HourHand, 120, 80, 0);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
-    gSprites[spriteId].oam.matrixNum = 1;
-
-    spriteId = CreateSprite(&sSpriteTemplate_PM, 120, 80, 2);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].data[1] = angle1;
-
-    spriteId = CreateSprite(&sSpriteTemplate_AM, 120, 80, 2);
-    gSprites[spriteId].sTaskId = taskId;
-    gSprites[spriteId].data[1] = angle2;
+    CreateWallClockSprites(taskId, angle1, angle2);
 
     WallClockInit();
 
@@ -878,12 +882,21 @@ static void Task_WallClock_Exit(u8 taskId)
     {
         SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#else
         IsDma3ManagerBusyWithBgCopy();
+#endif
         ClearScheduledBgCopiesToVram();
 #endif
         FreeAllWindowBuffers();
         UnsetBgTilemapBuffer(0);
         UnsetBgTilemapBuffer(2);
+#ifdef PLATFORM_SDL2
+        if (gTasks[taskId].tHandsReserved)
+            ReleaseOamMatrices(0, 2);
+#endif
         DestroyTask(taskId);
 #ifdef PLATFORM_SDL2
         SetFrameViewToGbaSize(FALSE);
@@ -1037,7 +1050,7 @@ static void SpriteCB_MinuteHand(struct Sprite *sprite)
     s16 cos = Cos2(angle) / 16;
     u16 x, y;
 
-    SetOamMatrix(0, cos, sin, -sin, cos);
+    SetOamMatrix(GetSpriteMatrixHandle(sprite), cos, sin, -sin, cos);
     x = sClockHandCoords[angle][0];
     y = sClockHandCoords[angle][1];
 
@@ -1057,7 +1070,7 @@ static void SpriteCB_HourHand(struct Sprite *sprite)
     s16 cos = Cos2(angle) / 16;
     u16 x, y;
 
-    SetOamMatrix(1, cos, sin, -sin, cos);
+    SetOamMatrix(GetSpriteMatrixHandle(sprite), cos, sin, -sin, cos);
     x = sClockHandCoords[angle][0];
     y = sClockHandCoords[angle][1];
 

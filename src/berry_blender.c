@@ -1048,11 +1048,17 @@ static void InitBerryBlenderWindows(void)
     }
 }
 
-static void ReleaseBlenderDisplay(void)
+static bool8 ReleaseBlenderDisplay(void)
 {
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return FALSE;
+#endif
     SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifndef PLATFORM_SDL2
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeAllWindowBuffers();
@@ -1061,6 +1067,7 @@ static void ReleaseBlenderDisplay(void)
 #ifdef PLATFORM_SDL2
     SetFrameViewToGbaSize(FALSE);
 #endif
+    return TRUE;
 }
 
 // gSpecialVar_0x8004 is the number of NPC opponents
@@ -1149,9 +1156,10 @@ static void CB2_LoadBerryBlender(void)
     case 6:
         if (!gPaletteFade.active)
         {
+            if (!ReleaseBlenderDisplay())
+                return;
             // Go to bag menu to choose berry, set callback to StartBlender
             sBerryBlender->mainState = 0;
-            ReleaseBlenderDisplay();
             ChooseBerryForMachine(StartBlender);
             return;
         }
@@ -2925,7 +2933,8 @@ static void CB2_CheckPlayAgainLink(void)
         {
             if (sBerryBlender->playerContinueResponses[0] == LINKCMD_SEND_LINK_TYPE)
             {
-                ReleaseBlenderDisplay();
+                if (!ReleaseBlenderDisplay())
+                    return;
                 FREE_AND_SET_NULL(sBerryBlender);
                 SetMainCallback2(DoBerryBlending);
                 return;
@@ -2947,7 +2956,8 @@ static void CB2_CheckPlayAgainLink(void)
     case 12:
         if (!gReceivedRemoteLinkPlayers)
         {
-            ReleaseBlenderDisplay();
+            if (!ReleaseBlenderDisplay())
+                return;
             FREE_AND_SET_NULL(sBerryBlender);
             SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
             return;
@@ -2999,12 +3009,13 @@ static void CB2_CheckPlayAgainLocal(void)
     case 10:
         if (!gPaletteFade.active)
         {
+            if (!ReleaseBlenderDisplay())
+                return;
             if (sBerryBlender->playAgainState == PLAY_AGAIN_YES)
                 SetMainCallback2(DoBerryBlending);
             else
                 SetMainCallback2(CB2_ReturnToFieldContinueScriptPlayMapMusic);
 
-            ReleaseBlenderDisplay();
             FREE_AND_SET_NULL(sBerryBlender);
             return;
         }
@@ -3374,6 +3385,10 @@ static void UpdateProgressBar(u16 value, u16 limit)
         vram[11 + i] = PROGRESS_BAR_EMPTY_TOP;
         vram[43 + i] = PROGRESS_BAR_EMPTY_BOTTOM;
     }
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange(vram + 11, i * sizeof(*vram));
+    InvalidateBgTilemapVramRange(vram + 43, i * sizeof(*vram));
+#endif
 }
 
 static u32 ArrowSpeedToRPM(u16 speed)
@@ -3402,6 +3417,10 @@ static void UpdateRPM(u16 speed)
     *((u16 *)(BG_SCREEN_ADDR(12) + 0x45C)) = digits[2] + RPM_DIGIT;
     *((u16 *)(BG_SCREEN_ADDR(12) + 0x460)) = digits[1] + RPM_DIGIT;
     *((u16 *)(BG_SCREEN_ADDR(12) + 0x462)) = digits[0] + RPM_DIGIT;
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapVramRange((void *)(BG_SCREEN_ADDR(12) + 0x458), 3 * sizeof(u16));
+    InvalidateBgTilemapVramRange((void *)(BG_SCREEN_ADDR(12) + 0x460), 2 * sizeof(u16));
+#endif
 }
 
 // Passed a pointer to the bg x/y

@@ -485,7 +485,8 @@ bool8 LoadCryMeter(struct CryScreenWindow *window, u8 windowId)
 
 void FreeCryScreen(void)
 {
-    FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(gSprites[sCryMeterNeedle->spriteId].oam.paletteNum));
+    FreeSpritePaletteByTag(GetSpritePaletteTagByPaletteNum(GetSpritePaletteHandle(&gSprites[sCryMeterNeedle->spriteId])));
+    FreeSpriteOamMatrix(&gSprites[sCryMeterNeedle->spriteId]);
     DestroySprite(gSprites + sCryMeterNeedle->spriteId);
     FREE_AND_SET_NULL(sDexCryScreen);
     FREE_AND_SET_NULL(sCryMeterNeedle);
@@ -565,7 +566,7 @@ static void SpriteCB_CryMeterNeedle(struct Sprite *sprite)
     affine.yScale = 256;
     affine.rotation = sCryMeterNeedle->rotation * 256;
     ObjAffineSet(&affine, &matrix, 1, 2);
-    SetOamMatrix(0, matrix.a, matrix.b, matrix.c, matrix.d);
+    SetOamMatrix(GetSpriteMatrixHandle(sprite), matrix.a, matrix.b, matrix.c, matrix.d);
     x = gSineTable[((sCryMeterNeedle->rotation + 0x7F) & 0xFF)];
     y = gSineTable[((sCryMeterNeedle->rotation + 0x7F) & 0xFF) + 64];
     sprite->x2 = x * 24 / 256;

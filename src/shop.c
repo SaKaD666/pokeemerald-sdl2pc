@@ -508,7 +508,7 @@ static void CB2_InitBuyMenu(void)
     {
     case 0:
         SetVBlankHBlankCallbacksToNull();
-        CpuFastFill(0, (void *)OAM, OAM_SIZE);
+        CpuFill32(0, (void *)OAM, OAM_SIZE);
         ScanlineEffect_Stop();
         ResetTempTileDataBuffers();
         FreeAllSpritePalettes();

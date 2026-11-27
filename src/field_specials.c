@@ -587,7 +587,7 @@ static void LoadLinkPartnerObjectEventSpritePalette(u8 graphicsId, u8 localEvent
         {
             u8 spriteId = gObjectEvents[obj].spriteId;
             struct Sprite *sprite = &gSprites[spriteId];
-            sprite->oam.paletteNum = adjustedPaletteNum;
+            SetSpritePaletteHandle(sprite, adjustedPaletteNum);
 
             switch (graphicsId)
             {

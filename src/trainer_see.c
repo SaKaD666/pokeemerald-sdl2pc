@@ -725,7 +725,7 @@ u8 FldEff_HeartIcon(void)
         struct Sprite *sprite = &gSprites[spriteId];
 
         SetIconSpriteData(sprite, FLDEFF_HEART_ICON, 0);
-        sprite->oam.paletteNum = PALSLOT_NPC_1;
+        SetSpritePaletteHandle(sprite, PALSLOT_NPC_1);
     }
     else
     {

@@ -3115,7 +3115,7 @@ static u8 CreateJudgeSprite(void)
     LoadCompressedSpriteSheet(&sSpriteSheet_Judge);
     LoadCompressedPalette(gContest2Pal, OBJ_PLTT_ID(1), PLTT_SIZE_4BPP);
     spriteId = CreateSprite(&sSpriteTemplate_Judge, 112, 36, 30);
-    gSprites[spriteId].oam.paletteNum = 1;
+    SetSpritePaletteHandle(&gSprites[spriteId], 1);
     gSprites[spriteId].callback = SpriteCallbackDummy;
     return spriteId;
 }
@@ -3128,7 +3128,6 @@ static u8 CreateJudgeSpeechBubbleSprite(void)
     LoadCompressedSpritePalette(&sSpritePalette_JudgeSymbols);
     spriteId = CreateSprite(&sSpriteTemplate_JudgeSpeechBubble, 96, 10, 29);
     gSprites[spriteId].invisible = TRUE;
-    gSprites[spriteId].data[0] = gSprites[spriteId].oam.tileNum;
     return spriteId;
 }
 
@@ -3146,11 +3145,11 @@ static u8 CreateContestantSprite(u16 species, u32 otId, u32 personality, u32 ind
     SetMultiuseSpriteTemplateToPokemon(species, B_POSITION_PLAYER_LEFT);
 
     spriteId = CreateSprite(&gMultiuseSpriteTemplate, 0x70, GetBattlerSpriteFinal_Y(2, species, FALSE), 30);
-    gSprites[spriteId].oam.paletteNum = 2;
+    SetSpritePaletteHandle(&gSprites[spriteId], 2);
     gSprites[spriteId].oam.priority = 2;
     gSprites[spriteId].subpriority = GetBattlerSpriteSubpriority(2);
     gSprites[spriteId].callback = SpriteCallbackDummy;
-    gSprites[spriteId].data[0] = gSprites[spriteId].oam.paletteNum;
+    gSprites[spriteId].data[0] = GetSpritePaletteHandle(&gSprites[spriteId]);
     gSprites[spriteId].data[2] = species;
     if (IsSpeciesNotUnown(species))
         gSprites[spriteId].affineAnims = gAffineAnims_BattleSpriteContest;
@@ -4145,7 +4144,7 @@ static u8 CreateContestantBoxBlinkSprites(u8 contestant)
     LoadSpritePalette(&sSpritePalettes_ContestantsTurnBlinkEffect[contestant]);
     spriteId1 = CreateSprite(&sSpriteTemplates_ContestantsTurnBlinkEffect[contestant], 184, x, 29);
     spriteId2 = CreateSprite(&sSpriteTemplates_ContestantsTurnBlinkEffect[contestant], 248, x, 29);
-    gSprites[spriteId2].oam.tileNum += 64;
+    SetSpriteSheetTileOffset(&gSprites[spriteId2], 64);
 
     CopySpriteTiles(0,
                     3,
@@ -4162,12 +4161,12 @@ static u8 CreateContestantBoxBlinkSprites(u8 contestant)
     CpuFill32(0, gContestResources->boxBlinkTiles2 + 0x500, 0x300);
 
     RequestDma3Copy(gContestResources->boxBlinkTiles1,
-                    (u8 *)(OBJ_VRAM0 + gSprites[spriteId1].oam.tileNum * 32),
+                    GetSpriteTileVram(&gSprites[spriteId1], 0, 64),
                     0x800,
                     1);
 
     RequestDma3Copy(gContestResources->boxBlinkTiles2,
-                    (u8 *)(OBJ_VRAM0 + gSprites[spriteId2].oam.tileNum * 32),
+                    GetSpriteTileVram(&gSprites[spriteId2], 0, 64),
                     0x800,
                     1);
 
@@ -4698,44 +4697,43 @@ static void SpriteCB_JudgeSpeechBubble(struct Sprite *sprite)
 static void DoJudgeSpeechBubble(u8 symbolId)
 {
     u8 spriteId = eContest.judgeSpeechBubbleSpriteId;
+    u8 tileOffset;
 
     switch (symbolId)
     {
     case JUDGE_SYMBOL_SWIRL:
     case JUDGE_SYMBOL_SWIRL_UNUSED:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0];
+        tileOffset = 0;
         PlaySE(SE_FAILURE);
         break;
     case JUDGE_SYMBOL_ONE_EXCLAMATION:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 4;
+        tileOffset = 4;
         PlaySE(SE_SUCCESS);
         break;
     case JUDGE_SYMBOL_TWO_EXCLAMATIONS:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 8;
+        tileOffset = 8;
         PlaySE(SE_SUCCESS);
         break;
     case JUDGE_SYMBOL_NUMBER_ONE_UNUSED: // Identical to JUDGE_SYMBOL_NUMBER_ONE
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 12;
-        PlaySE(SE_WARP_IN);
-        break;
     case JUDGE_SYMBOL_NUMBER_ONE:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 12;
+        tileOffset = 12;
         PlaySE(SE_WARP_IN);
         break;
     case JUDGE_SYMBOL_NUMBER_FOUR:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 16;
+        tileOffset = 16;
         PlaySE(SE_WARP_IN);
         break;
     case JUDGE_SYMBOL_STAR:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 24;
+        tileOffset = 24;
         PlaySE(SE_M_HEAL_BELL);
         break;
     case JUDGE_SYMBOL_QUESTION_MARK:
     default:
-        gSprites[spriteId].oam.tileNum = gSprites[spriteId].data[0] + 20;
+        tileOffset = 20;
         PlaySE(SE_WARP_IN);
         break;
     }
+    SetSpriteSheetTileOffset(&gSprites[spriteId], tileOffset);
     gSprites[spriteId].data[1] = 0;
     gSprites[spriteId].invisible = FALSE;
     gSprites[spriteId].callback = SpriteCB_JudgeSpeechBubble;
@@ -4745,6 +4743,10 @@ static void DoJudgeSpeechBubble(u8 symbolId)
 static void UpdateApplauseMeter(void)
 {
     s32 i;
+    u8 *tiles = GetSpriteTileVram(&gSprites[eContest.applauseMeterSpriteId], 0, 25 + APPLAUSE_METER_SIZE);
+
+    if (tiles == NULL)
+        return;
 
     for (i = 0; i < APPLAUSE_METER_SIZE; i++)
     {
@@ -4754,8 +4756,8 @@ static void UpdateApplauseMeter(void)
             src = &gContestApplauseMeterGfx[64];
         else
             src = gContestApplauseMeterGfx;
-        CpuCopy32(src, (void *)(OBJ_VRAM0 + (gSprites[eContest.applauseMeterSpriteId].oam.tileNum + 17 + i) * 32), 32);
-        CpuCopy32(src + 32, (void *)(OBJ_VRAM0 + (gSprites[eContest.applauseMeterSpriteId].oam.tileNum + 25 + i) * 32), 32);
+        CpuCopy32(src, tiles + (17 + i) * TILE_SIZE_4BPP, TILE_SIZE_4BPP);
+        CpuCopy32(src + TILE_SIZE_4BPP, tiles + (25 + i) * TILE_SIZE_4BPP, TILE_SIZE_4BPP);
 
         if (eContest.applauseLevel > 4)
             StartApplauseOverflowAnimation();
@@ -5034,9 +5036,18 @@ static void ShowHideNextTurnGfx(bool8 show)
     {
         if (eContestantStatus[i].turnOrderMod != 0 && show)
         {
-            CpuCopy32(GetTurnOrderNumberGfx(i), (void *)(OBJ_VRAM0 + (gSprites[eContestGfxState[i].nextTurnSpriteId].oam.tileNum + 6) * 32), 32);
-            gSprites[eContestGfxState[i].nextTurnSpriteId].y = sNextTurnSpriteYPositions[gContestantTurnOrder[i]];
-            gSprites[eContestGfxState[i].nextTurnSpriteId].invisible = FALSE;
+            u8 *tiles = GetSpriteTileVram(&gSprites[eContestGfxState[i].nextTurnSpriteId], 6, 1);
+
+            if (tiles != NULL)
+            {
+                CpuCopy32(GetTurnOrderNumberGfx(i), tiles, TILE_SIZE_4BPP);
+                gSprites[eContestGfxState[i].nextTurnSpriteId].y = sNextTurnSpriteYPositions[gContestantTurnOrder[i]];
+                gSprites[eContestGfxState[i].nextTurnSpriteId].invisible = FALSE;
+            }
+            else
+            {
+                gSprites[eContestGfxState[i].nextTurnSpriteId].invisible = TRUE;
+            }
         }
         else
         {
@@ -5273,7 +5284,7 @@ static void AnimateSliderHearts(u8 animId)
 
     for (i = 0; i < CONTESTANT_COUNT; i++)
     {
-        gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.matrixNum = AllocOamMatrix();
+        AdoptSpriteMatrixHandle(&gSprites[eContestGfxState[i].sliderHeartSpriteId], AllocOamMatrix());
         gSprites[eContestGfxState[i].sliderHeartSpriteId].oam.affineMode = ST_OAM_AFFINE_NORMAL;
         StartSpriteAffineAnim(&gSprites[eContestGfxState[i].sliderHeartSpriteId], animId);
         if (animId == SLIDER_HEART_ANIM_APPEAR)

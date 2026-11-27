@@ -959,10 +959,9 @@ static void SpriteCB_ShakePokeblockCase(struct Sprite *sprite)
     case 1:
         if (++sprite->sTimer > 11)
         {
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
+            FreeSpriteOamMatrix(sprite);
             sprite->sState = 0;
             sprite->sTimer = 0;
-            FreeOamMatrix(sprite->oam.matrixNum);
             sprite->callback = SpriteCallbackDummy;
         }
         break;

@@ -562,11 +562,11 @@ static void Task_HandleConfirmStarterInput(u8 taskId)
         EraseYesNoWindow();
         PlaySE(SE_SELECT);
         spriteId = gTasks[taskId].tPkmnSpriteId;
-        FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
+        FreeSpriteOamMatrix(&gSprites[spriteId]);
         FreeAndDestroyMonPicSprite(spriteId);
 
         spriteId = gTasks[taskId].tCircleSpriteId;
-        FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
+        FreeSpriteOamMatrix(&gSprites[spriteId]);
         DestroySprite(&gSprites[spriteId]);
         gTasks[taskId].func = Task_DeclineStarter;
         break;

@@ -435,15 +435,17 @@ struct PokemonStorageSystemData
     u8 ALIGNED(2) boxTitleTiles[1024];
     u8 boxTitleCycleId;
     u8 wallpaperLoadState; // Written to, but never read.
+#ifdef PLATFORM_SDL2
+    bool8 wallpaperMapQueued;
+#endif
     u8 wallpaperLoadBoxId;
     s8 wallpaperLoadDir;
     u16 boxTitlePal[16];
     u16 boxTitlePalOffset;
-    u16 boxTitleAltPalOffset;
     struct Sprite *curBoxTitleSprites[2];
     struct Sprite *nextBoxTitleSprites[2];
     struct Sprite *arrowSprites[2];
-    u32 wallpaperPalBits;
+    PaletteMask wallpaperPalBits;
     u8 filler2[80]; // Unused
     u16 unkUnused1; // Never read.
     s16 wallpaperSetId;
@@ -555,6 +557,9 @@ struct PokemonStorageSystemData
     u8 ALIGNED(4) itemIconBuffer[0x800];
     u8 wallpaperBgTilemapBuffer[0x1000];
     u8 displayMenuTilemapBuffer[0x800];
+#ifdef PLATFORM_SDL2
+    struct Dma3Transfer wallpaperTransfer;
+#endif
 };
 
 static u32 sItemIconGfxBuffer[98];
@@ -5098,7 +5103,7 @@ static void DestroyReleaseMonIcon(void)
 {
     if (*sStorage->releaseMonSpritePtr != NULL)
     {
-        FreeOamMatrix((*sStorage->releaseMonSpritePtr)->oam.matrixNum);
+        FreeSpriteOamMatrix(*sStorage->releaseMonSpritePtr);
         DestroyBoxMonIcon(*sStorage->releaseMonSpritePtr);
         *sStorage->releaseMonSpritePtr = NULL;
     }
@@ -5209,7 +5214,9 @@ static struct Sprite *CreateMonIconSprite(u16 species, u32 personality, s16 x, s
         return NULL;
     }
 
-    gSprites[spriteId].oam.tileNum = tileNum;
+    // The icon cache owns these tiles independently of the sprite.
+    gSprites[spriteId].sheetTileStart = tileNum;
+    SetSpriteSheetTileOffset(&gSprites[spriteId], 0);
     gSprites[spriteId].oam.priority = oamPriority;
     gSprites[spriteId].data[0] = species;
     return &gSprites[spriteId];
@@ -5254,11 +5261,18 @@ static void Task_InitBox(u8 taskId)
     case 0:
         sStorage->wallpaperOffset = 0;
         sStorage->bg2_X = 0;
+#ifdef PLATFORM_SDL2
+        memset(sStorage->wallpaperBgTilemapBuffer, 0, sizeof(sStorage->wallpaperBgTilemapBuffer));
+        InvalidateBgTilemapRamRange(sStorage->wallpaperBgTilemapBuffer, sizeof(sStorage->wallpaperBgTilemapBuffer));
+#else
         task->tDmaIdx = RequestDma3Fill(0, sStorage->wallpaperBgTilemapBuffer, sizeof(sStorage->wallpaperBgTilemapBuffer), 1);
+#endif
         break;
     case 1:
+#ifndef PLATFORM_SDL2
         if (CheckForSpaceForDma3Request(task->tDmaIdx) == -1)
             return;
+#endif
 
         SetBgTilemapBuffer(2, sStorage->wallpaperBgTilemapBuffer);
         ShowBg(2);
@@ -5414,7 +5428,11 @@ static void LoadWallpaperGfx(u8 boxId, s8 direction)
     void *iconGfx;
     u32 tilesSize, iconSize;
 
+#ifdef PLATFORM_SDL2
+    sStorage->wallpaperMapQueued = FALSE;
+#else
     sStorage->wallpaperLoadState = 0;
+#endif
     sStorage->wallpaperLoadBoxId = boxId;
     sStorage->wallpaperLoadDir = direction;
     if (sStorage->wallpaperLoadDir != 0)
@@ -5436,7 +5454,6 @@ static void LoadWallpaperGfx(u8 boxId, s8 direction)
             CpuCopy16(wallpaper->palettes, &gPlttBufferUnfaded[BG_PLTT_ID(4) + BG_PLTT_ID(sStorage->wallpaperOffset * 2)], 2 * PLTT_SIZE_4BPP);
 
         sStorage->wallpaperTiles = malloc_and_decompress(wallpaper->tiles, &tilesSize);
-        LoadBgTiles(2, sStorage->wallpaperTiles, tilesSize, sStorage->wallpaperOffset << 8);
     }
     else
     {
@@ -5455,20 +5472,63 @@ static void LoadWallpaperGfx(u8 boxId, s8 direction)
 
         sStorage->wallpaperTiles = malloc_and_decompress(wallpaper->tiles, &tilesSize);
         iconGfx = malloc_and_decompress(sWaldaWallpaperIcons[GetWaldaWallpaperIconId()], &iconSize);
-        CpuCopy32(iconGfx, sStorage->wallpaperTiles + 0x800, iconSize);
-        Free(iconGfx);
-        LoadBgTiles(2, sStorage->wallpaperTiles, tilesSize, sStorage->wallpaperOffset << 8);
+        if (iconGfx != NULL && sStorage->wallpaperTiles != NULL
+         && tilesSize >= 0x800 && iconSize <= tilesSize - 0x800)
+            CpuCopy32(iconGfx, sStorage->wallpaperTiles + 0x800, iconSize);
+        else
+            TRY_FREE_AND_SET_NULL(sStorage->wallpaperTiles);
+        if (iconGfx != NULL)
+            Free(iconGfx);
     }
 
+#ifdef PLATFORM_SDL2
+    {
+        void *dest = (void *)(BG_CHAR_ADDR(GetBgAttribute(2, BG_ATTR_CHARBASEINDEX))
+                              + sStorage->wallpaperOffset * 0x100 * TILE_SIZE_4BPP);
+
+        RequestDma3TrackedCopy(sStorage->wallpaperTiles, dest, tilesSize, 0, &sStorage->wallpaperTransfer);
+    }
+#else
+    LoadBgTiles(2, sStorage->wallpaperTiles, tilesSize, sStorage->wallpaperOffset << 8);
     CopyBgTilemapBufferToVram(2);
+#endif
 }
 
 static bool32 WaitForWallpaperGfxLoad(void)
 {
+#ifdef PLATFORM_SDL2
+    enum Dma3TransferState state = sStorage->wallpaperTransfer.state;
+
+    if (state == DMA3_TRANSFER_PENDING)
+        return FALSE;
+
+    TRY_FREE_AND_SET_NULL(sStorage->wallpaperTiles);
+    if (state == DMA3_TRANSFER_COMPLETED && !sStorage->wallpaperMapQueued)
+    {
+        void *dest = (void *)BG_SCREEN_ADDR(GetBgAttribute(2, BG_ATTR_MAPBASEINDEX));
+
+        sStorage->wallpaperMapQueued = TRUE;
+        if (RequestDma3TrackedCopy(sStorage->wallpaperBgTilemapBuffer, dest,
+                                   sizeof(sStorage->wallpaperBgTilemapBuffer), 0, &sStorage->wallpaperTransfer))
+            return FALSE;
+    }
+
+    if (sStorage->wallpaperTransfer.state == DMA3_TRANSFER_COMPLETED)
+    {
+        ShowBg(2);
+    }
+    else
+    {
+        HideBg(2);
+        memset(sStorage->wallpaperBgTilemapBuffer, 0, sizeof(sStorage->wallpaperBgTilemapBuffer));
+        InvalidateBgTilemapRamRange(sStorage->wallpaperBgTilemapBuffer, sizeof(sStorage->wallpaperBgTilemapBuffer));
+    }
+#else
     if (IsDma3ManagerBusyWithBgCopy())
         return FALSE;
 
     TRY_FREE_AND_SET_NULL(sStorage->wallpaperTiles);
+#endif
 
     return TRUE;
 }
@@ -5540,15 +5600,7 @@ static void InitBoxTitle(u8 boxId)
 
     tagIndex = IndexOfSpritePaletteTag(PALTAG_BOX_TITLE);
     sStorage->boxTitlePalOffset = OBJ_PLTT_ID(tagIndex) + 14;
-    sStorage->wallpaperPalBits |= (1 << 16) << tagIndex;
-
-    // The below seems intended to have separately tracked
-    // the incoming wallpaper title's palette, but as they now
-    // share a palette tag, all colors (and fields in some cases)
-    // this is redundant along with the use of boxTitleAltPalOffset
-    tagIndex = IndexOfSpritePaletteTag(PALTAG_BOX_TITLE);
-    sStorage->boxTitleAltPalOffset = OBJ_PLTT_ID(tagIndex) + 14;
-    sStorage->wallpaperPalBits |= (1 << 16) << tagIndex;
+    sStorage->wallpaperPalBits |= ObjPaletteMask(tagIndex);
 
     StringCopyPadded(sStorage->boxTitleText, GetBoxNamePtr(boxId), 0, BOX_NAME_LENGTH);
     DrawTextWindowAndBufferTiles(sStorage->boxTitleText, sStorage->boxTitleTiles, 0, 0, 2);
@@ -5665,10 +5717,7 @@ static void CycleBoxTitleColor(void)
 {
     u8 boxId = StorageGetCurrentBox();
     u8 wallpaperId = GetBoxWallpaper(boxId);
-    if (sStorage->boxTitleCycleId == 0)
-        CpuCopy16(sBoxTitleColors[wallpaperId], &gPlttBufferUnfaded[sStorage->boxTitlePalOffset], PLTT_SIZEOF(2));
-    else
-        CpuCopy16(sBoxTitleColors[wallpaperId], &gPlttBufferUnfaded[sStorage->boxTitleAltPalOffset], PLTT_SIZEOF(2));
+    CpuCopy16(sBoxTitleColors[wallpaperId], &gPlttBufferUnfaded[sStorage->boxTitlePalOffset], PLTT_SIZEOF(2));
 }
 
 static s16 GetBoxTitleBaseX(const u8 *string)
@@ -7878,7 +7927,7 @@ static void CreateCursorSprites(void)
     if (spriteId != MAX_SPRITES)
     {
         sStorage->cursorSprite = &gSprites[spriteId];
-        sStorage->cursorSprite->oam.paletteNum = sStorage->cursorPalNums[sAutoActionOn];
+        SetSpritePaletteHandle(sStorage->cursorSprite, sStorage->cursorPalNums[sAutoActionOn]);
         sStorage->cursorSprite->oam.priority = 1;
         if (sIsMonBeingMoved)
             StartSpriteAnim(sStorage->cursorSprite, CURSOR_ANIM_FIST);
@@ -7916,7 +7965,7 @@ static void CreateCursorSprites(void)
 static void ToggleCursorAutoAction(void)
 {
     sAutoActionOn = !sAutoActionOn;
-    sStorage->cursorSprite->oam.paletteNum = sStorage->cursorPalNums[sAutoActionOn];
+    SetSpritePaletteHandle(sStorage->cursorSprite, sStorage->cursorPalNums[sAutoActionOn]);
 }
 
 static u8 GetCursorPosition(void)

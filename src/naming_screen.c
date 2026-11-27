@@ -1342,8 +1342,11 @@ static const u16 sPageSwapGfxTags[] = {
 
 static void SetPageSwapButtonGfx(u8 page, struct Sprite *text, struct Sprite *button)
 {
-    button->oam.paletteNum = IndexOfSpritePaletteTag(sPageSwapPalTags[page]);
+    SetSpritePaletteFromTag(button, sPageSwapPalTags[page]);
     text->sheetTileStart = GetSpriteTileStartByTag(sPageSwapGfxTags[page]);
+#ifdef PLATFORM_SDL2
+    SetSpriteSheetTileOffset(text, 0);
+#endif
     text->subspriteTableNum = page;
 }
 

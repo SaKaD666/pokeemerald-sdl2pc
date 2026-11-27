@@ -828,7 +828,7 @@ void FieldEffectScript_CallNative(u8 **script, u32 *val)
 void FieldEffectFreeGraphicsResources(struct Sprite *sprite)
 {
     u16 sheetTileStart = sprite->sheetTileStart;
-    u32 paletteNum = sprite->oam.paletteNum;
+    u8 paletteNum = GetSpritePaletteHandle(sprite);
     DestroySprite(sprite);
     FieldEffectFreeTilesIfUnused(sheetTileStart);
     FieldEffectFreePaletteIfUnused(paletteNum);
@@ -862,7 +862,7 @@ void FieldEffectFreePaletteIfUnused(u8 paletteNum)
     if (tag != TAG_NONE)
     {
         for (i = 0; i < MAX_SPRITES; i++)
-            if (gSprites[i].inUse && gSprites[i].oam.paletteNum == paletteNum)
+            if (gSprites[i].inUse && GetSpritePaletteHandle(&gSprites[i]) == paletteNum)
                 return;
         FreeSpritePaletteByTag(tag);
     }
@@ -943,7 +943,7 @@ u8 CreateMonSprite_PicBox(u16 species, s16 x, s16 y, u8 subpriority)
     if (spriteId >= MAX_SPRITES)
         return MAX_SPRITES;
 
-    PreservePaletteInWeather(gSprites[spriteId].oam.paletteNum + 0x10);
+    PreservePaletteInWeather(ObjPaletteBank(GetSpritePaletteHandle(&gSprites[spriteId])));
     return spriteId;
 }
 
@@ -954,17 +954,14 @@ u8 CreateMonSprite_FieldMove(u16 species, u32 otId, u32 personality, s16 x, s16 
     if (spriteId >= MAX_SPRITES)
         return MAX_SPRITES;
 
-    PreservePaletteInWeather(gSprites[spriteId].oam.paletteNum + 0x10);
+    PreservePaletteInWeather(ObjPaletteBank(GetSpritePaletteHandle(&gSprites[spriteId])));
     return spriteId;
 }
 
 void FreeResourcesAndDestroySprite(struct Sprite *sprite, u8 spriteId)
 {
     ResetPreservedPalettesInWeather();
-    if (sprite->oam.affineMode != ST_OAM_AFFINE_OFF)
-    {
-        FreeOamMatrix(sprite->oam.matrixNum);
-    }
+    FreeSpriteOamMatrix(sprite);
     FreeAndDestroyMonPicSprite(spriteId);
 }
 
@@ -3386,7 +3383,7 @@ u8 FldEff_RayquazaSpotlight(void)
 #endif
 
     sprite->oam.priority = 1;
-    sprite->oam.paletteNum = 4;
+    SetSpritePaletteHandle(sprite, 4);
     sprite->data[0] = 0;
     sprite->data[1] = 0;
     sprite->data[2] = 0;
@@ -3424,7 +3421,7 @@ u8 FldEff_NPCFlyOut(void)
 
     sprite = &gSprites[spriteId];
 
-    sprite->oam.paletteNum = 0;
+    SetSpritePaletteHandle(sprite, 0);
     sprite->oam.priority = 1;
     sprite->callback = SpriteCB_NPCFlyOut;
     sprite->data[1] = gFieldEffectArguments[0];
@@ -3608,7 +3605,7 @@ static u8 CreateFlyBirdSprite(void)
     if (spriteId == MAX_SPRITES)
         return MAX_SPRITES;
     sprite = &gSprites[spriteId];
-    sprite->oam.paletteNum = 0;
+    SetSpritePaletteHandle(sprite, 0);
     sprite->oam.priority = 1;
     sprite->callback = SpriteCB_FlyBirdLeaveBall;
     return spriteId;
@@ -3689,8 +3686,7 @@ static void SpriteCB_FlyBirdLeaveBall(struct Sprite *sprite)
         if (sprite->data[1] > 0x81)
         {
             sprite->sAnimCompleted++;
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
-            FreeOamMatrix(sprite->oam.matrixNum);
+            FreeSpriteOamMatrix(sprite);
             CalcCenterToCornerVec(sprite, sprite->oam.shape, sprite->oam.size, ST_OAM_AFFINE_OFF);
         }
     }
@@ -3759,8 +3755,7 @@ static void SpriteCB_FlyBirdReturnToBall(struct Sprite *sprite)
         if (sprite->data[3] >= 60)
         {
             sprite->sAnimCompleted++;
-            sprite->oam.affineMode = ST_OAM_AFFINE_OFF;
-            FreeOamMatrix(sprite->oam.matrixNum);
+            FreeSpriteOamMatrix(sprite);
             sprite->invisible = TRUE;
         }
     }
@@ -4142,7 +4137,7 @@ static void CreateDeoxysRockFragments(struct Sprite *sprite)
         {
             StartSpriteAnim(&gSprites[spriteId], i);
             gSprites[spriteId].data[0] = i;
-            gSprites[spriteId].oam.paletteNum = sprite->oam.paletteNum;
+            SetSpritePaletteHandle(&gSprites[spriteId], GetSpritePaletteHandle(sprite));
         }
     }
 }

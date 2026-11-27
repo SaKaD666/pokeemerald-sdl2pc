@@ -390,7 +390,12 @@ static void PrintTextInBerryTagScreen(u8 windowId, const u8 *text, u8 x, u8 y, s
 
 static void AddBerryTagTextToBg0(void)
 {
-    memcpy(GetBgTilemapBuffer(0), sBerryTag->tilemapBuffers[2], sizeof(sBerryTag->tilemapBuffers[2]));
+    void *tilemap = GetBgTilemapBuffer(0);
+
+    memcpy(tilemap, sBerryTag->tilemapBuffers[2], sizeof(sBerryTag->tilemapBuffers[2]));
+#ifdef PLATFORM_SDL2
+    InvalidateBgTilemapRamRange(tilemap, sizeof(sBerryTag->tilemapBuffers[2]));
+#endif
     FillWindowPixelBuffer(WIN_BERRY_TAG, PIXEL_FILL(15));
     PrintTextInBerryTagScreen(WIN_BERRY_TAG, gText_BerryTag, GetStringCenterAlignXOffset(FONT_NORMAL, gText_BerryTag, 0x40), 1, 0, 1);
     PutWindowTilemap(WIN_BERRY_TAG);

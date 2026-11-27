@@ -270,7 +270,7 @@ void EvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, bool8 canStopEvo, u
     sEvoStructPtr->preEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
 
     gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 1;
+    SetSpritePaletteHandle(&gSprites[id], 1);
     gSprites[id].invisible = TRUE;
 
     // postEvo sprite
@@ -284,7 +284,7 @@ void EvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, bool8 canStopEvo, u
     gMultiuseSpriteTemplate.affineAnims = gDummySpriteAffineAnimTable;
     sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
     gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 2;
+    SetSpritePaletteHandle(&gSprites[id], 2);
     gSprites[id].invisible = TRUE;
 
     LoadEvoSparkleSpriteAndPal();
@@ -363,7 +363,7 @@ static void CB2_EvolutionSceneLoadGraphics(void)
     sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
 
     gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 2;
+    SetSpritePaletteHandle(&gSprites[id], 2);
 
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_BG_ALL_ON | DISPCNT_OBJ_1D_MAP);
 
@@ -440,7 +440,7 @@ static void CB2_TradeEvolutionSceneLoadGraphics(void)
             sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
 
             gSprites[id].callback = SpriteCallbackDummy_2;
-            gSprites[id].oam.paletteNum = 2;
+            SetSpritePaletteHandle(&gSprites[id], 2);
             gMain.state++;
             LinkTradeDrawWindow();
         }
@@ -499,7 +499,7 @@ void TradeEvolutionScene(struct Pokemon *mon, u16 postEvoSpecies, u8 preEvoSprit
     sEvoStructPtr->postEvoSpriteId = id = CreateSprite(&gMultiuseSpriteTemplate, 120, 64, 30);
 
     gSprites[id].callback = SpriteCallbackDummy_2;
-    gSprites[id].oam.paletteNum = 2;
+    SetSpritePaletteHandle(&gSprites[id], 2);
     gSprites[id].invisible = TRUE;
 
     LoadEvoSparkleSpriteAndPal();
@@ -692,7 +692,7 @@ static void Task_EvolutionScene(u8 taskId)
         if (!gPaletteFade.active)
         {
             StartBgAnimation(FALSE);
-            sEvoGraphicsTaskId = EvolutionSparkles_SpiralUpward(17);
+            sEvoGraphicsTaskId = EvolutionSparkles_SpiralUpward(1);
             gTasks[taskId].tState++;
         }
         break;
@@ -733,6 +733,9 @@ static void Task_EvolutionScene(u8 taskId)
     case EVOSTATE_EVO_SOUND:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             PlaySE(SE_EXP);
             gTasks[taskId].tState++;
         }
@@ -831,6 +834,9 @@ static void Task_EvolutionScene(u8 taskId)
     case EVOSTATE_CANCEL:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             m4aMPlayAllStop();
             BeginNormalPaletteFade(0x6001C, 0, 0x10, 0, RGB_WHITE);
             gTasks[taskId].tState++;
@@ -1124,7 +1130,7 @@ static void Task_TradeEvolutionScene(u8 taskId)
         if (!gPaletteFade.active)
         {
             StartBgAnimation(TRUE);
-            var = gSprites[sEvoStructPtr->preEvoSpriteId].oam.paletteNum + 16;
+            var = GetSpritePaletteHandle(&gSprites[sEvoStructPtr->preEvoSpriteId]);
             sEvoGraphicsTaskId = EvolutionSparkles_SpiralUpward(var);
             gTasks[taskId].tState++;
             SetGpuReg(REG_OFFSET_BG3CNT, BGCNT_PRIORITY(3) | BGCNT_SCREENBASE(6));
@@ -1167,6 +1173,9 @@ static void Task_TradeEvolutionScene(u8 taskId)
     case T_EVOSTATE_EVO_SOUND:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             PlaySE(SE_EXP);
             gTasks[taskId].tState++;
         }
@@ -1236,8 +1245,11 @@ static void Task_TradeEvolutionScene(u8 taskId)
     case T_EVOSTATE_CANCEL:
         if (!gTasks[sEvoGraphicsTaskId].isActive)
         {
+#ifdef PLATFORM_SDL2
+            ReleaseEvolutionMatrices();
+#endif
             m4aMPlayAllStop();
-            BeginNormalPaletteFade((1 << (gSprites[sEvoStructPtr->preEvoSpriteId].oam.paletteNum + 16)) | (0x4001C), 0, 0x10, 0, RGB_WHITE);
+            BeginNormalPaletteFade(ObjPaletteMask(GetSpritePaletteHandle(&gSprites[sEvoStructPtr->preEvoSpriteId])) | (PaletteMask)0x4001C, 0, 0x10, 0, RGB_WHITE);
             gTasks[taskId].tState++;
         }
         break;
@@ -1337,12 +1349,25 @@ static void Task_TradeEvolutionScene(u8 taskId)
         case T_MVSTATE_SHOW_MOVE_SELECT:
             if (!gPaletteFade.active)
             {
+                const u8 backgrounds[] = {3, 1, 0};
+                u8 i;
+
+#ifdef PLATFORM_SDL2
+                if (IsDma3ManagerBusyWithBgCopy())
+                    return;
+                ClearScheduledBgCopiesToVram();
+#endif
                 if (gWirelessCommType)
                     DestroyWirelessStatusIndicatorSprite();
 
-                Free(GetBgTilemapBuffer(3));
-                Free(GetBgTilemapBuffer(1));
-                Free(GetBgTilemapBuffer(0));
+                for (i = 0; i < ARRAY_COUNT(backgrounds); i++)
+                {
+                    u8 bg = backgrounds[i];
+                    void *tilemap = GetBgTilemapBuffer(bg);
+
+                    UnsetBgTilemapBuffer(bg);
+                    Free(tilemap);
+                }
                 FreeAllWindowBuffers();
 
                 ShowSelectMovePokemonSummaryScreen(gPlayerParty, gTasks[taskId].tPartyId,

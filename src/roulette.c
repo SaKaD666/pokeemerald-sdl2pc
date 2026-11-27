@@ -1440,6 +1440,13 @@ static bool8 CanMoveSelectionInDir(s16 *selectionId, u8 dir)
     return FALSE;
 }
 
+static void SetRouletteSpriteFrame(u8 spriteIndex, u8 frame)
+{
+    struct Sprite *sprite = &gSprites[sRoulette->spriteIds[spriteIndex]];
+
+    SetSpriteSheetTileOffset(sprite, (*sprite->anims + frame)->type);
+}
+
 static void ProcessBetGridInput(u8 taskId)
 {
     u8 headerOffset = 0;
@@ -1461,18 +1468,12 @@ static void ProcessBetGridInput(u8 taskId)
 
         // Switch all the poke (column) headers to gray outlines
         for (i = 0; i < NUM_BOARD_POKES; i++)
-        {
-            gSprites[sRoulette->spriteIds[i + SPR_POKE_HEADERS]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[i + SPR_POKE_HEADERS]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[i + SPR_POKE_HEADERS]].anims)->type;
-        }
+            SetRouletteSpriteFrame(i + SPR_POKE_HEADERS, 0);
         // If the current selection is a column with at least 1 unhit space, fill in the header
         if ((u16)(gTasks[taskId].tSelectionId - 1) < COL_MAKUHITA && !(sRoulette->hitFlags & sGridSelections[gTasks[taskId].tSelectionId].flag))
         {
             headerOffset = gTasks[taskId].tSelectionId - 1;
-            gSprites[sRoulette->spriteIds[headerOffset + SPR_POKE_HEADERS]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[headerOffset + SPR_POKE_HEADERS]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[headerOffset + SPR_POKE_HEADERS]].anims + 1)->type;
+            SetRouletteSpriteFrame(headerOffset + SPR_POKE_HEADERS, 1);
         }
     }
 }
@@ -1901,11 +1902,7 @@ static void Task_TryPrintEndTurnMsg(u8 taskId)
     DrawGridBackground(SELECTION_NONE);
     gSprites[sRoulette->spriteIds[SPR_WIN_SLOT_CURSOR]].invisible = TRUE;
     for (i = 0; i < NUM_BOARD_POKES; i++)
-    {
-        gSprites[sRoulette->spriteIds[i + SPR_POKE_HEADERS]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[i + SPR_POKE_HEADERS]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[i + SPR_POKE_HEADERS]].anims)->type;
-    }
+        SetRouletteSpriteFrame(i + SPR_POKE_HEADERS, 0);
     if (gTasks[taskId].tCoins >= sRoulette->minBet)
     {
         if (gTasks[taskId].tBallNum == BALLS_PER_ROUND)
@@ -1983,30 +1980,43 @@ static void ExitRoulette(u8 taskId)
     gTasks[taskId].func = Task_ExitRoulette;
 }
 
+static void ReturnFromRoulette(void)
+{
+    SetVBlankCallback(NULL);
+#ifdef PORTABLE
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+    {
+        SetMainCallback2(ReturnFromRoulette);
+        return;
+    }
+#else
+    IsDma3ManagerBusyWithBgCopy();
+#endif
+    ClearScheduledBgCopiesToVram();
+#endif
+    gSpriteCoordOffsetX = gSpriteCoordOffsetY = 0;
+    ResetVramOamAndBgCntRegs();
+    ResetAllBgsCoordinates();
+    SetGpuReg(REG_OFFSET_BLDCNT, 0);
+    SetGpuReg(REG_OFFSET_BLDALPHA, 0);
+    SetGpuReg(REG_OFFSET_BLDY, 0);
+    FreeAllSpritePalettes();
+    ResetPaletteFade();
+    ResetSpriteData();
+    FreeRoulette();
+#ifdef PLATFORM_SDL2
+    SetFrameViewToGbaSize(FALSE);
+#endif
+    gFieldCallback = FieldCB_ContinueScriptHandleMusic;
+    SetMainCallback2(CB2_ReturnToField);
+}
+
 static void Task_ExitRoulette(u8 taskId)
 {
     if (UpdatePaletteFade() == 0)
     {
-        SetVBlankCallback(NULL);
-#ifdef PORTABLE
-        IsDma3ManagerBusyWithBgCopy();
-        ClearScheduledBgCopiesToVram();
-#endif
-        gSpriteCoordOffsetX = gSpriteCoordOffsetY = 0;
-        ResetVramOamAndBgCntRegs();
-        ResetAllBgsCoordinates();
-        SetGpuReg(REG_OFFSET_BLDCNT, 0);
-        SetGpuReg(REG_OFFSET_BLDALPHA, 0);
-        SetGpuReg(REG_OFFSET_BLDY, 0);
-        FreeAllSpritePalettes();
-        ResetPaletteFade();
-        ResetSpriteData();
-        FreeRoulette();
-#ifdef PLATFORM_SDL2
-        SetFrameViewToGbaSize(FALSE);
-#endif
-        gFieldCallback = FieldCB_ContinueScriptHandleMusic;
-        SetMainCallback2(CB2_ReturnToField);
+        ReturnFromRoulette();
         DestroyTask(taskId);
     }
 }
@@ -2184,16 +2194,16 @@ static void FlashSelectionOnWheel(u8 selectionId)
         // The specific color of the poke it references doesn't matter, because the icons of a poke share a palette
         // So it just uses the first sprite ID of each
         case COL_WYNAUT:
-            palOffset = PLTT_ID(gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_ORANGE_WYNAUT]].oam.paletteNum);
+            palOffset = PLTT_ID(GetSpritePaletteHandle(&gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_ORANGE_WYNAUT]]));
             break;
         case COL_AZURILL:
-            palOffset = PLTT_ID(gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_GREEN_AZURILL]].oam.paletteNum);
+            palOffset = PLTT_ID(GetSpritePaletteHandle(&gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_GREEN_AZURILL]]));
             break;
         case COL_SKITTY:
-            palOffset = PLTT_ID(gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_PURPLE_SKITTY]].oam.paletteNum);
+            palOffset = PLTT_ID(GetSpritePaletteHandle(&gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_PURPLE_SKITTY]]));
             break;
         case COL_MAKUHITA:
-            palOffset = PLTT_ID(gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_ORANGE_MAKUHITA]].oam.paletteNum);
+            palOffset = PLTT_ID(GetSpritePaletteHandle(&gSprites[sRoulette->spriteIds[SPR_WHEEL_ICON_ORANGE_MAKUHITA]]));
             break;
         }
         if (numSelected == 1)
@@ -3698,7 +3708,6 @@ static void SpriteCB_WheelIcon(struct Sprite *sprite)
 {
     s16 cos;
     s16 sin;
-    u32 matrixNum;
     s16 angle = sRoulette->wheelAngle + sprite->data[0];
     if (angle >= 360)
         angle -= 360;
@@ -3706,12 +3715,11 @@ static void SpriteCB_WheelIcon(struct Sprite *sprite)
     cos = Cos2(angle);
     sprite->x2 =  sin * sprite->data[1] >> 12;
     sprite->y2 = -cos * sprite->data[1] >> 12;
-    matrixNum = sprite->oam.matrixNum;
+    sprite->x2 =  sin * sprite->data[1] >> 12;
+    sprite->y2 = -cos * sprite->data[1] >> 12;
     sin /= 16;
-    gOamMatrices[matrixNum].d = cos /= 16;
-    gOamMatrices[matrixNum].a = cos;
-    gOamMatrices[matrixNum].b = sin;
-    gOamMatrices[matrixNum].c = -sin;
+    cos /= 16;
+    SetOamMatrix(GetSpriteMatrixHandle(sprite), cos, sin, -sin, cos);
 }
 
 static void CreateInterfaceSprites(void)
@@ -3761,9 +3769,7 @@ static void SetCreditDigits(u16 num)
         if (digit > 0 || printZero || i == MAX_COIN_DIGITS - 1)
         {
             gSprites[sRoulette->spriteIds[i + SPR_CREDIT_DIGITS]].invisible = FALSE;
-            gSprites[sRoulette->spriteIds[i + SPR_CREDIT_DIGITS]].oam.tileNum =
-                gSprites[sRoulette->spriteIds[i + SPR_CREDIT_DIGITS]].sheetTileStart
-                + (*gSprites[sRoulette->spriteIds[i + SPR_CREDIT_DIGITS]].anims + digit)->type;
+            SetRouletteSpriteFrame(i + SPR_CREDIT_DIGITS, digit);
             printZero = TRUE;
         }
         num = num % d;
@@ -3803,7 +3809,7 @@ static void SetMultiplierSprite(u8 selectionId)
 {
     struct Sprite *sprite = &gSprites[sRoulette->spriteIds[SPR_MULTIPLIER]];
     sprite->animCmdIndex = GetMultiplierAnimId(selectionId);
-    sprite->oam.tileNum = sprite->sheetTileStart + (*sprite->anims + sprite->animCmdIndex)->type;
+    SetRouletteSpriteFrame(SPR_MULTIPLIER, sprite->animCmdIndex);
 }
 
 static void SetBallCounterNumLeft(u8 numBalls)
@@ -3818,44 +3824,28 @@ static void SetBallCounterNumLeft(u8 numBalls)
         for (i = 0; i < BALLS_PER_ROUND / 2; i++)
         {
             gSprites[sRoulette->spriteIds[i + SPR_BALL_COUNTER]].invisible = FALSE;
-            gSprites[sRoulette->spriteIds[i + SPR_BALL_COUNTER]].oam.tileNum =
-                gSprites[sRoulette->spriteIds[i + SPR_BALL_COUNTER]].sheetTileStart
-                + (*gSprites[sRoulette->spriteIds[i + SPR_BALL_COUNTER]].anims)->type;
+            SetRouletteSpriteFrame(i + SPR_BALL_COUNTER, 0);
         }
         break;
     case 5:
-        gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_3]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_3]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_3]].anims + t + 1)->type;
+        SetRouletteSpriteFrame(SPR_BALL_COUNTER_3, t + 1);
         break;
     case 4:
-        gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_3]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_3]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_3]].anims + t + 2)->type;
+        SetRouletteSpriteFrame(SPR_BALL_COUNTER_3, t + 2);
         break;
     case 3:
-        gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_2]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_2]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_2]].anims + t + 1)->type;
+        SetRouletteSpriteFrame(SPR_BALL_COUNTER_2, t + 1);
         break;
     case 2:
-        gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_2]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_2]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_2]].anims + t + 2)->type;
+        SetRouletteSpriteFrame(SPR_BALL_COUNTER_2, t + 2);
         break;
     case 1:
-        gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_1]].oam.tileNum =
-            gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_1]].sheetTileStart
-            + (*gSprites[sRoulette->spriteIds[SPR_BALL_COUNTER_1]].anims + t + 1)->type;
+        SetRouletteSpriteFrame(SPR_BALL_COUNTER_1, t + 1);
         break;
     case 0:
     default:
         for (i = 0; i < BALLS_PER_ROUND / 2; i++)
-        {
-            gSprites[sRoulette->spriteIds[i + SPR_BALL_COUNTER]].oam.tileNum =
-                gSprites[sRoulette->spriteIds[i + SPR_BALL_COUNTER]].sheetTileStart
-                + (*gSprites[sRoulette->spriteIds[i + SPR_BALL_COUNTER]].anims + t + 2)->type;
-        }
+            SetRouletteSpriteFrame(i + SPR_BALL_COUNTER, t + 2);
     }
 }
 
@@ -3885,12 +3875,9 @@ static void CreateWheelCenterSprite(void)
 
 static void SpriteCB_WheelCenter(struct Sprite *sprite)
 {
-    u32 matrixNum = sprite->oam.matrixNum;
-    struct OamMatrix *matrix = &gOamMatrices[0];
-    matrix[matrixNum].d = sRoulette->wheelRotation.a;
-    matrix[matrixNum].a = sRoulette->wheelRotation.a;
-    matrix[matrixNum].b = sRoulette->wheelRotation.b;
-    matrix[matrixNum].c = sRoulette->wheelRotation.c;
+    const struct OamMatrix *matrix = &sRoulette->wheelRotation;
+
+    SetOamMatrix(GetSpriteMatrixHandle(sprite), matrix->a, matrix->b, matrix->c, matrix->a);
 }
 
 static void CreateWheelBallSprites(void)
@@ -4663,7 +4650,7 @@ static void SpriteCB_Taillow_FlyAway(struct Sprite *sprite)
         sprite->animPaused = TRUE;
         m4aSongNumStop(SE_TAILLOW_WING_FLAP);
         DestroySprite(sprite);
-        FreeOamMatrix(gSprites[sRoulette->spriteIds[SPR_CLEAR_MON_SHADOW_1]].oam.matrixNum);
+        FreeSpriteOamMatrix(&gSprites[sRoulette->spriteIds[SPR_CLEAR_MON_SHADOW_1]]);
         DestroySprite(&gSprites[sRoulette->spriteIds[SPR_CLEAR_MON_SHADOW_1]]);
     }
 }

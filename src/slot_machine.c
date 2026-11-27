@@ -1232,7 +1232,7 @@ static void SlotMachineSetup_InitPalsSpritesTasks(void)
 {
     ResetPaletteFade();
     ResetSpriteData();
-    gOamLimit = 0x80;
+    gOamLimit = OAM_ENTRY_COUNT;
     FreeAllSpritePalettes();
     ResetTasks();
 }
@@ -1754,7 +1754,12 @@ static bool8 SlotTask_FreeDataStructures(struct Task *task)
     {
         MainCallback exitCallback = sSlotMachine->prevMainCb;
 
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return FALSE;
+#else
         IsDma3ManagerBusyWithBgCopy();
+#endif
         SetVBlankCallback(NULL);
         ClearScheduledBgCopiesToVram();
         FreeAllWindowBuffers();
@@ -4589,7 +4594,7 @@ static u8 IsReelTimeSmokeAnimFinished(void)
 static void DestroyReelTimeSmokeSprite(void)
 {
     struct Sprite *sprite = &gSprites[sSlotMachine->reelTimeSmokeSpriteId];
-    FreeOamMatrix(sprite->oam.matrixNum);
+    FreeSpriteOamMatrix(sprite);
     DestroySprite(sprite);
 }
 
@@ -4617,7 +4622,7 @@ static void SpriteCB_PikaPowerBolt(struct Sprite *sprite)
 static void DestroyPikaPowerBoltSprite(u8 spriteId)
 {
     struct Sprite *sprite = &gSprites[spriteId];
-    FreeOamMatrix(sprite->oam.matrixNum);
+    FreeSpriteOamMatrix(sprite);
     DestroySprite(sprite);
 }
 

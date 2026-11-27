@@ -1336,7 +1336,12 @@ static void Task_EndAfterFadeScreen(u8 taskId)
         MainCallback exitCallback = sRayScene->exitCallback;
         u8 bg;
 
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#else
         IsDma3ManagerBusyWithBgCopy();
+#endif
         SetVBlankHBlankCallbacksToNull();
         ScanlineEffect_Stop();
         ClearScheduledBgCopiesToVram();
@@ -1493,11 +1498,11 @@ static void SpriteCB_DuoFightPre_Groudon(struct Sprite *sprite)
 static u8 DuoFightPre_CreateKyogreSprites(void)
 {
     u8 spriteId;
-    s16 *data;
+    u16 *data;
 
     spriteId = CreateSprite(&sSpriteTemplate_DuoFightPre_Kyogre, 136, 96, 1);
     gSprites[spriteId].callback = SpriteCB_DuoFightPre_Kyogre;
-    data = gSprites[spriteId].data;
+    data = (u16 *)gSprites[spriteId].data;
 
     data[0]  = CreateSprite(&sSpriteTemplate_DuoFightPre_Kyogre, 168,  96, 1) << 8;
     data[0] |= CreateSprite(&sSpriteTemplate_DuoFightPre_Kyogre, 136, 112, 1);
@@ -1524,14 +1529,14 @@ static u8 DuoFightPre_CreateKyogreSprites(void)
 
 static void SpriteCB_DuoFightPre_Kyogre(struct Sprite *sprite)
 {
-    s16 *data = sprite->data;
+    u16 *data = (u16 *)sprite->data;
     data[5]++;
     data[5] &= 0x1F;
     if (data[5] == 0 && sprite->x != 152)
     {
         sprite->x++;
-        gSprites[sprite->data[0] >> 8].x++;
-        gSprites[sprite->data[0] & 0xFF].x++;
+        gSprites[data[0] >> 8].x++;
+        gSprites[data[0] & 0xFF].x++;
         gSprites[data[1] >> 8].x++;
         gSprites[data[1] & 0xFF].x++;
         gSprites[data[2] >> 8].x++;
@@ -1597,9 +1602,6 @@ static void InitDuoFightSceneBgs(void)
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     ShowBg(1);
@@ -1607,12 +1609,14 @@ static void InitDuoFightSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadDuoFightSceneGfx(void)
+static void QueueDuoFightSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(0, gRaySceneDuoFight_Clouds_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadDuoFightSceneGfx(void)
+{
     LZDecompressWram(gRaySceneDuoFight_Clouds2_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneDuoFight_Clouds1_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneDuoFight_Clouds3_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -1627,12 +1631,34 @@ static void LoadDuoFightSceneGfx(void)
     LoadCompressedSpritePalette(&sSpritePal_DuoFight_Kyogre);
 }
 
+static void Task_FinishDuoFightSetup(u8 taskId);
+
 static void Task_DuoFightAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     ScanlineEffect_Clear();
     InitDuoFightSceneBgs();
+    QueueDuoFightSceneTiles();
+    Task_FinishDuoFightSetup(taskId);
+}
+
+static void Task_FinishDuoFightSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishDuoFightSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadDuoFightSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
     CpuFastFill16(0, gScanlineEffectRegBuffers, sizeof(gScanlineEffectRegBuffers));
     ScanlineEffect_SetParams(sScanlineParams_DuoFight_Clouds);
     tTimer = 0;
@@ -1896,11 +1922,11 @@ static void DuoFight_SlideGroudonDown(struct Sprite *sprite)
 static u8 DuoFight_CreateKyogreSprites(void)
 {
     u8 spriteId;
-    s16 *data;
+    u16 *data;
 
     spriteId = CreateSprite(&sSpriteTemplate_DuoFight_Kyogre, 126, 96, 1);
     gSprites[spriteId].callback = SpriteCB_DuoFight_Kyogre;
-    data = gSprites[spriteId].data;
+    data = (u16 *)gSprites[spriteId].data;
 
     data[0] = CreateSprite(&sSpriteTemplate_DuoFight_Kyogre, 158, 96, 1) << 8;
     data[0] |= CreateSprite(&sSpriteTemplate_DuoFight_Kyogre, 126, 112, 1);
@@ -1927,14 +1953,14 @@ static u8 DuoFight_CreateKyogreSprites(void)
 
 static void SpriteCB_DuoFight_Kyogre(struct Sprite *sprite)
 {
-    s16 *data = sprite->data;
+    u16 *data = (u16 *)sprite->data;
     data[5]++;
     data[5] &= 0xF;
     if (!(data[5] & 7) && sprite->x != 152)
     {
         sprite->x++;
-        gSprites[sprite->data[0] >> 8].x++;
-        gSprites[sprite->data[0] & 0xFF].x++;
+        gSprites[data[0] >> 8].x++;
+        gSprites[data[0] & 0xFF].x++;
         gSprites[data[1] >> 8].x++;
         gSprites[data[1] & 0xFF].x++;
         gSprites[data[2] >> 8].x++;
@@ -1988,12 +2014,12 @@ static void SpriteCB_DuoFight_Kyogre(struct Sprite *sprite)
 
 static void DuoFight_SlideKyogreDown(struct Sprite *sprite)
 {
-    s16 *data = sprite->data;
+    const u16 *data = (const u16 *)sprite->data;
     if (sprite->y <= GBA_DISPLAY_HEIGHT)
     {
         sprite->y += 8;
-        gSprites[sprite->data[0] >> 8].y += 8;
-        gSprites[sprite->data[0] & 0xFF].y += 8;
+        gSprites[data[0] >> 8].y += 8;
+        gSprites[data[0] & 0xFF].y += 8;
         gSprites[data[1] >> 8].y += 8;
         gSprites[data[1] & 0xFF].y += 8;
         gSprites[data[2] >> 8].y += 8;
@@ -2034,9 +2060,6 @@ static void InitTakesFlightSceneBgs(void)
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     ShowBg(1);
@@ -2044,14 +2067,16 @@ static void InitTakesFlightSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadTakesFlightSceneGfx(void)
+static void QueueTakesFlightSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(0, gRaySceneDuoFight_Clouds_Gfx, 0, 0, 0); // Re-uses clouds from previous scene
     DecompressAndCopyTileDataToVram(1, gRaySceneTakesFlight_Bg_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(2, gRaySceneTakesFlight_Rayquaza_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadTakesFlightSceneGfx(void)
+{
     LZDecompressWram(gRaySceneDuoFight_Clouds2_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneTakesFlight_Bg_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneTakesFlight_Rayquaza_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -2060,12 +2085,34 @@ static void LoadTakesFlightSceneGfx(void)
     LoadCompressedSpritePalette(&sSpritePal_TakesFlight_Smoke);
 }
 
+static void Task_FinishRayTakesFlightSetup(u8 taskId);
+
 static void Task_RayTakesFlightAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     PlayNewMapMusic(MUS_RAYQUAZA_APPEARS);
     InitTakesFlightSceneBgs();
+    QueueTakesFlightSceneTiles();
+    Task_FinishRayTakesFlightSetup(taskId);
+}
+
+static void Task_FinishRayTakesFlightSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayTakesFlightSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadTakesFlightSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_OBJ | BLDCNT_TGT2_BG1 | BLDCNT_EFFECT_BLEND);
     SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(8, 8));
     BlendPalettes(PALETTES_ALL, 16, 0);
@@ -2235,10 +2282,6 @@ static void InitDescendsSceneBgs(void)
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     SetBgTilemapBuffer(3, sRayScene->tilemapBuffers[3]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
-    ScheduleBgCopyTilemapToVram(3);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP);
     ShowBg(0);
     ShowBg(1);
@@ -2247,13 +2290,15 @@ static void InitDescendsSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadDescendsSceneGfx(void)
+static void QueueDescendsSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(0, gRaySceneDescends_Light_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(1, gRaySceneDescends_Bg_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadDescendsSceneGfx(void)
+{
     LZDecompressWram(gRaySceneDescends_Light_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneDescends_Bg_Tilemap, sRayScene->tilemapBuffers[3]);
     CpuFastFill16(0, sRayScene->tilemapBuffers[2], BG_SCREEN_SIZE);
@@ -2315,11 +2360,34 @@ static void VBlankCB_RayDescends(void)
 #define tState data[0]
 #define tTimer data[1]
 
+static void Task_FinishRayDescendsSetup(u8 taskId);
+
 static void Task_RayDescendsAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     InitDescendsSceneBgs();
+    QueueDescendsSceneTiles();
+    Task_FinishRayDescendsSetup(taskId);
+}
+
+static void Task_FinishRayDescendsSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayDescendsSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadDescendsSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
+    ScheduleBgCopyTilemapToVram(3);
     SetGpuRegBits(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3 | BLDCNT_TGT2_OBJ | BLDCNT_EFFECT_BLEND);
     SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(0, 16));
     BlendPalettes(PALETTES_ALL, 0x10, RGB_BLACK);
@@ -2503,10 +2571,6 @@ static void InitChargesSceneBgs(void)
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     SetBgTilemapBuffer(3, sRayScene->tilemapBuffers[3]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
-    ScheduleBgCopyTilemapToVram(3);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_WIN0_ON);
     ShowBg(0);
     ShowBg(1);
@@ -2515,14 +2579,16 @@ static void InitChargesSceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadChargesSceneGfx(void)
+static void QueueChargesSceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(1, gRaySceneCharges_Rayquaza_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(2, gRaySceneCharges_Streaks_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(3, gRaySceneCharges_Bg_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadChargesSceneGfx(void)
+{
     LZDecompressWram(gRaySceneCharges_Orbs_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneCharges_Rayquaza_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneCharges_Streaks_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -2535,11 +2601,34 @@ static void LoadChargesSceneGfx(void)
 #define tRayquazaTaskId data[2]
 #define tSoundTimer     data[3]
 
+static void Task_FinishRayChargesSetup(u8 taskId);
+
 static void Task_RayChargesAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     InitChargesSceneBgs();
+    QueueChargesSceneTiles();
+    Task_FinishRayChargesSetup(taskId);
+}
+
+static void Task_FinishRayChargesSetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayChargesSetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadChargesSceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
+    ScheduleBgCopyTilemapToVram(3);
     SetWindowsHideVertBorders();
     BlendPalettes(PALETTES_ALL, 0x10, RGB_BLACK);
     SetVBlankCallback(VBlankCB_RayquazaScene);
@@ -2690,9 +2779,6 @@ static void InitChasesAwaySceneBgs(void)
     SetBgTilemapBuffer(1, sRayScene->tilemapBuffers[1]);
     SetBgTilemapBuffer(2, sRayScene->tilemapBuffers[2]);
     ResetAllBgsCoordinates();
-    ScheduleBgCopyTilemapToVram(0);
-    ScheduleBgCopyTilemapToVram(1);
-    ScheduleBgCopyTilemapToVram(2);
     SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_WIN0_ON);
     ShowBg(0);
     ShowBg(1);
@@ -2700,13 +2786,15 @@ static void InitChasesAwaySceneBgs(void)
     SetGpuReg(REG_OFFSET_BLDCNT, 0);
 }
 
-static void LoadChasesAwaySceneGfx(void)
+static void QueueChasesAwaySceneTiles(void)
 {
     ResetTempTileDataBuffers();
     DecompressAndCopyTileDataToVram(2, gRaySceneChasesAway_Ring_Gfx, 0, 0, 0);
     DecompressAndCopyTileDataToVram(0, gRaySceneChasesAway_Light_Gfx, 0, 0, 0);
-    while (FreeTempTileDataBuffersIfPossible())
-        ;
+}
+
+static void LoadChasesAwaySceneGfx(void)
+{
     LZDecompressWram(gRaySceneChasesAway_Bg_Tilemap, sRayScene->tilemapBuffers[1]);
     LZDecompressWram(gRaySceneChasesAway_Light_Tilemap, sRayScene->tilemapBuffers[0]);
     LZDecompressWram(gRaySceneChasesAway_Ring_Tilemap, sRayScene->tilemapBuffers[2]);
@@ -2727,11 +2815,33 @@ static void LoadChasesAwaySceneGfx(void)
 #define tTimer    data[1]
 #define tBgTaskId data[2]
 
+static void Task_FinishRayChasesAwaySetup(u8 taskId);
+
 static void Task_RayChasesAwayAnim(u8 taskId)
 {
-    s16 *data = gTasks[taskId].data;
     InitChasesAwaySceneBgs();
+    QueueChasesAwaySceneTiles();
+    Task_FinishRayChasesAwaySetup(taskId);
+}
+
+static void Task_FinishRayChasesAwaySetup(u8 taskId)
+{
+    s16 *data = gTasks[taskId].data;
+
+#ifdef PLATFORM_SDL2
+    if (FreeTempTileDataBuffersIfPossible())
+    {
+        gTasks[taskId].func = Task_FinishRayChasesAwaySetup;
+        return;
+    }
+#else
+    while (FreeTempTileDataBuffersIfPossible())
+        ;
+#endif
     LoadChasesAwaySceneGfx();
+    ScheduleBgCopyTilemapToVram(0);
+    ScheduleBgCopyTilemapToVram(1);
+    ScheduleBgCopyTilemapToVram(2);
     SetWindowsHideVertBorders();
     ClearGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_BG2_ON);
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_EFFECT_BLEND);

@@ -65,7 +65,7 @@ struct HofGfx
     u8 tilemap2[0x1000];
 };
 
-static EWRAM_DATA u32 sHofFadePalettes = 0;
+static EWRAM_DATA PaletteMask sHofFadePalettes = 0;
 static EWRAM_DATA struct HallofFameTeam *sHofMonPtr = NULL;
 static EWRAM_DATA struct HofGfx *sHofGfxPtr = NULL;
 
@@ -528,7 +528,9 @@ static void ReleaseHofDisplay(void)
 {
     SetVBlankCallback(NULL);
 #ifdef PORTABLE
+#ifndef PLATFORM_SDL2
     IsDma3ManagerBusyWithBgCopy();
+#endif
     ClearScheduledBgCopiesToVram();
 #endif
     FreeAllWindowBuffers();
@@ -539,6 +541,10 @@ static void ReleaseHofDisplay(void)
 
 static void Task_Hof_TrySaveData(u8 taskId)
 {
+#ifdef PLATFORM_SDL2
+    if (IsDma3ManagerBusyWithBgCopy())
+        return;
+#endif
     gGameContinueCallback = CB2_DoHallOfFameScreenDontSaveData;
     if (TrySavingData(SAVE_HALL_OF_FAME) == SAVE_STATUS_ERROR && gDamagedSaveSectors != 0)
     {
@@ -637,7 +643,7 @@ static void Task_Hof_TryDisplayAnotherMon(u8 taskId)
     }
     else
     {
-        sHofFadePalettes |= (0x10000 << gSprites[gTasks[taskId].tMonSpriteId(currPokeID)].oam.paletteNum);
+        sHofFadePalettes |= ObjPaletteMask(GetSpritePaletteHandle(&gSprites[gTasks[taskId].tMonSpriteId(currPokeID)]));
         if (gTasks[taskId].tDisplayedMonId < PARTY_SIZE - 1 && currMon[1].species != SPECIES_NONE) // there is another Pokémon to display
         {
             gTasks[taskId].tDisplayedMonId++;
@@ -766,12 +772,17 @@ static void Task_Hof_HandleExit(u8 taskId)
     {
         s32 i;
 
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#endif
+
         for (i = 0; i < PARTY_SIZE; i++)
         {
             u8 spriteId = gTasks[taskId].tMonSpriteId(i);
             if (spriteId != SPRITE_NONE)
             {
-                FreeOamMatrix(gSprites[spriteId].oam.matrixNum);
+                FreeSpriteOamMatrix(&gSprites[spriteId]);
                 FreeAndDestroyMonPicSprite(spriteId);
             }
         }
@@ -992,7 +1003,7 @@ static void Task_HofPC_PrintMonInfo(u8 taskId)
 
     currMonID = gTasks[taskId].tMonSpriteId(gTasks[taskId].tCurrMonId);
     gSprites[currMonID].oam.priority = 0;
-    sHofFadePalettes = (0x10000 << gSprites[currMonID].oam.paletteNum) ^ PALETTES_OBJECTS;
+    sHofFadePalettes = PALETTES_OBJECTS_FULL & ~ObjPaletteMask(GetSpritePaletteHandle(&gSprites[currMonID]));
     BlendPalettesUnfaded(sHofFadePalettes, 0xC, RGB(16, 29, 24));
 
     currMon = &savedTeams->mon[gTasks[taskId].tCurrMonId];
@@ -1075,6 +1086,11 @@ static void Task_HofPC_HandleExit(u8 taskId)
     if (!IsComputerScreenCloseEffectActive())
     {
         u8 i;
+
+#ifdef PLATFORM_SDL2
+        if (IsDma3ManagerBusyWithBgCopy())
+            return;
+#endif
 
         for (i = 0; i < PARTY_SIZE; i++)
         {
@@ -1490,6 +1506,7 @@ static void Task_DoDomeConfetti(u8 taskId)
             DestroyTask(taskId);
             gSpecialVar_0x8004 = 0;
             gSpecialVar_0x8005 = 0xFFFF;
+            return;
         }
         LoadCompressedSpriteSheet(sSpriteSheet_Confetti);
         LoadCompressedSpritePalette(sSpritePalette_Confetti);

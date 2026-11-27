@@ -492,7 +492,7 @@ static void CreateCeilingCrumbleSprites(void)
         // These sprites use color index 11 from the player's sprite palette. This probably wasn't intentional.
         // The palettes for Brendan and May have different shades of green at this index, so the color of these sprites changes
         // depending on the player's gender (and neither shade of green particularly fits a crumbling yellow/brown ceiling).
-        gSprites[spriteId].oam.paletteNum = PALSLOT_PLAYER;
+        SetSpritePaletteHandle(&gSprites[spriteId], PALSLOT_PLAYER);
         gSprites[spriteId].sIndex = i;
     }
     for (i = 0; i < ARRAY_COUNT(sCeilingCrumblePositions); i++)
@@ -504,7 +504,7 @@ static void CreateCeilingCrumbleSprites(void)
             continue;
         }
         gSprites[spriteId].oam.priority = 0;
-        gSprites[spriteId].oam.paletteNum = PALSLOT_PLAYER;
+        SetSpritePaletteHandle(&gSprites[spriteId], PALSLOT_PLAYER);
         gSprites[spriteId].sIndex = i;
     }
 }

@@ -1092,8 +1092,8 @@ u8 AddScrollIndicatorArrowPair(const struct ScrollArrowsTemplate *arrowInfo, u16
 
     if (arrowInfo->palTag == TAG_NONE)
     {
-        gSprites[data->topSpriteId].oam.paletteNum = arrowInfo->palNum;
-        gSprites[data->bottomSpriteId].oam.paletteNum = arrowInfo->palNum;
+        SetSpritePaletteHandle(&gSprites[data->topSpriteId], arrowInfo->palNum);
+        SetSpritePaletteHandle(&gSprites[data->bottomSpriteId], arrowInfo->palNum);
     }
 
     return taskId;
@@ -1345,7 +1345,7 @@ static u8 ListMenuAddRedOutlineCursorObject(struct CursorStruct *cursor)
 
     if (cursor->palTag == TAG_NONE)
     {
-        gSprites[data->spriteId].oam.paletteNum = cursor->palNum;
+        SetSpritePaletteHandle(&gSprites[data->spriteId], cursor->palNum);
     }
 
     return taskId;
@@ -1425,7 +1425,7 @@ static u8 ListMenuAddRedArrowCursorObject(struct CursorStruct *cursor)
 
     if (cursor->palTag == TAG_NONE)
     {
-        gSprites[data->spriteId].oam.paletteNum = cursor->palNum;
+        SetSpritePaletteHandle(&gSprites[data->spriteId], cursor->palNum);
     }
 
     return taskId;
