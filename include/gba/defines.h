@@ -26,9 +26,18 @@
 #define ALIGNED(n) __attribute__((aligned(n)))
 
 #define BG_PLTT_SIZE  0x200
-#define OBJ_PLTT      (PLTT + BG_PLTT_SIZE)
 #define OBJ_PLTT_SIZE 0x200
-#define PLTT_SIZE     (BG_PLTT_SIZE + OBJ_PLTT_SIZE)
+
+#ifdef PLATFORM_SDL2
+#define BG_PLTT_CAPACITY  (2 * BG_PLTT_SIZE)
+#define OBJ_PLTT_CAPACITY (2 * OBJ_PLTT_SIZE)
+#else
+#define BG_PLTT_CAPACITY  BG_PLTT_SIZE
+#define OBJ_PLTT_CAPACITY OBJ_PLTT_SIZE
+#endif
+
+#define OBJ_PLTT  (PLTT + BG_PLTT_CAPACITY)
+#define PLTT_SIZE (BG_PLTT_CAPACITY + OBJ_PLTT_CAPACITY)
 
 #ifndef PORTABLE
 #define SOUND_INFO_PTR (*(struct SoundInfo **)0x3007FF0)

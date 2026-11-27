@@ -590,7 +590,7 @@ static void DrawSprites(struct scanlineData* scanline, uint16_t vcount, bool win
             for (int local_x = -half_width; local_x <= half_width; local_x++)
             {
                 uint8_t *tiledata = (uint8_t *)objtiles;
-                uint16_t *palette = (uint16_t *)(PLTT + 0x200);
+                uint16_t *palette = (uint16_t *)OBJ_PLTT;
                 int local_mosaicX;
                 int tex_x;
                 int tex_y;

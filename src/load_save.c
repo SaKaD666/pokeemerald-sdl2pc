@@ -4,6 +4,10 @@
 #include "item.h"
 #include "load_save.h"
 #include "main.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#include "menu.h"
+#endif
 #include "overworld.h"
 #include "pokemon.h"
 #include "pokemon_storage_system.h"
@@ -95,6 +99,11 @@ void MoveSaveBlocks_ResetHeap(void)
     gMain.vblankCallback = NULL;
     gMain.hblankCallback = NULL;
     gTrainerHillVBlankCounter = NULL;
+#ifdef PLATFORM_SDL2
+    ClearDma3Requests();
+    ClearScheduledBgCopiesToVram();
+    ResetTempTileDataBuffers();
+#endif
 
     saveBlock2Copy = (struct SaveBlock2 *)(gHeap);
     saveBlock1Copy = (struct SaveBlock1 *)(gHeap + sizeof(struct SaveBlock2));

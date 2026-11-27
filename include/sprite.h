@@ -9,6 +9,7 @@
 #endif
 #define SPRITE_NONE 0xFF
 #define TAG_NONE 0xFFFF
+#define SPRITE_TILE_NONE 0xFFFF
 
 // Given to SetSpriteMatrixAnchor to skip anchoring one of the coords.
 #define NO_ANCHOR 0x800

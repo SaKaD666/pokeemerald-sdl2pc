@@ -128,7 +128,6 @@ void TransferPlttBuffer(void)
 u8 UpdatePaletteFade(void)
 {
     u8 result;
-    u8 dummy = 0;
 
     if (sPlttBufferTransferPending)
         return PALETTE_FADE_STATUS_LOADING;
@@ -140,7 +139,7 @@ u8 UpdatePaletteFade(void)
     else
         result = UpdateHardwarePaletteFade();
 
-    sPlttBufferTransferPending = gPaletteFade.multipurpose1 | dummy;
+    sPlttBufferTransferPending = (gPaletteFade.multipurpose1 != 0);
 
     return result;
 }
@@ -167,7 +166,7 @@ static void ReadPlttIntoBuffers(void)
     }
 }
 
-bool8 BeginNormalPaletteFade(u32 selectedPalettes, s8 delay, u8 startY, u8 targetY, u16 blendColor)
+bool8 BeginNormalPaletteFade(PaletteMask selectedPalettes, s8 delay, u8 startY, u8 targetY, u16 blendColor)
 {
     u8 temp;
     u16 color = blendColor;
@@ -186,7 +185,7 @@ bool8 BeginNormalPaletteFade(u32 selectedPalettes, s8 delay, u8 startY, u8 targe
             delay = 0;
         }
 
-        gPaletteFade_selectedPalettes = selectedPalettes;
+        gPaletteFade_selectedPalettes = selectedPalettes == PALETTES_ALL ? PALETTES_ALL_FULL : selectedPalettes;
         gPaletteFade.delayCounter = delay;
         gPaletteFade_delay = delay;
         gPaletteFade.y = startY;
@@ -214,7 +213,7 @@ bool8 BeginNormalPaletteFade(u32 selectedPalettes, s8 delay, u8 startY, u8 targe
     }
 }
 
-static bool8 UNUSED BeginPlttFade(u32 selectedPalettes, u8 delay, u8 startY, u8 targetY, u16 blendColor)
+static bool8 UNUSED BeginPlttFade(PaletteMask selectedPalettes, u8 delay, u8 startY, u8 targetY, u16 blendColor)
 {
     ReadPlttIntoBuffers();
     return BeginNormalPaletteFade(selectedPalettes, delay, startY, targetY, blendColor);
@@ -296,7 +295,7 @@ static void PaletteStruct_Copy(struct PaletteStruct *palStruct, u32 *unkFlags)
 
 static void PaletteStruct_Blend(struct PaletteStruct *palStruct, u32 *unkFlags)
 {
-    if (gPaletteFade.active && ((1 << (palStruct->baseDestOffset >> 4)) & gPaletteFade_selectedPalettes))
+    if (gPaletteFade.active && ((1u << (palStruct->baseDestOffset >> 4)) & gPaletteFade_selectedPalettes))
     {
         if (!palStruct->template->pst_field_8_0)
         {
@@ -420,8 +419,7 @@ static u8 PaletteStruct_GetPalNum(u16 id)
 
 static u8 UpdateNormalPaletteFade(void)
 {
-    u16 paletteOffset;
-    u16 selectedPalettes;
+    PaletteMask layerMask;
 
     if (!gPaletteFade.active)
         return PALETTE_FADE_STATUS_DONE;
@@ -442,29 +440,8 @@ static u8 UpdateNormalPaletteFade(void)
             gPaletteFade.delayCounter = 0;
         }
 
-        paletteOffset = 0;
-
-        if (!gPaletteFade.objPaletteToggle)
-        {
-            selectedPalettes = gPaletteFade_selectedPalettes;
-        }
-        else
-        {
-            selectedPalettes = gPaletteFade_selectedPalettes >> 16;
-            paletteOffset = OBJ_PLTT_OFFSET;
-        }
-
-        while (selectedPalettes)
-        {
-            if (selectedPalettes & 1)
-                BlendPalette(
-                    paletteOffset,
-                    16,
-                    gPaletteFade.y,
-                    gPaletteFade.blendColor);
-            selectedPalettes >>= 1;
-            paletteOffset += 16;
-        }
+        layerMask = gPaletteFade.objPaletteToggle ? PALETTES_OBJECTS_FULL : PALETTES_BG_FULL;
+        BlendPalettes(gPaletteFade_selectedPalettes & layerMask, gPaletteFade.y, gPaletteFade.blendColor);
 
         gPaletteFade.objPaletteToggle ^= 1;
 
@@ -504,31 +481,33 @@ static u8 UpdateNormalPaletteFade(void)
     }
 }
 
-void InvertPlttBuffer(u32 selectedPalettes)
+void InvertPlttBuffer(PaletteMask selectedPalettes)
 {
-    u16 paletteOffset = 0;
+    u8 bank = 0;
 
     while (selectedPalettes)
     {
         if (selectedPalettes & 1)
         {
+            u16 paletteOffset = PaletteBankOffset(bank);
             u8 i;
             for (i = 0; i < 16; i++)
                 gPlttBufferFaded[paletteOffset + i] = ~gPlttBufferFaded[paletteOffset + i];
         }
         selectedPalettes >>= 1;
-        paletteOffset += 16;
+        bank++;
     }
 }
 
-void TintPlttBuffer(u32 selectedPalettes, s8 r, s8 g, s8 b)
+void TintPlttBuffer(PaletteMask selectedPalettes, s8 r, s8 g, s8 b)
 {
-    u16 paletteOffset = 0;
+    u8 bank = 0;
 
     while (selectedPalettes)
     {
         if (selectedPalettes & 1)
         {
+            u16 paletteOffset = PaletteBankOffset(bank);
             u8 i;
             for (i = 0; i < 16; i++)
             {
@@ -539,26 +518,36 @@ void TintPlttBuffer(u32 selectedPalettes, s8 r, s8 g, s8 b)
             }
         }
         selectedPalettes >>= 1;
-        paletteOffset += 16;
+        bank++;
     }
 }
 
-void UnfadePlttBuffer(u32 selectedPalettes)
+static u32 GetBgPaletteBankMask(PaletteMask selectedPalettes)
 {
-    u16 paletteOffset = 0;
+    u32 bgBanks = selectedPalettes & PALETTES_BG;
+#ifdef PLATFORM_SDL2
+    bgBanks |= (u32)((selectedPalettes >> 16) & PALETTES_OBJECTS);
+#endif
+    return bgBanks;
+}
 
-    RestoreFieldPaletteWeather(selectedPalettes);
+void UnfadePlttBuffer(PaletteMask selectedPalettes)
+{
+    u8 bank = 0;
+
+    RestoreFieldPaletteWeather(GetBgPaletteBankMask(selectedPalettes));
 
     while (selectedPalettes)
     {
         if (selectedPalettes & 1)
         {
+            u16 paletteOffset = PaletteBankOffset(bank);
             u8 i;
             for (i = 0; i < 16; i++)
                 gPlttBufferFaded[paletteOffset + i] = gPlttBufferUnfaded[paletteOffset + i];
         }
         selectedPalettes >>= 1;
-        paletteOffset += 16;
+        bank++;
     }
 }
 
@@ -731,7 +720,7 @@ static u8 UpdateFastPaletteFade(void)
         case FAST_FADE_IN_FROM_WHITE:
         case FAST_FADE_IN_FROM_BLACK:
             CpuCopy32(gPlttBufferUnfaded, gPlttBufferFaded, PLTT_SIZE);
-            RestoreFieldPaletteWeather(PALETTES_BG);
+            RestoreFieldPaletteWeather(GetBgPaletteBankMask(PALETTES_BG_FULL));
             break;
         case FAST_FADE_OUT_TO_WHITE:
             FillFadedPalette(RGB_WHITEALPHA);
@@ -852,22 +841,25 @@ static bool8 IsSoftwarePaletteFadeFinishing(void)
     }
 }
 
-void BlendPalettes(u32 selectedPalettes, u8 coeff, u16 color)
+void BlendPalettes(PaletteMask selectedPalettes, u8 coeff, u16 color)
 {
-    u16 paletteOffset;
+    u8 bank;
 
-    for (paletteOffset = 0; selectedPalettes; paletteOffset += 16)
+    if (selectedPalettes == PALETTES_ALL)
+        selectedPalettes = PALETTES_ALL_FULL;
+
+    for (bank = 0; selectedPalettes; bank++)
     {
         if (selectedPalettes & 1)
-            BlendPalette(paletteOffset, 16, coeff, color);
+            BlendPalette(PaletteBankOffset(bank), 16, coeff, color);
         selectedPalettes >>= 1;
     }
 }
 
-void BlendPalettesUnfaded(u32 selectedPalettes, u8 coeff, u16 color)
+void BlendPalettesUnfaded(PaletteMask selectedPalettes, u8 coeff, u16 color)
 {
     DmaCopy32Defvars(3, gPlttBufferUnfaded, gPlttBufferFaded, PLTT_SIZE);
-    RestoreFieldPaletteWeather(PALETTES_BG);
+    RestoreFieldPaletteWeather(GetBgPaletteBankMask(PALETTES_BG_FULL));
     BlendPalettes(selectedPalettes, coeff, color);
 }
 
@@ -967,39 +959,41 @@ void TintPalette_CustomTone(u16 *palette, u16 count, u16 rTone, u16 gTone, u16 b
 #define tCoeffDelta  data[2]
 #define tDelay       data[3]
 #define tDelayTimer  data[4]
-#define tPalettes    5 // data[5] and data[6], set/get via Set/GetWordTaskArg
-#define tColor       data[7]
-#define tId          data[8]
+#define tPaletteMask data[5]
+#define tColor       data[5 + sizeof(PaletteMask) / sizeof(s16)]
+#define tId          data[6 + sizeof(PaletteMask) / sizeof(s16)]
 
 // Blend the selected palettes in a series of steps toward or away from the color.
 // Only used by the Groudon/Kyogre fight scene to flash the screen for lightning.
 // One call is used to fade the bg from white, while another fades the duo from black
-void BlendPalettesGradually(uintptr_t selectedPalettes, s8 delay, u8 coeff, u8 coeffTarget, u16 color, u8 priority, u8 id)
+void BlendPalettesGradually(PaletteMask selectedPalettes, s8 delay, u8 coeff, u8 coeffTarget, u16 color, u8 priority, u8 id)
 {
     u8 taskId;
+    s16 *data;
 
     taskId = CreateTask(Task_BlendPalettesGradually, priority);
-    gTasks[taskId].tCoeff = coeff;
-    gTasks[taskId].tCoeffTarget = coeffTarget;
+    data = gTasks[taskId].data;
+    tCoeff = coeff;
+    tCoeffTarget = coeffTarget;
 
     if (delay >= 0)
     {
-        gTasks[taskId].tDelay = delay;
-        gTasks[taskId].tCoeffDelta = 1;
+        tDelay = delay;
+        tCoeffDelta = 1;
     }
     else
     {
-        gTasks[taskId].tDelay = 0;
-        gTasks[taskId].tCoeffDelta = -delay + 1;
+        tDelay = 0;
+        tCoeffDelta = -delay + 1;
     }
 
     if (coeffTarget < coeff)
-        gTasks[taskId].tCoeffDelta *= -1;
+        tCoeffDelta *= -1;
 
-    SetWordTaskArg(taskId, tPalettes, selectedPalettes);
-    gTasks[taskId].tColor = color;
-    gTasks[taskId].tId = id;
-    gTasks[taskId].func(taskId);
+    StorePaletteMask(&tPaletteMask, selectedPalettes);
+    tColor = color;
+    tId = id;
+    Task_BlendPalettesGradually(taskId);
 }
 
 static bool32 UNUSED IsBlendPalettesGraduallyTaskActive(u8 id)
@@ -1030,12 +1024,12 @@ static void UNUSED DestroyBlendPalettesGraduallyTask(void)
 
 static void Task_BlendPalettesGradually(u8 taskId)
 {
-    u32 palettes;
+    PaletteMask palettes;
     s16 *data;
     s16 target;
 
     data = gTasks[taskId].data;
-    palettes = GetWordTaskArg(taskId, tPalettes);
+    palettes = LoadPaletteMask(&tPaletteMask);
 
     if (++tDelayTimer > tDelay)
     {

@@ -19,6 +19,7 @@
 #endif
 
 #include "global.h"
+#include "dma3.h"
 #include "platform.h"
 #include "rtc.h"
 #include "gba/defines.h"
@@ -181,6 +182,7 @@ int main(int argc, char **argv)
             {
                 //run game logic, draw frame and process DMAs and vblank
                 ENTER_VBLANK(); //you must be in VBlank before running a game tick
+                BeginDma3Frame();
                 MainLoop();
                 if (!isGameStepDrawn)
                 {

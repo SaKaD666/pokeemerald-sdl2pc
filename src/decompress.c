@@ -30,7 +30,7 @@ u16 LoadCompressedSpriteSheet(const struct CompressedSpriteSheet *src)
     return LoadSpriteSheet(&dest);
 }
 
-void LoadCompressedSpriteSheetOverrideBuffer(const struct CompressedSpriteSheet *src, void *buffer)
+u16 LoadCompressedSpriteSheetOverrideBuffer(const struct CompressedSpriteSheet *src, void *buffer)
 {
     struct SpriteSheet dest;
 
@@ -38,7 +38,7 @@ void LoadCompressedSpriteSheetOverrideBuffer(const struct CompressedSpriteSheet 
     dest.data = buffer;
     dest.size = src->size;
     dest.tag = src->tag;
-    LoadSpriteSheet(&dest);
+    return LoadSpriteSheet(&dest);
 }
 
 void LoadCompressedSpritePalette(const struct CompressedSpritePalette *src)
@@ -272,36 +272,42 @@ u32 GetDecompressedDataSize(const u32 *ptr)
     return (ptr8[3] << 16) | (ptr8[2] << 8) | (ptr8[1]);
 }
 
-bool8 LoadCompressedSpriteSheetUsingHeap(const struct CompressedSpriteSheet *src)
+u16 LoadCompressedSpriteSheetUsingHeap(const struct CompressedSpriteSheet *src)
 {
     struct SpriteSheet dest;
     void *buffer;
+    u16 tileStart;
 
-    buffer = AllocZeroed(src->data[0] >> 8);
+    buffer = AllocZeroed(GetDecompressedDataSize(src->data));
+    if (buffer == NULL)
+        return SPRITE_TILE_NONE;
     LZ77UnCompWram(src->data, buffer);
 
     dest.data = buffer;
     dest.size = src->size;
     dest.tag = src->tag;
 
-    LoadSpriteSheet(&dest);
+    tileStart = LoadSpriteSheet(&dest);
     Free(buffer);
-    return FALSE;
+    return tileStart;
 }
 
 bool8 LoadCompressedSpritePaletteUsingHeap(const struct CompressedSpritePalette *src)
 {
     struct SpritePalette dest;
     void *buffer;
+    bool8 loaded;
 
     buffer = AllocZeroed(src->data[0] >> 8);
+    if (buffer == NULL)
+        return FALSE;
     LZ77UnCompWram(src->data, buffer);
     dest.data = buffer;
     dest.tag = src->tag;
 
-    LoadSpritePalette(&dest);
+    loaded = LoadSpritePalette(&dest) != 0xFF;
     Free(buffer);
-    return FALSE;
+    return loaded;
 }
 
 void DecompressPicFromTable_2(const struct CompressedSpriteSheet *src, void *buffer, s32 species) // a copy of DecompressPicFromTable

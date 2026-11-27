@@ -207,6 +207,15 @@ void Free(void *pointer)
     FreeInternal(sHeapStart, pointer);
 }
 
+#ifdef PLATFORM_SDL2
+u32 GetAllocatedBlockSize(const void *pointer)
+{
+    const struct MemBlock *block = (const struct MemBlock *)((const u8 *)pointer - sizeof(*block));
+
+    return block->size;
+}
+#endif
+
 bool32 CheckMemBlock(void *pointer)
 {
     return CheckMemBlockInternal(sHeapStart, pointer);

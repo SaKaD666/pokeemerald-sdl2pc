@@ -18,6 +18,9 @@
 #include "task.h"
 #include "scanline_effect.h"
 #include "menu.h"
+#ifdef PLATFORM_SDL2
+#include "dma3.h"
+#endif
 #include "text.h"
 #include "strings.h"
 #include "constants/songs.h"
@@ -1602,6 +1605,11 @@ void CB2_LinkError(void)
     m4aMPlayStop(&gMPlayInfo_SE1);
     m4aMPlayStop(&gMPlayInfo_SE2);
     m4aMPlayStop(&gMPlayInfo_SE3);
+#ifdef PLATFORM_SDL2
+    SetVBlankCallback(NULL);
+    ClearDma3Requests();
+#endif
+    ResetTempTileDataBuffers();
     InitHeap(gHeap, HEAP_SIZE);
     ResetSpriteData();
     FreeAllSpritePalettes();
@@ -1624,7 +1632,6 @@ void CB2_LinkError(void)
     if (InitWindows(sLinkErrorWindowTemplates))
     {
         DeactivateAllTextPrinters();
-        ResetTempTileDataBuffers();
         SetGpuReg(REG_OFFSET_BLDCNT, 0);
         SetGpuReg(REG_OFFSET_BLDALPHA, 0);
         SetGpuReg(REG_OFFSET_BG0HOFS, 0);

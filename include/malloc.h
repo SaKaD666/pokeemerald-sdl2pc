@@ -20,6 +20,9 @@ extern u8 gHeap[HEAP_SIZE];
 void *Alloc(u32 size);
 void *AllocZeroed(u32 size);
 void Free(void *pointer);
+#ifdef PLATFORM_SDL2
+u32 GetAllocatedBlockSize(const void *pointer);
+#endif
 void InitHeap(void *heapStart, u32 heapSize);
 
 #endif // GUARD_ALLOC_H

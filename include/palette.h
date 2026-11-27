@@ -17,12 +17,63 @@
 #define PALETTES_OBJECTS 0xFFFF0000
 #define PALETTES_ALL     (PALETTES_BG | PALETTES_OBJECTS)
 
+#ifdef PLATFORM_SDL2
+typedef u64 PaletteMask;
+#define PALETTES_BG_FULL      ((PaletteMask)0x0000FFFF0000FFFFULL)
+#define PALETTES_OBJECTS_FULL ((PaletteMask)0xFFFF0000FFFF0000ULL)
+#else
+typedef u32 PaletteMask;
+#define PALETTES_BG_FULL      PALETTES_BG
+#define PALETTES_OBJECTS_FULL PALETTES_OBJECTS
+#endif
+#define PALETTES_ALL_FULL (PALETTES_BG_FULL | PALETTES_OBJECTS_FULL)
+
 #define PLTT_ID(n) ((n) * 16)
 #define BG_PLTT_OFFSET 0x000
-#define OBJ_PLTT_OFFSET 0x100
+#define OBJ_PLTT_OFFSET (BG_PLTT_CAPACITY / sizeof(u16))
 #define BG_PLTT_ID(n) (BG_PLTT_OFFSET + PLTT_ID(n))
 #define OBJ_PLTT_ID(n) (OBJ_PLTT_OFFSET + PLTT_ID(n))
-#define OBJ_PLTT_ID2(n) (PLTT_ID((n) + 16))
+#define OBJ_PLTT_ID2(n) OBJ_PLTT_ID(n)
+
+// Save masks in consecutive 16-bit task data fields, low word first.
+static inline void StorePaletteMask(s16 *data, PaletteMask mask)
+{
+    u8 i;
+
+    for (i = 0; i < sizeof(mask) / sizeof(*data); i++, mask >>= 16)
+        data[i] = (u16)mask;
+}
+
+static inline PaletteMask LoadPaletteMask(const s16 *data)
+{
+    PaletteMask mask = 0;
+    u8 i;
+
+    for (i = 0; i < sizeof(mask) / sizeof(*data); i++)
+        mask |= (PaletteMask)(u16)data[i] << (16 * i);
+    return mask;
+}
+
+static inline u8 ObjPaletteBank(u8 palette)
+{
+    if (palette >= OBJ_PLTT_CAPACITY / PLTT_SIZE_4BPP)
+        return 0xFF;
+    return 16 + palette + (palette & 16);
+}
+
+static inline PaletteMask ObjPaletteMask(u8 palette)
+{
+    u8 bank = ObjPaletteBank(palette);
+
+    return bank == 0xFF ? 0 : (PaletteMask)1 << bank;
+}
+
+// Palette selectors interleave groups of 16 BG and 16 OBJ banks.
+static inline u16 PaletteBankOffset(u8 bank)
+{
+    u8 layerBank = (bank & 15) + ((bank & 32) >> 1);
+    return (bank & 16) ? OBJ_PLTT_ID(layerBank) : BG_PLTT_ID(layerBank);
+}
 
 enum
 {
@@ -34,7 +85,7 @@ enum
 
 struct PaletteFadeControl
 {
-    u32 multipurpose1;
+    PaletteMask multipurpose1;
     u8 delayCounter:6;
     u16 y:5; // blend coefficient
     u16 targetY:5; // target blend coefficient
@@ -65,17 +116,17 @@ void FillFadedPalette(u16 color);
 void TransferPlttBuffer(void);
 u8 UpdatePaletteFade(void);
 void ResetPaletteFade(void);
-bool8 BeginNormalPaletteFade(u32 selectedPalettes, s8 delay, u8 startY, u8 targetY, u16 blendColor);
+bool8 BeginNormalPaletteFade(PaletteMask selectedPalettes, s8 delay, u8 startY, u8 targetY, u16 blendColor);
 void PaletteStruct_ResetById(u16 id);
 void ResetPaletteFadeControl(void);
-void InvertPlttBuffer(u32 selectedPalettes);
-void TintPlttBuffer(u32 selectedPalettes, s8 r, s8 g, s8 b);
-void UnfadePlttBuffer(u32 selectedPalettes);
+void InvertPlttBuffer(PaletteMask selectedPalettes);
+void TintPlttBuffer(PaletteMask selectedPalettes, s8 r, s8 g, s8 b);
+void UnfadePlttBuffer(PaletteMask selectedPalettes);
 void BeginFastPaletteFade(u8 submode);
 void BeginHardwarePaletteFade(u8 blendCnt, u8 delay, u8 y, u8 targetY, u8 shouldResetBlendRegisters);
-void BlendPalettes(u32 selectedPalettes, u8 coeff, u16 color);
-void BlendPalettesUnfaded(u32 selectedPalettes, u8 coeff, u16 color);
-void BlendPalettesGradually(uintptr_t selectedPalettes, s8 delay, u8 coeff, u8 coeffTarget, u16 color, u8 priority, u8 id);
+void BlendPalettes(PaletteMask selectedPalettes, u8 coeff, u16 color);
+void BlendPalettesUnfaded(PaletteMask selectedPalettes, u8 coeff, u16 color);
+void BlendPalettesGradually(PaletteMask selectedPalettes, s8 delay, u8 coeff, u8 coeffTarget, u16 color, u8 priority, u8 id);
 void TintPalette_GrayScale(u16 *palette, u16 count);
 void TintPalette_GrayScale2(u16 *palette, u16 count);
 void TintPalette_SepiaTone(u16 *palette, u16 count);

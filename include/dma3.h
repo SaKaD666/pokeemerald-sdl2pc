@@ -52,4 +52,36 @@ s16 RequestDma3Copy(const void *src, void *dest, u16 size, u8 mode);
 s16 RequestDma3Fill(s32 value, void *dest, u16 size, u8 mode);
 s16 CheckForSpaceForDma3Request(s16 index);
 
+#ifdef PLATFORM_SDL2
+void BeginDma3Frame(void);
+bool8 ReserveDma3FrameBytes(u32 size);
+bool8 HasPendingDma3Write(const void *dest, u32 size);
+void CancelPendingDma3Writes(const void *dest, u32 size);
+void PreserveDma3CopySources(const void *buffer, u32 size);
+
+enum Dma3TransferState
+{
+    DMA3_TRANSFER_IDLE,
+    DMA3_TRANSFER_PENDING,
+    DMA3_TRANSFER_COMPLETED,
+    DMA3_TRANSFER_REJECTED,
+    DMA3_TRANSFER_CANCELLED,
+};
+
+struct Dma3Transfer
+{
+    enum Dma3TransferState state;
+};
+
+// Keep the zero-initialized receipt and copy buffers alive until the transfer
+// leaves PENDING. A receipt can be reused once its previous result is consumed.
+s16 RequestDma3TrackedCopyWithSlot(const void *src, void *dest, u32 size, u8 mode, struct Dma3Transfer *transfer);
+bool8 RequestDma3TrackedCopy(const void *src, void *dest, u32 size, u8 mode, struct Dma3Transfer *transfer);
+// Queue two adjacent parts together. Keep two receipts and both buffers alive.
+bool8 RequestDma3TrackedCopyPair(const void *src, void *dest, u32 partSize, u8 mode, struct Dma3Transfer *transfers);
+bool8 IsDma3RequestWriting(void);
+bool8 IsDma3TransferWriting(const struct Dma3Transfer *transfer);
+void CancelDma3TrackedCopy(struct Dma3Transfer *transfer);
+#endif
+
 #endif // GUARD_DMA3_H
