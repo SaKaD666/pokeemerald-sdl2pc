@@ -1122,7 +1122,7 @@ void InitBattlerHealthboxCoords(u8 battler)
     {
         if (GetBattlerSide(battler) == B_SIDE_PLAYER)
         {
-            x += IsDoubleBattle() ? (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH - 4) : (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_PLAYER_HEALTHBOX_X_SHIFT);
+            x += IsDoubleBattle() ? (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH - 1) : (BATTLE_OPPONENT_PLATFORM_SHIFT + BATTLE_PLAYER_HEALTHBOX_X_SHIFT);
             y += BATTLE_PLAYER_HEALTHBOX_Y_SHIFT;
         }
         else if (!IsDoubleBattle())
