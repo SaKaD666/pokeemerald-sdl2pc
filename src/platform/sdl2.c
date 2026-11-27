@@ -306,7 +306,7 @@ static void CloseSaveFile()
 #define KEY_A_BUTTON      SDLK_z
 #define KEY_B_BUTTON      SDLK_x
 #define KEY_START_BUTTON  SDLK_RETURN
-#define KEY_SELECT_BUTTON SDLK_BACKSLASH
+#define KEY_SELECT_BUTTON SDLK_p
 #define KEY_L_BUTTON      SDLK_a
 #define KEY_R_BUTTON      SDLK_s
 #define KEY_DPAD_UP       SDLK_UP
@@ -363,7 +363,6 @@ void ProcessEvents(void)
             HANDLE_KEYDOWN(A_BUTTON)
             HANDLE_KEYDOWN(B_BUTTON)
             HANDLE_KEYDOWN(START_BUTTON)
-            HANDLE_KEYDOWN(SELECT_BUTTON)
             HANDLE_KEYDOWN(L_BUTTON)
             HANDLE_KEYDOWN(R_BUTTON)
             HANDLE_KEYDOWN(DPAD_UP)
@@ -376,10 +375,14 @@ void ProcessEvents(void)
                     DoSoftReset();
                 }
                 break;
-            case SDLK_p:
+            case KEY_SELECT_BUTTON:
                 if (event.key.keysym.mod & (KMOD_LCTRL | KMOD_RCTRL))
                 {
                     paused = !paused;
+                }
+                else
+                {
+                    keys |= SELECT_BUTTON;
                 }
                 break;
             case SDLK_SPACE:
