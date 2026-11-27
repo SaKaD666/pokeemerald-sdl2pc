@@ -61,8 +61,9 @@ enum
 #define OPTION_MENU_LIST_EDGE_HEIGHT 16
 #define OPTION_MENU_LIST_BASE_BLOCK 1
 #define OPTION_MENU_BOTTOM_FILL_TILE (OPTION_MENU_LIST_BASE_BLOCK + OPTION_MENU_WINDOW_WIDTH * OPTION_MENU_LIST_HEIGHT)
-#define OPTION_MENU_CHOICE_RIGHT 246
-#define OPTION_MENU_CHOICE_SPAN (OPTION_MENU_CHOICE_RIGHT - 104)
+#define OPTION_MENU_CHOICE_LEFT 144
+#define OPTION_MENU_CHOICE_RIGHT (OPTION_MENU_WINDOW_WIDTH * 8 - 10)
+#define OPTION_MENU_CHOICE_SPAN (OPTION_MENU_CHOICE_RIGHT - OPTION_MENU_CHOICE_LEFT)
 #define OPTION_MENU_HIGHLIGHT_RIGHT (DISPLAY_WIDTH - 16)
 #else
 #define OPTION_MENU_WINDOW_WIDTH 26
@@ -71,8 +72,9 @@ enum
 #define OPTION_MENU_LIST_EDGE_WIDTH 26
 #define OPTION_MENU_LIST_BOTTOM 19
 #define OPTION_MENU_LIST_EDGE_HEIGHT 18
+#define OPTION_MENU_CHOICE_LEFT 104
 #define OPTION_MENU_CHOICE_RIGHT 198
-#define OPTION_MENU_CHOICE_SPAN (OPTION_MENU_CHOICE_RIGHT - 104)
+#define OPTION_MENU_CHOICE_SPAN (OPTION_MENU_CHOICE_RIGHT - OPTION_MENU_CHOICE_LEFT)
 #define OPTION_MENU_HIGHLIGHT_RIGHT (GBA_DISPLAY_WIDTH - 16)
 #endif
 
@@ -482,14 +484,14 @@ static void TextSpeed_DrawChoices(u8 selection)
     styles[2] = 0;
     styles[selection] = 1;
 
-    DrawOptionMenuChoice(gText_TextSpeedSlow, 104, YPOS_TEXTSPEED, styles[0]);
+    DrawOptionMenuChoice(gText_TextSpeedSlow, OPTION_MENU_CHOICE_LEFT, YPOS_TEXTSPEED, styles[0]);
 
     widthSlow = GetStringWidth(FONT_NORMAL, gText_TextSpeedSlow, 0);
     widthMid = GetStringWidth(FONT_NORMAL, gText_TextSpeedMid, 0);
     widthFast = GetStringWidth(FONT_NORMAL, gText_TextSpeedFast, 0);
 
     widthMid -= OPTION_MENU_CHOICE_SPAN;
-    xMid = (widthSlow - widthMid - widthFast) / 2 + 104;
+    xMid = (widthSlow - widthMid - widthFast) / 2 + OPTION_MENU_CHOICE_LEFT;
     DrawOptionMenuChoice(gText_TextSpeedMid, xMid, YPOS_TEXTSPEED, styles[1]);
 
     DrawOptionMenuChoice(gText_TextSpeedFast, GetStringRightAlignXOffset(FONT_NORMAL, gText_TextSpeedFast, OPTION_MENU_CHOICE_RIGHT), YPOS_TEXTSPEED, styles[2]);
@@ -514,7 +516,7 @@ static void BattleScene_DrawChoices(u8 selection)
     styles[1] = 0;
     styles[selection] = 1;
 
-    DrawOptionMenuChoice(gText_BattleSceneOn, 104, YPOS_BATTLESCENE, styles[0]);
+    DrawOptionMenuChoice(gText_BattleSceneOn, OPTION_MENU_CHOICE_LEFT, YPOS_BATTLESCENE, styles[0]);
     DrawOptionMenuChoice(gText_BattleSceneOff, GetStringRightAlignXOffset(FONT_NORMAL, gText_BattleSceneOff, OPTION_MENU_CHOICE_RIGHT), YPOS_BATTLESCENE, styles[1]);
 }
 
@@ -537,7 +539,7 @@ static void BattleStyle_DrawChoices(u8 selection)
     styles[1] = 0;
     styles[selection] = 1;
 
-    DrawOptionMenuChoice(gText_BattleStyleShift, 104, YPOS_BATTLESTYLE, styles[0]);
+    DrawOptionMenuChoice(gText_BattleStyleShift, OPTION_MENU_CHOICE_LEFT, YPOS_BATTLESTYLE, styles[0]);
     DrawOptionMenuChoice(gText_BattleStyleSet, GetStringRightAlignXOffset(FONT_NORMAL, gText_BattleStyleSet, OPTION_MENU_CHOICE_RIGHT), YPOS_BATTLESTYLE, styles[1]);
 }
 
@@ -561,7 +563,7 @@ static void Sound_DrawChoices(u8 selection)
     styles[1] = 0;
     styles[selection] = 1;
 
-    DrawOptionMenuChoice(gText_SoundMono, 104, YPOS_SOUND, styles[0]);
+    DrawOptionMenuChoice(gText_SoundMono, OPTION_MENU_CHOICE_LEFT, YPOS_SOUND, styles[0]);
     DrawOptionMenuChoice(gText_SoundStereo, GetStringRightAlignXOffset(FONT_NORMAL, gText_SoundStereo, OPTION_MENU_CHOICE_RIGHT), YPOS_SOUND, styles[1]);
 }
 
@@ -619,8 +621,8 @@ static void FrameType_DrawChoices(u8 selection)
 
     text[i] = EOS;
 
-    DrawOptionMenuChoice(gText_FrameType, 104, YPOS_FRAMETYPE, 0);
-    DrawOptionMenuChoice(text, 128, YPOS_FRAMETYPE, 1);
+    DrawOptionMenuChoice(gText_FrameType, OPTION_MENU_CHOICE_LEFT, YPOS_FRAMETYPE, 0);
+    DrawOptionMenuChoice(text, OPTION_MENU_CHOICE_LEFT + 24, YPOS_FRAMETYPE, 1);
 }
 
 static u8 ButtonMode_ProcessInput(u8 selection)
@@ -656,14 +658,14 @@ static void ButtonMode_DrawChoices(u8 selection)
     styles[2] = 0;
     styles[selection] = 1;
 
-    DrawOptionMenuChoice(gText_ButtonTypeNormal, 104, YPOS_BUTTONMODE, styles[0]);
+    DrawOptionMenuChoice(gText_ButtonTypeNormal, OPTION_MENU_CHOICE_LEFT, YPOS_BUTTONMODE, styles[0]);
 
     widthNormal = GetStringWidth(FONT_NORMAL, gText_ButtonTypeNormal, 0);
     widthLR = GetStringWidth(FONT_NORMAL, gText_ButtonTypeLR, 0);
     widthLA = GetStringWidth(FONT_NORMAL, gText_ButtonTypeLEqualsA, 0);
 
     widthLR -= OPTION_MENU_CHOICE_SPAN;
-    xLR = (widthNormal - widthLR - widthLA) / 2 + 104;
+    xLR = (widthNormal - widthLR - widthLA) / 2 + OPTION_MENU_CHOICE_LEFT;
     DrawOptionMenuChoice(gText_ButtonTypeLR, xLR, YPOS_BUTTONMODE, styles[1]);
 
     DrawOptionMenuChoice(gText_ButtonTypeLEqualsA, GetStringRightAlignXOffset(FONT_NORMAL, gText_ButtonTypeLEqualsA, OPTION_MENU_CHOICE_RIGHT), YPOS_BUTTONMODE, styles[2]);
