@@ -18,9 +18,6 @@
 #include "window.h"
 #include "gpu_regs.h"
 #include "constants/rgb.h"
-#ifdef PLATFORM_SDL2
-#include "platform/framedraw.h"
-#endif
 
 #define PALTAG_ARROW 0x1000
 
@@ -72,13 +69,38 @@ static void VBlankCB(void);
 static void Task_ResetRtcScreen(u8 taskId);
 static void InitResetRtcScreenBgAndWindows(void);
 
+#ifdef PLATFORM_SDL2
+#define RTC_INPUT_X_OFFSET 40
+#define RTC_INPUT_Y_OFFSET 8
+#define RTC_INPUT_LEFT     (4 + RTC_INPUT_X_OFFSET / 8)
+#define RTC_INPUT_TOP      (9 + RTC_INPUT_Y_OFFSET / 8)
+#define RTC_MSG_LEFT       2
+#define RTC_MSG_TOP        17
+#define RTC_MSG_WIDTH      36
+#define RTC_WIN_TIME_BASE  0x220
+#else
+#define RTC_INPUT_X_OFFSET 0
+#define RTC_INPUT_Y_OFFSET 0
+#define RTC_INPUT_LEFT     4
+#define RTC_INPUT_TOP      9
+#define RTC_MSG_LEFT       2
+#define RTC_MSG_TOP        15
+#define RTC_MSG_WIDTH      27
+#define RTC_WIN_TIME_BASE  0x155
+#endif
+
 static const struct BgTemplate sBgTemplates[] =
 {
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -94,13 +116,13 @@ static const struct WindowTemplate sWindowTemplates[] =
         .width = 19,
         .height = 9,
         .paletteNum = 15,
-        .baseBlock = 0x155
+        .baseBlock = RTC_WIN_TIME_BASE
     },
     [WIN_MSG] = {
         .bg = 0,
-        .tilemapLeft = 2,
-        .tilemapTop = 15,
-        .width = 27,
+        .tilemapLeft = RTC_MSG_LEFT,
+        .tilemapTop = RTC_MSG_TOP,
+        .width = RTC_MSG_WIDTH,
         .height = 4,
         .paletteNum = 15,
         .baseBlock = 0xE9
@@ -110,8 +132,8 @@ static const struct WindowTemplate sWindowTemplates[] =
 
 static const struct WindowTemplate sInputTimeWindow = {
     .bg = 0,
-    .tilemapLeft = 4,
-    .tilemapTop = 9,
+    .tilemapLeft = RTC_INPUT_LEFT,
+    .tilemapTop = RTC_INPUT_TOP,
     .width = 21,
     .height = 2,
     .paletteNum = 15,
@@ -251,36 +273,36 @@ static void SpriteCB_Cursor_UpOrRight(struct Sprite *sprite)
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_UP;
             sprite->animDelayCounter = 0;
-            sprite->x = 53;
-            sprite->y = 68;
+            sprite->x = 53 + RTC_INPUT_X_OFFSET;
+            sprite->y = 68 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_HOURS:
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_UP;
             sprite->animDelayCounter = 0;
-            sprite->x = 86;
-            sprite->y = 68;
+            sprite->x = 86 + RTC_INPUT_X_OFFSET;
+            sprite->y = 68 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_MINS:
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_UP;
             sprite->animDelayCounter = 0;
-            sprite->x = 101;
-            sprite->y = 68;
+            sprite->x = 101 + RTC_INPUT_X_OFFSET;
+            sprite->y = 68 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_SECS:
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_UP;
             sprite->animDelayCounter = 0;
-            sprite->x = 116;
-            sprite->y = 68;
+            sprite->x = 116 + RTC_INPUT_X_OFFSET;
+            sprite->y = 68 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_CONFIRM:
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_RIGHT;
             sprite->animDelayCounter = 0;
-            sprite->x = 153;
-            sprite->y = 80;
+            sprite->x = 153 + RTC_INPUT_X_OFFSET;
+            sprite->y = 80 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_NONE:
             DestroySprite(sprite);
@@ -301,29 +323,29 @@ static void SpriteCB_Cursor_Down(struct Sprite *sprite)
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_DOWN;
             sprite->animDelayCounter = 0;
-            sprite->x = 53;
-            sprite->y = 92;
+            sprite->x = 53 + RTC_INPUT_X_OFFSET;
+            sprite->y = 92 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_HOURS:
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_DOWN;
             sprite->animDelayCounter = 0;
-            sprite->x = 86;
-            sprite->y = 92;
+            sprite->x = 86 + RTC_INPUT_X_OFFSET;
+            sprite->y = 92 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_MINS:
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_DOWN;
             sprite->animDelayCounter = 0;
-            sprite->x = 101;
-            sprite->y = 92;
+            sprite->x = 101 + RTC_INPUT_X_OFFSET;
+            sprite->y = 92 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_SECS:
             sprite->invisible = FALSE;
             sprite->animNum = ARROW_DOWN;
             sprite->animDelayCounter = 0;
-            sprite->x = 116;
-            sprite->y = 92;
+            sprite->x = 116 + RTC_INPUT_X_OFFSET;
+            sprite->y = 92 + RTC_INPUT_Y_OFFSET;
             break;
         case SELECTION_CONFIRM:
             // The up arrow is used as a right arrow when Confirm is selected
@@ -343,12 +365,12 @@ static void CreateCursor(u8 taskId)
 
     LoadSpritePalette(&sSpritePalette_Arrow);
 
-    spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Arrow, 53, 68, 0);
+    spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Arrow, 53 + RTC_INPUT_X_OFFSET, 68 + RTC_INPUT_Y_OFFSET, 0);
     gSprites[spriteId].callback = SpriteCB_Cursor_UpOrRight;
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sState = -1;
 
-    spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Arrow, 53, 68, 0);
+    spriteId = CreateSpriteAtEnd(&sSpriteTemplate_Arrow, 53 + RTC_INPUT_X_OFFSET, 68 + RTC_INPUT_Y_OFFSET, 0);
     gSprites[spriteId].callback = SpriteCB_Cursor_Down;
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sState = -1;
@@ -524,9 +546,6 @@ void CB2_InitResetRtcScreen(void)
 {
     SetGpuReg(REG_OFFSET_DISPCNT, 0);
     SetVBlankCallback(NULL);
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
     DmaClear16(3, PLTT, PLTT_SIZE);
     DmaClearLarge16(3, (void *)VRAM, VRAM_SIZE, 0x1000);
     ResetOamRange(0, OAM_ENTRY_COUNT);
