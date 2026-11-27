@@ -46,7 +46,11 @@ struct PokedexCryScreen
 {
     SampleDataType cryWaveformBuffer[16];
     u8 cryState;
+#ifdef PLATFORM_SDL2
+    u16 playhead;
+#else
     u8 playhead;
+#endif
     SampleDataType waveformPreviousY;
     u16 unk; // Never read
     u8 playStartPos;
@@ -59,7 +63,11 @@ static void PlayCryScreenCry(u16);
 static void BufferCryWaveformSegment(void);
 static void DrawWaveformFlatline(void);
 static void AdvancePlayhead(u8);
+#ifdef PLATFORM_SDL2
+static void DrawWaveformSegment(u16, SampleDataType);
+#else
 static void DrawWaveformSegment(u8, SampleDataType);
+#endif
 static void DrawWaveformWindow(u8);
 static void ShiftWaveformOver(u8, s16, bool8);
 static void SpriteCB_CryMeterNeedle(struct Sprite *);
@@ -233,7 +241,7 @@ static const struct SpritePalette sCryMeterNeedleSpritePalettes[] =
 
 bool8 LoadCryWaveformWindow(struct CryScreenWindow *window, u8 windowId)
 {
-    u8 i;
+    u16 i;
     u8 finished = FALSE;
 
     switch (gDexCryScreenState)
@@ -253,7 +261,11 @@ bool8 LoadCryWaveformWindow(struct CryScreenWindow *window, u8 windowId)
         sDexCryScreen->waveformPreviousY = WAVEFORM_WINDOW_HEIGHT / 2;
         sDexCryScreen->playhead = 0;
         ShiftWaveformOver(windowId, -8 * window->xPos, TRUE); // Does nothing
+#ifdef PLATFORM_SDL2
+        for (i = 0; i < 64 * 7; i++)
+#else
         for (i = 0; i < 224; i++)
+#endif
             CopyToWindowPixelBuffer(windowId, sCryScreenBg_Gfx, TILE_SIZE_4BPP, i);
 
         gDexCryScreenState++;
@@ -325,8 +337,13 @@ void UpdateCryWaveformWindow(u8 windowId)
 
     // Draw cry
     waveformIdx = 2 * (sDexCryScreen->cryState - 1);
+#ifdef PLATFORM_SDL2
+    DrawWaveformSegment((u16)(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 2), sDexCryScreen->cryWaveformBuffer[waveformIdx]);
+    DrawWaveformSegment((u16)(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 1), sDexCryScreen->cryWaveformBuffer[waveformIdx + 1]);
+#else
     DrawWaveformSegment(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 2, sDexCryScreen->cryWaveformBuffer[waveformIdx]);
     DrawWaveformSegment(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 1, sDexCryScreen->cryWaveformBuffer[waveformIdx + 1]);
+#endif
     sDexCryScreen->cryState++;
 }
 
@@ -375,8 +392,13 @@ static void BufferCryWaveformSegment(void)
 
 static void DrawWaveformFlatline(void)
 {
+#ifdef PLATFORM_SDL2
+    DrawWaveformSegment((u16)(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 2), 0);
+    DrawWaveformSegment((u16)(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 1), 0);
+#else
     DrawWaveformSegment(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 2, 0);
     DrawWaveformSegment(sDexCryScreen->playStartPos * 8 + sDexCryScreen->playhead - 1, 0);
+#endif
 }
 
 static void AdvancePlayhead(u8 windowId)
@@ -385,18 +407,33 @@ static void AdvancePlayhead(u8 windowId)
     u16 offset;
 
     ShiftWaveformOver(windowId, sDexCryScreen->playhead, FALSE);
+#ifdef PLATFORM_SDL2
+    sDexCryScreen->playhead = (sDexCryScreen->playhead + 2) & 0x1FF;
+    offset = (sDexCryScreen->playhead / 8 + sDexCryScreen->playStartPos + 1) % 64;
+    for (i = 0; i < 7; i++)
+        CopyToWindowPixelBuffer(windowId, sCryScreenBg_Gfx, TILE_SIZE_4BPP, offset + (i * 64));
+#else
     sDexCryScreen->playhead += 2;
     offset = (sDexCryScreen->playhead / 8 + sDexCryScreen->playStartPos + 1) % 32;
     for (i = 0; i < 7; i++)
         CopyToWindowPixelBuffer(windowId, sCryScreenBg_Gfx, TILE_SIZE_4BPP, offset + (i * TILE_SIZE_4BPP));
+#endif
 }
 
 // Waveform segments are drawn in alternate vertical slices
 // Note that the waveform isnt put on screen until DrawWaveformWindow
+#ifdef PLATFORM_SDL2
+static void DrawWaveformSegment(u16 position, SampleDataType amplitude)
+{
+    #define PLAY_START_POS ((position >> 3) & 63)
+    #define CRY_WAVE_OFFSET(base) ((((base) >> 10) * 64 + PLAY_START_POS) * TILE_SIZE_4BPP + ((base) & 0x3FF))
+#else
 static void DrawWaveformSegment(u8 position, SampleDataType amplitude)
 {
     // Position is a bitfield containing the play start pos, the playhead pos, and which vertical slice half to draw
     #define PLAY_START_POS (position >> 3)
+    #define CRY_WAVE_OFFSET(base) ((base) + PLAY_START_POS * TILE_SIZE_4BPP)
+#endif
     #define PLAYHEAD_POS   (position & ((1 << 3) - 1))
     #define VERT_SLICE     (position & 1)
 
@@ -417,7 +454,7 @@ static void DrawWaveformSegment(u8 position, SampleDataType amplitude)
         // Current point lower than previous point, draw point and draw line up to previous
         do
         {
-            offset = sWaveformOffsets[PLAYHEAD_POS][y] + PLAY_START_POS * TILE_SIZE_4BPP;
+            offset = CRY_WAVE_OFFSET(sWaveformOffsets[PLAYHEAD_POS][y]);
             sCryWaveformWindowTiledata[offset] &= sWaveformTileDataNybbleMasks[nybble];
             sCryWaveformWindowTiledata[offset] |= sWaveformColor[nybble][((y / 3) - 1) & 0x0F];
             y--;
@@ -428,7 +465,7 @@ static void DrawWaveformSegment(u8 position, SampleDataType amplitude)
         // Current point higher than previous point, draw point and draw line down to previous
         do
         {
-            offset = sWaveformOffsets[PLAYHEAD_POS][y] + PLAY_START_POS * TILE_SIZE_4BPP;
+            offset = CRY_WAVE_OFFSET(sWaveformOffsets[PLAYHEAD_POS][y]);
             sCryWaveformWindowTiledata[offset] &= sWaveformTileDataNybbleMasks[nybble];
             sCryWaveformWindowTiledata[offset] |= sWaveformColor[nybble][((y / 3) - 1) & 0x0F];
             y++;
@@ -436,6 +473,10 @@ static void DrawWaveformSegment(u8 position, SampleDataType amplitude)
     }
 
     sDexCryScreen->waveformPreviousY = currentPointY;
+    #undef PLAY_START_POS
+    #undef CRY_WAVE_OFFSET
+    #undef PLAYHEAD_POS
+    #undef VERT_SLICE
 }
 
 static void DrawWaveformWindow(u8 windowId)

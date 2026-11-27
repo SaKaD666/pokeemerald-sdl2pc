@@ -964,6 +964,51 @@ static const struct WindowTemplate sInfoScreenPage_WindowTemplates_SDL2[] =
     },
     DUMMY_WIN_TEMPLATE
 };
+
+static const struct WindowTemplate sCryScreen_WindowTemplates_SDL2[] =
+{
+    [WIN_INFO] =
+    {
+        .bg = 2,
+        .tilemapLeft = 0,
+        .tilemapTop = 0,
+        .width = 40,
+        .height = 11,
+        .paletteNum = 0,
+        .baseBlock = 1,
+    },
+    [WIN_FOOTPRINT] =
+    {
+        .bg = 2,
+        .tilemapLeft = 35,
+        .tilemapTop = 8,
+        .width = 2,
+        .height = 2,
+        .paletteNum = 15,
+        .baseBlock = 441,
+    },
+    [WIN_CRY_WAVE] =
+    {
+        .bg = 0,
+        .tilemapLeft = 0,
+        .tilemapTop = 14,
+        .width = 64,
+        .height = 7,
+        .paletteNum = 8,
+        .baseBlock = 445,
+    },
+    [WIN_VU_METER] =
+    {
+        .bg = 2,
+        .tilemapLeft = 28,
+        .tilemapTop = 3,
+        .width = 10,
+        .height = 8,
+        .paletteNum = 9,
+        .baseBlock = 893,
+    },
+    DUMMY_WIN_TEMPLATE
+};
 #endif
 
 static const struct WindowTemplate sInfoScreen_WindowTemplates[] =
@@ -3554,7 +3599,7 @@ static void PrintInfoScreenText(const u8 *str, u8 left, u8 top)
 #endif
 
 #ifdef PLATFORM_SDL2
-static void ConfigureInfoScreenBgs_SDL2(bool8 wide)
+static void ConfigureInfoScreenBgs_SDL2(bool8 wide, const struct WindowTemplate *winTemplates)
 {
     const struct BgTemplate *tpls = wide ? sInfoScreen_BgTemplate_SDL2 : sInfoScreen_BgTemplate;
     u8 i;
@@ -3568,7 +3613,7 @@ static void ConfigureInfoScreenBgs_SDL2(bool8 wide)
             CpuFastFill16(0, GetBgTilemapBuffer(tpls[i].bg), BG_SCREEN_SIZE * 2);
     }
     FreeAllWindowBuffers();
-    InitWindows(wide ? sInfoScreenPage_WindowTemplates_SDL2 : sInfoScreen_WindowTemplates);
+    InitWindows(winTemplates);
     DeactivateAllTextPrinters();
 }
 
@@ -3649,26 +3694,130 @@ static void LoadPokedexInfoScreenBgTilemap_SDL2(void)
     Free(src);
 }
 
-static void LoadScreenSelectBarMain_SDL2(void)
+static void LoadPokedexSelectBar_SDL2(const u32 *tilemapSrc, u8 fourthBtnSrcCol)
 {
     static const u8 sDestCols[SCREEN_COUNT] = { 1, 10, 19, 32 };
     u16 *src = Alloc(3 * 32 * sizeof(u16));
     u16 *bg1 = GetBgTilemapBuffer(1);
     u16 x, y, i, c;
 
-    LZ77UnCompWram(gPokedexScreenSelectBarMain_Tilemap, src);
+    LZ77UnCompWram(tilemapSrc, src);
     for (y = 0; y < 2; y++)
     {
         for (x = 0; x < 40; x++)
-            WritePokedexListTilemapEntry(bg1, x, y, 0x204f);
+            WritePokedexListTilemapEntry(bg1, x, y, 0x204F);
         for (i = 0; i < SCREEN_COUNT; i++)
         {
+            u8 srcCol = (i == 3) ? fourthBtnSrcCol : (1 + i * 7);
             for (c = 0; c < 7; c++)
-                WritePokedexListTilemapEntry(bg1, sDestCols[i] + c, y, src[y * 32 + 1 + i * 7 + c]);
+                WritePokedexListTilemapEntry(bg1, sDestCols[i] + c, y, src[y * 32 + srcCol + c]);
         }
     }
     for (x = 0; x < 40; x++)
-        WritePokedexListTilemapEntry(bg1, x, 2, 0x205f);
+        WritePokedexListTilemapEntry(bg1, x, 2, 0x205F);
+    Free(src);
+}
+
+static void LoadPokedexCryScreenBgTilemap_SDL2(void)
+{
+    u16 *src = Alloc(20 * 32 * sizeof(u16));
+    u16 *bg3 = GetBgTilemapBuffer(3);
+    u16 x, y;
+
+    LZ77UnCompWram(gPokedexCryScreen_Tilemap, src);
+    for (y = 0; y < 23; y++)
+    {
+        if (y <= 1 || (y >= 12 && y <= 13) || y >= 21)
+        {
+            for (x = 0; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x1001);
+        }
+        else if (y == 2 || y == 11)
+        {
+            WritePokedexListTilemapEntry(bg3, 0, y, 0x1001);
+            WritePokedexListTilemapEntry(bg3, 1, y, src[y * 32 + 1]);
+            for (x = 2; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + 2]);
+            WritePokedexListTilemapEntry(bg3, 38, y, src[y * 32 + 28]);
+            WritePokedexListTilemapEntry(bg3, 39, y, 0x1001);
+        }
+        else if (y <= 10)
+        {
+            // Keep portrait 0..9, widen dark PLAY panel 10..27 (centering PLAY at cols 13..18), right-align VU meter 28..37.
+            for (x = 0; x <= 10; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + x]);
+            for (x = 11; x <= 27; x++)
+            {
+                if (x >= 13 && x <= 18)
+                    WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + (x - 2)]);
+                else
+                    WritePokedexListTilemapEntry(bg3, x, y, (x == 27 && src[y * 32 + 17] != 0x0002) ? src[y * 32 + 17] : 0x0002);
+            }
+            for (x = 28; x <= 39; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + (x - 10)]);
+        }
+        else
+        {
+            // Rows 14..20: transparent cutout for 7-row BG0 waveform window.
+            for (x = 0; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0000);
+        }
+    }
+    Free(src);
+}
+
+static void LoadPokedexSizeScreenBgTilemap_SDL2(void)
+{
+    u16 *src = Alloc(20 * 32 * sizeof(u16));
+    u16 *bg3 = GetBgTilemapBuffer(3);
+    u16 x, y;
+
+    LZ77UnCompWram(gPokedexSizeScreen_Tilemap, src);
+    for (y = 0; y < 23; y++)
+    {
+        if (y <= 1)
+        {
+            for (x = 0; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x1001);
+        }
+        else if (y == 2 || y == 11)
+        {
+            WritePokedexListTilemapEntry(bg3, 0, y, 0x1001);
+            WritePokedexListTilemapEntry(bg3, 1, y, src[y * 32 + 1]);
+            for (x = 2; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + 2]);
+            WritePokedexListTilemapEntry(bg3, 38, y, src[y * 32 + 28]);
+            WritePokedexListTilemapEntry(bg3, 39, y, 0x1001);
+        }
+        else if (y <= 10)
+        {
+            // Center the 18-col silhouette window (+5 cols = +40 px) inside 2..37.
+            WritePokedexListTilemapEntry(bg3, 0, y, 0x1001);
+            WritePokedexListTilemapEntry(bg3, 1, y, 0x040F);
+            for (x = 2; x <= 10; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0002);
+            for (x = 11; x <= 28; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + (x - 5)]);
+            for (x = 29; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0002);
+            WritePokedexListTilemapEntry(bg3, 38, y, 0x000F);
+            WritePokedexListTilemapEntry(bg3, 39, y, 0x1001);
+        }
+        else if (y >= 15 && y <= 18)
+        {
+            u16 sr = y - 1; // src rows 14..17 -> dest rows 15..18
+            WritePokedexListTilemapEntry(bg3, 0, y, src[sr * 32 + 0]);
+            for (x = 1; x <= 36; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[sr * 32 + 1]);
+            for (x = 37; x <= 39; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[sr * 32 + (x - 10)]);
+        }
+        else
+        {
+            for (x = 0; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0006);
+        }
+    }
     Free(src);
 }
 #endif
@@ -3744,7 +3893,7 @@ static void Task_LoadInfoScreen(u8 taskId)
                 r2 |= DISPCNT_BG1_ON;
             ResetOtherVideoRegisters(r2);
 #ifdef PLATFORM_SDL2
-            ConfigureInfoScreenBgs_SDL2(TRUE);
+            ConfigureInfoScreenBgs_SDL2(TRUE, sInfoScreenPage_WindowTemplates_SDL2);
 #endif
             gMain.state = 1;
         }
@@ -3990,7 +4139,7 @@ static void Task_LoadAreaScreen(u8 taskId)
             SetVBlankCallback(NULL);
             ResetOtherVideoRegisters(DISPCNT_BG1_ON);
 #ifdef PLATFORM_SDL2
-            ConfigureInfoScreenBgs_SDL2(FALSE);
+            ConfigureInfoScreenBgs_SDL2(FALSE, sInfoScreen_WindowTemplates);
 #endif
             sPokedexView->selectedScreen = AREA_SCREEN;
             gMain.state = 1;
@@ -4051,7 +4200,7 @@ static void Task_LoadCryScreen(u8 taskId)
             SetVBlankCallback(NULL);
             ResetOtherVideoRegisters(DISPCNT_BG1_ON);
 #ifdef PLATFORM_SDL2
-            ConfigureInfoScreenBgs_SDL2(FALSE);
+            ConfigureInfoScreenBgs_SDL2(TRUE, sCryScreen_WindowTemplates_SDL2);
 #endif
             sPokedexView->selectedScreen = CRY_SCREEN;
             gMain.state = 1;
@@ -4059,7 +4208,11 @@ static void Task_LoadCryScreen(u8 taskId)
         break;
     case 1:
         DecompressAndLoadBgGfxUsingHeap(3, &gPokedexMenu_Gfx, 0x2000, 0, 0);
+#ifdef PLATFORM_SDL2
+        LoadPokedexCryScreenBgTilemap_SDL2();
+#else
         CopyToBgTilemapBuffer(3, &gPokedexCryScreen_Tilemap, 0, 0);
+#endif
         FillWindowPixelBuffer(WIN_INFO, PIXEL_FILL(0));
         PutWindowTilemap(WIN_INFO);
         PutWindowTilemap(WIN_VU_METER);
@@ -4077,8 +4230,13 @@ static void Task_LoadCryScreen(u8 taskId)
         gMain.state++;
         break;
     case 4:
+#ifdef PLATFORM_SDL2
+        PrintInfoScreenText(gText_CryOf, 90, 33);
+        PrintCryScreenSpeciesName(0, sPokedexListItem->dexNum, 90, 49);
+#else
         PrintInfoScreenText(gText_CryOf, 82, 33);
         PrintCryScreenSpeciesName(0, sPokedexListItem->dexNum, 82, 49);
+#endif
         gMain.state++;
         break;
     case 5:
@@ -4094,7 +4252,11 @@ static void Task_LoadCryScreen(u8 taskId)
             waveformWindow.unk0 = 0x4020;
             waveformWindow.unk2 = 31;
             waveformWindow.paletteNo = 8;
+#ifdef PLATFORM_SDL2
+            waveformWindow.yPos = 40;
+#else
             waveformWindow.yPos = 30;
+#endif
             waveformWindow.xPos = 12;
             if (LoadCryWaveformWindow(&waveformWindow, 2))
             {
@@ -4108,7 +4270,11 @@ static void Task_LoadCryScreen(u8 taskId)
             struct CryScreenWindow cryMeter;
 
             cryMeter.paletteNo = 9;
+#ifdef PLATFORM_SDL2
+            cryMeter.xPos = 28;
+#else
             cryMeter.xPos = 18;
+#endif
             cryMeter.yPos = 3;
             if (LoadCryMeter(&cryMeter, 3))
                 gMain.state++;
@@ -4248,7 +4414,7 @@ static void Task_LoadSizeScreen(u8 taskId)
             SetVBlankCallback(NULL);
             ResetOtherVideoRegisters(DISPCNT_BG1_ON);
 #ifdef PLATFORM_SDL2
-            ConfigureInfoScreenBgs_SDL2(FALSE);
+            ConfigureInfoScreenBgs_SDL2(TRUE, sInfoScreenPage_WindowTemplates_SDL2);
 #endif
             sPokedexView->selectedScreen = SIZE_SCREEN;
             gMain.state = 1;
@@ -4256,7 +4422,11 @@ static void Task_LoadSizeScreen(u8 taskId)
         break;
     case 1:
         DecompressAndLoadBgGfxUsingHeap(3, gPokedexMenu_Gfx, 0x2000, 0, 0);
+#ifdef PLATFORM_SDL2
+        LoadPokedexSizeScreenBgTilemap_SDL2();
+#else
         CopyToBgTilemapBuffer(3, gPokedexSizeScreen_Tilemap, 0, 0);
+#endif
         FillWindowPixelBuffer(WIN_INFO, PIXEL_FILL(0));
         PutWindowTilemap(WIN_INFO);
         gMain.state++;
@@ -4273,7 +4443,11 @@ static void Task_LoadSizeScreen(u8 taskId)
 
             StringCopy(string, gText_SizeComparedTo);
             StringAppend(string, gSaveBlock2Ptr->playerName);
+#ifdef PLATFORM_SDL2
+            PrintInfoScreenText(string, GetStringCenterAlignXOffset(FONT_NORMAL, string, DISPLAY_WIDTH), 129);
+#else
             PrintInfoScreenText(string, GetStringCenterAlignXOffset(FONT_NORMAL, string, GBA_DISPLAY_WIDTH), 121);
+#endif
             gMain.state++;
         }
         break;
@@ -4288,8 +4462,10 @@ static void Task_LoadSizeScreen(u8 taskId)
         spriteId = SPRITE_NONE;
 #ifdef PLATFORM_SDL2
         if (gTasks[taskId].tSizeMatricesReserved)
-#endif
+            spriteId = CreateSizeScreenTrainerPic(PlayerGenderToFrontTrainerPicId(gSaveBlock2Ptr->playerGender), 192, 56, 0);
+#else
             spriteId = CreateSizeScreenTrainerPic(PlayerGenderToFrontTrainerPicId(gSaveBlock2Ptr->playerGender), 152, 56, 0);
+#endif
         if (spriteId < MAX_SPRITES)
         {
             u8 palette = GetSpritePaletteHandle(&gSprites[spriteId]);
@@ -4309,8 +4485,10 @@ static void Task_LoadSizeScreen(u8 taskId)
         spriteId = SPRITE_NONE;
 #ifdef PLATFORM_SDL2
         if (gTasks[taskId].tSizeMatricesReserved)
-#endif
+            spriteId = CreateMonSpriteFromNationalDexNumber(sPokedexListItem->dexNum, 128, 56, 1);
+#else
             spriteId = CreateMonSpriteFromNationalDexNumber(sPokedexListItem->dexNum, 88, 56, 1);
+#endif
         if (spriteId < MAX_SPRITES)
         {
             u8 palette = GetSpritePaletteHandle(&gSprites[spriteId]);
@@ -4415,7 +4593,7 @@ static void Task_SwitchScreensFromSizeScreen(u8 taskId)
 static void LoadScreenSelectBarMain(u16 unused)
 {
 #ifdef PLATFORM_SDL2
-    LoadScreenSelectBarMain_SDL2();
+    LoadPokedexSelectBar_SDL2(gPokedexScreenSelectBarMain_Tilemap, 22);
 #else
     CopyToBgTilemapBuffer(1, gPokedexScreenSelectBarMain_Tilemap, 0, 0);
 #endif
@@ -4423,7 +4601,14 @@ static void LoadScreenSelectBarMain(u16 unused)
 
 static void LoadScreenSelectBarSubmenu(u16 unused)
 {
+#ifdef PLATFORM_SDL2
+    if (GetBgAttribute(1, BG_ATTR_SCREENSIZE) == 1)
+        LoadPokedexSelectBar_SDL2(gPokedexScreenSelectBarSubmenu_Tilemap, 23);
+    else
+        CopyToBgTilemapBuffer(1, gPokedexScreenSelectBarSubmenu_Tilemap, 0, 0);
+#else
     CopyToBgTilemapBuffer(1, gPokedexScreenSelectBarSubmenu_Tilemap, 0, 0);
+#endif
 }
 
 static void HighlightScreenSelectBarItem(u8 selectedScreen, u16 unused)
@@ -4449,11 +4634,19 @@ static void HighlightScreenSelectBarItem(u8 selectedScreen, u16 unused)
 
 static void HighlightSubmenuScreenSelectBarItem(u8 a, u16 b)
 {
+#ifdef PLATFORM_SDL2
+    static const u8 sDestCols[4] = { 1, 10, 19, 32 };
+    bool8 wide = (GetBgAttribute(1, BG_ATTR_SCREENSIZE) == 1);
+#endif
     u8 i;
 
     for (i = 0; i < 4; i++)
     {
+#ifdef PLATFORM_SDL2
+        u8 row = wide ? sDestCols[i] : (i * 7 + 1);
+#else
         u8 row = i * 7 + 1;
+#endif
         u8 palette = (i == a || i == 3) ? 2 : 4;
 
         SetBgTilemapPalette(1, row, 0, 7, 2, palette);
