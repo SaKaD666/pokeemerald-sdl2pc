@@ -1544,8 +1544,13 @@ static const struct BgTemplate sSearchMenu_BgTemplate[] =
     {
         .bg = 0,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 8,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 12,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0
@@ -1553,8 +1558,13 @@ static const struct BgTemplate sSearchMenu_BgTemplate[] =
     {
         .bg = 1,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 10,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 13,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -1562,8 +1572,13 @@ static const struct BgTemplate sSearchMenu_BgTemplate[] =
     {
         .bg = 2,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 12,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 14,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
@@ -1571,8 +1586,13 @@ static const struct BgTemplate sSearchMenu_BgTemplate[] =
     {
         .bg = 3,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 14,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 15,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -1585,8 +1605,13 @@ static const struct WindowTemplate sSearchMenu_WindowTemplate[] =
         .bg = 2,
         .tilemapLeft = 0,
         .tilemapTop = 0,
+#ifdef PLATFORM_SDL2
+        .width = 40,
+        .height = 22,
+#else
         .width = 32,
         .height = 20,
+#endif
         .paletteNum = 0,
         .baseBlock = 0x0001,
     },
@@ -5398,6 +5423,45 @@ static void ClearSearchMenuRect(u32 x, u32 y, u32 width, u32 height)
 #define tCursorPos              data[14]
 #define tScrollOffset           data[15]
 
+#ifdef PLATFORM_SDL2
+static void LoadPokedexSearchMenuBgTilemap_SDL2(const u32 *tilemapSrc)
+{
+    u16 *src = Alloc(20 * 32 * sizeof(u16));
+    u16 *bg3 = GetBgTilemapBuffer(3);
+    u16 x, y;
+
+    LZ77UnCompWram(tilemapSrc, src);
+    for (y = 0; y < 23; y++)
+    {
+        if (y <= 13)
+        {
+            for (x = 0; x <= 16; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[y * 32 + x]);
+            for (x = 17; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x004F);
+        }
+        else if (y == 14 || y == 15 || y >= 22)
+        {
+            for (x = 0; x <= 16; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x0001);
+            for (x = 17; x < 40; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, 0x004F);
+        }
+        else
+        {
+            u16 sr = y - 2; // description box (src rows 14..19 -> dest rows 16..21)
+            WritePokedexListTilemapEntry(bg3, 0, y, src[sr * 32 + 0]);
+            WritePokedexListTilemapEntry(bg3, 1, y, src[sr * 32 + 1]);
+            for (x = 2; x <= 37; x++)
+                WritePokedexListTilemapEntry(bg3, x, y, src[sr * 32 + 2]);
+            WritePokedexListTilemapEntry(bg3, 38, y, src[sr * 32 + 28]);
+            WritePokedexListTilemapEntry(bg3, 39, y, src[sr * 32 + 29]);
+        }
+    }
+    Free(src);
+}
+#endif
+
 static void Task_LoadSearchMenu(u8 taskId)
 {
     u16 i;
@@ -5409,12 +5473,23 @@ static void Task_LoadSearchMenu(u8 taskId)
         if (!gPaletteFade.active)
         {
 #ifdef PLATFORM_SDL2
-            SetFrameViewToGbaSize(TRUE);
+            SetFrameViewToGbaSize(FALSE);
 #endif
             sPokedexView->currentPage = PAGE_SEARCH;
             ResetOtherVideoRegisters(0);
             ResetBgsAndClearDma3BusyFlags(0);
             InitBgsFromTemplates(0, sSearchMenu_BgTemplate, ARRAY_COUNT(sSearchMenu_BgTemplate));
+#ifdef PLATFORM_SDL2
+            SetBgTilemapBuffer(3, AllocZeroed(BG_SCREEN_SIZE * 2));
+            SetBgTilemapBuffer(2, AllocZeroed(BG_SCREEN_SIZE * 2));
+            SetBgTilemapBuffer(1, AllocZeroed(BG_SCREEN_SIZE * 2));
+            SetBgTilemapBuffer(0, AllocZeroed(BG_SCREEN_SIZE * 2));
+            InitWindows(sSearchMenu_WindowTemplate);
+            DeactivateAllTextPrinters();
+            PutWindowTilemap(0);
+            DecompressAndLoadBgGfxUsingHeap(3, gPokedexSearchMenu_Gfx, 0, 0, 0);
+            LoadPokedexSearchMenuBgTilemap_SDL2(!IsNationalPokedexEnabled() ? gPokedexSearchMenuHoenn_Tilemap : gPokedexSearchMenuNational_Tilemap);
+#else
             SetBgTilemapBuffer(3, AllocZeroed(BG_SCREEN_SIZE));
             SetBgTilemapBuffer(2, AllocZeroed(BG_SCREEN_SIZE));
             SetBgTilemapBuffer(1, AllocZeroed(BG_SCREEN_SIZE));
@@ -5422,16 +5497,13 @@ static void Task_LoadSearchMenu(u8 taskId)
             InitWindows(sSearchMenu_WindowTemplate);
             DeactivateAllTextPrinters();
             PutWindowTilemap(0);
-#ifdef PLATFORM_SDL2
-            DecompressAndLoadBgGfxUsingHeap(3, gPokedexSearchMenu_Gfx, 0, 0, 0);
-#else
             DecompressAndLoadBgGfxUsingHeap(3, gPokedexSearchMenu_Gfx, 0x2000, 0, 0);
-#endif
 
             if (!IsNationalPokedexEnabled())
                 CopyToBgTilemapBuffer(3, gPokedexSearchMenuHoenn_Tilemap, 0, 0);
             else
                 CopyToBgTilemapBuffer(3, gPokedexSearchMenuNational_Tilemap, 0, 0);
+#endif
             LoadPalette(gPokedexSearchMenu_Pal + 1, BG_PLTT_ID(0) + 1, PLTT_SIZEOF(4 * 16 - 1));
             gMain.state = 1;
         }
@@ -6004,6 +6076,35 @@ static void DrawOrEraseSearchParameterBox(bool8 erase)
     u16 j;
     u16 *ptr = GetBgTilemapBuffer(3);
 
+#ifdef PLATFORM_SDL2
+    if (!erase)
+    {
+        WritePokedexListTilemapEntry(ptr, 18, 0, 0xC0B);
+        for (i = 19; i <= 37; i++)
+            WritePokedexListTilemapEntry(ptr, i, 0, 0x80D);
+        WritePokedexListTilemapEntry(ptr, 38, 0, 0x80B);
+        for (j = 1; j < 13; j++)
+        {
+            WritePokedexListTilemapEntry(ptr, 18, j, 0x40A);
+            for (i = 19; i <= 37; i++)
+                WritePokedexListTilemapEntry(ptr, i, j, 0x0002);
+            WritePokedexListTilemapEntry(ptr, 38, j, 0x000A);
+        }
+        WritePokedexListTilemapEntry(ptr, 18, 13, 0x40B);
+        for (i = 19; i <= 37; i++)
+            WritePokedexListTilemapEntry(ptr, i, 13, 0x000D);
+        WritePokedexListTilemapEntry(ptr, 38, 13, 0x000B);
+    }
+    else
+    {
+        for (j = 0; j < 14; j++)
+        {
+            for (i = 18; i <= 38; i++)
+                WritePokedexListTilemapEntry(ptr, i, j, 0x004F);
+        }
+    }
+    InvalidateBgTilemapRamRange(ptr, BG_SCREEN_SIZE * 2);
+#else
     if (!erase)
     {
         *(ptr + 0x11) = 0xC0B;
@@ -6029,9 +6130,6 @@ static void DrawOrEraseSearchParameterBox(bool8 erase)
             }
         }
     }
-#ifdef PLATFORM_SDL2
-    for (j = 0; j < 14; j++)
-        InvalidateBgTilemapRamRange(ptr + j * 32 + 0x11, (erase ? 13 : 14) * sizeof(*ptr));
 #endif
 }
 
@@ -6184,6 +6282,18 @@ static void CreateSearchParameterScrollArrows(u8 taskId)
 {
     u8 spriteId;
 
+#ifdef PLATFORM_SDL2
+    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 228, 4, 0);
+    gSprites[spriteId].sTaskId = taskId;
+    gSprites[spriteId].sIsDownArrow = FALSE;
+    gSprites[spriteId].callback = SpriteCB_SearchParameterScrollArrow;
+
+    spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 228, 108, 0);
+    gSprites[spriteId].sTaskId = taskId;
+    gSprites[spriteId].sIsDownArrow = TRUE;
+    gSprites[spriteId].vFlip = TRUE;
+    gSprites[spriteId].callback = SpriteCB_SearchParameterScrollArrow;
+#else
     spriteId = CreateSprite(&sScrollArrowSpriteTemplate, 184, 4, 0);
     gSprites[spriteId].sTaskId = taskId;
     gSprites[spriteId].sIsDownArrow = FALSE;
@@ -6194,6 +6304,7 @@ static void CreateSearchParameterScrollArrows(u8 taskId)
     gSprites[spriteId].sIsDownArrow = TRUE;
     gSprites[spriteId].vFlip = TRUE;
     gSprites[spriteId].callback = SpriteCB_SearchParameterScrollArrow;
+#endif
 }
 
 #undef sTaskId
@@ -6201,26 +6312,47 @@ static void CreateSearchParameterScrollArrows(u8 taskId)
 
 static void EraseAndPrintSearchTextBox(const u8 *str)
 {
+#ifdef PLATFORM_SDL2
+    ClearSearchMenuRect(8, 136, 304, 32);
+    PrintSearchText(str, 8, 137);
+#else
     ClearSearchMenuRect(8, 120, 224, 32);
     PrintSearchText(str, 8, 121);
+#endif
 }
 
 static void EraseSelectorArrow(u32 y)
 {
+#ifdef PLATFORM_SDL2
+    ClearSearchMenuRect(152, y * 16 + 8, 8, 16);
+#else
     ClearSearchMenuRect(144, y * 16 + 8, 8, 16);
+#endif
 }
 
 static void PrintSelectorArrow(u32 y)
 {
+#ifdef PLATFORM_SDL2
+    PrintSearchText(gText_SelectorArrow, 152, y * 16 + 9);
+#else
     PrintSearchText(gText_SelectorArrow, 144, y * 16 + 9);
+#endif
 }
 
 static void PrintSearchParameterTitle(u32 y, const u8 *str)
 {
+#ifdef PLATFORM_SDL2
+    PrintSearchText(str, 160, y * 16 + 9);
+#else
     PrintSearchText(str, 152, y * 16 + 9);
+#endif
 }
 
 static void ClearSearchParameterBoxText(void)
 {
+#ifdef PLATFORM_SDL2
+    ClearSearchMenuRect(152, 8, 152, 96);
+#else
     ClearSearchMenuRect(144, 8, 96, 96);
+#endif
 }
