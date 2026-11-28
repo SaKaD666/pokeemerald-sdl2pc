@@ -665,7 +665,11 @@ static void DrawCityMap(struct Pokenav_RegionMapGfx *state, mapsec_s32_t mapSecI
         return;
 
     FillBgTilemapBufferRect_Palette0(1, 0x1041, POKENAV_MAP_INFO_LEFT, 6, 12, 11);
+#ifdef PLATFORM_SDL2
+    CopyToBgTilemapBufferRect_ChangePalette(1, state->cityZoomPics[i], POKENAV_MAP_INFO_LEFT + 1, 6, 10, 10, 17);
+#else
     CopyToBgTilemapBufferRect(1, state->cityZoomPics[i], POKENAV_MAP_INFO_LEFT + 1, 6, 10, 10);
+#endif
 }
 
 static void PrintLandmarkNames(struct Pokenav_RegionMapGfx *state, mapsec_s32_t mapSecId, int pos)
