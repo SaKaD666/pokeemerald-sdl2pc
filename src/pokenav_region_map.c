@@ -25,9 +25,11 @@
 #ifdef PLATFORM_SDL2
 #define POKENAV_MAP_INFO_LEFT 27
 #define POKENAV_MAP_TILEMAP_SIZE (BG_SCREEN_SIZE * 2)
+#define POKENAV_MAP_BG1_ZOOMED_OUT_Y (-0x7000)
 #else
 #define POKENAV_MAP_INFO_LEFT 17
 #define POKENAV_MAP_TILEMAP_SIZE BG_SCREEN_SIZE
+#define POKENAV_MAP_BG1_ZOOMED_OUT_Y (-0x6000)
 #endif
 
 struct Pokenav_RegionMapMenu
@@ -539,7 +541,7 @@ static void LoadPokenavRegionMapGfx(struct Pokenav_RegionMapGfx *state)
     CopyPaletteIntoBufferUnfaded(sMapSecInfoWindow_Pal, BG_PLTT_ID(1), sizeof(sMapSecInfoWindow_Pal));
     CopyPaletteIntoBufferUnfaded(gRegionMapCityZoomTiles_Pal, BG_PLTT_ID(3), PLTT_SIZE_4BPP);
     if (!IsRegionMapZoomed())
-        ChangeBgY(1, -0x6000, BG_COORD_SET);
+        ChangeBgY(1, POKENAV_MAP_BG1_ZOOMED_OUT_Y, BG_COORD_SET);
     else
         ChangeBgY(1, 0, BG_COORD_SET);
 
@@ -621,9 +623,9 @@ static void Task_ChangeBgYForZoom(u8 taskId)
     }
     else
     {
-        if (ChangeBgY(1, 0x480, BG_COORD_SUB) <= -0x6000)
+        if (ChangeBgY(1, 0x480, BG_COORD_SUB) <= POKENAV_MAP_BG1_ZOOMED_OUT_Y)
         {
-            ChangeBgY(1, -0x6000, BG_COORD_SET);
+            ChangeBgY(1, POKENAV_MAP_BG1_ZOOMED_OUT_Y, BG_COORD_SET);
             DestroyTask(taskId);
         }
 
@@ -696,7 +698,7 @@ static void CreateCityZoomTextSprites(void)
 
     // When not zoomed in the text is still created but its pushed off screen
     if (!IsRegionMapZoomed())
-        y = 228;
+        y = 132 - (POKENAV_MAP_BG1_ZOOMED_OUT_Y >> 8);
     else
         y = 132;
 
