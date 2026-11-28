@@ -370,9 +370,6 @@ static void FreePokenavResources(void)
         FreePokenavSubstruct(i);
 
     FREE_AND_SET_NULL(gPokenavResources);
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(FALSE);
-#endif
     InitKeys();
 }
 
@@ -380,9 +377,6 @@ static void InitPokenavResources(struct PokenavResources *resources)
 {
     int i;
 
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
     for (i = 0; i < POKENAV_SUBSTRUCT_COUNT; i++)
         resources->substructPtrs[i] = NULL;
 

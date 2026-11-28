@@ -31,9 +31,17 @@
 
 #define NUM_OPTION_SUBSPRITES 4
 
+#ifdef PLATFORM_SDL2
+#define OPTION_DEFAULT_X   188
+#define OPTION_SELECTED_X  178
+#define OPTION_EXIT_X      (DISPLAY_WIDTH + 16)
+#define OPTION_DESC_WIDTH  34
+#else
 #define OPTION_DEFAULT_X   140
 #define OPTION_SELECTED_X  130
 #define OPTION_EXIT_X      (GBA_DISPLAY_WIDTH + 16)
+#define OPTION_DESC_WIDTH  24
+#endif
 
 struct Pokenav_MenuGfx
 {
@@ -47,7 +55,11 @@ struct Pokenav_MenuGfx
     bool32 iconVisible[MAX_POKENAV_MENUITEMS];
     struct Sprite *blueLightSprite;
     struct Sprite *iconSprites[MAX_POKENAV_MENUITEMS][NUM_OPTION_SUBSPRITES];
+#ifdef PLATFORM_SDL2
+    u8 bg1TilemapBuffer[BG_SCREEN_SIZE * 2];
+#else
     u8 bg1TilemapBuffer[BG_SCREEN_SIZE];
+#endif
 };
 
 static struct Pokenav_MenuGfx * OpenPokenavMenu(void);
@@ -112,24 +124,39 @@ static const struct BgTemplate sPokenavMainMenuBgTemplates[] = {
     {
         .bg = 1,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 14,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 15,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0x000
     }, {
         .bg = 2,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 22,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 23,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0x000
     }, {
         .bg = 3,
         .charBaseIndex = 3,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 30,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 31,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0x000
@@ -198,7 +225,11 @@ struct
 {
     [POKENAV_MENU_TYPE_DEFAULT] =
     {
+#ifdef PLATFORM_SDL2
+        .yStart = 48,
+#else
         .yStart = 42,
+#endif
         .deltaY = 20,
         .gfx = {
             sOptionsLabelGfx_RegionMap,
@@ -208,7 +239,11 @@ struct
     },
     [POKENAV_MENU_TYPE_UNLOCK_MC] =
     {
+#ifdef PLATFORM_SDL2
+        .yStart = 48,
+#else
         .yStart = 42,
+#endif
         .deltaY = 20,
         .gfx = {
             sOptionsLabelGfx_RegionMap,
@@ -219,7 +254,11 @@ struct
     },
     [POKENAV_MENU_TYPE_UNLOCK_MC_RIBBONS] =
     {
+#ifdef PLATFORM_SDL2
+        .yStart = 48,
+#else
         .yStart = 42,
+#endif
         .deltaY = 20,
         .gfx = {
             sOptionsLabelGfx_RegionMap,
@@ -231,7 +270,11 @@ struct
     },
     [POKENAV_MENU_TYPE_CONDITION] =
     {
+#ifdef PLATFORM_SDL2
+        .yStart = 64,
+#else
         .yStart = 56,
+#endif
         .deltaY = 20,
         .gfx = {
             sOptionsLabelGfx_Party,
@@ -241,7 +284,11 @@ struct
     },
     [POKENAV_MENU_TYPE_CONDITION_SEARCH] =
     {
+#ifdef PLATFORM_SDL2
+        .yStart = 48,
+#else
         .yStart = 40,
+#endif
         .deltaY = 16,
         .gfx = {
             sOptionsLabelGfx_Cool,
@@ -258,8 +305,12 @@ static const struct WindowTemplate sOptionDescWindowTemplate =
 {
     .bg = 1,
     .tilemapLeft = 3,
+#ifdef PLATFORM_SDL2
+    .tilemapTop = 19,
+#else
     .tilemapTop = 17,
-    .width = 24,
+#endif
+    .width = OPTION_DESC_WIDTH,
     .height = 2,
     .paletteNum = 1,
     .baseBlock = 8
@@ -355,6 +406,7 @@ static const struct SpriteTemplate sMatchCallBlueLightSpriteTemplate =
     .callback = SpriteCallbackDummy,
 };
 
+#ifndef PLATFORM_SDL2
 static const struct ScanlineEffectParams sPokenavMainMenuScanlineEffectParams =
 {
     &REG_WIN0H,
@@ -362,6 +414,7 @@ static const struct ScanlineEffectParams sPokenavMainMenuScanlineEffectParams =
     1,
     0
 };
+#endif
 
 static bool32 AreAnyTrainerRematchesNearby(void)
 {
@@ -445,6 +498,40 @@ static bool32 GetCurrentLoopedTaskActive(void)
     return IsLoopedTaskActive(gfx->loopedTaskId);
 }
 
+#ifdef PLATFORM_SDL2
+static void SetWideMenuTile(u16 *tilemap, u16 x, u16 y, u16 tile)
+{
+    u16 blockOffset = (x >= 32) ? 1024 : 0;
+
+    tilemap[blockOffset + y * 32 + (x & 31)] = tile;
+}
+
+static void ExpandPokenavMessageBoxTilemap(u16 *tilemap)
+{
+    u16 x;
+
+    CpuFill16(0x1003, tilemap, BG_SCREEN_SIZE * 2);
+
+    SetWideMenuTile(tilemap, 2, 18, 0x1000);
+    SetWideMenuTile(tilemap, 2, 19, 0x1004);
+    SetWideMenuTile(tilemap, 2, 20, 0x1004);
+    SetWideMenuTile(tilemap, 2, 21, 0x1800);
+
+    for (x = 3; x < 3 + OPTION_DESC_WIDTH; x++)
+    {
+        SetWideMenuTile(tilemap, x, 18, 0x1001);
+        SetWideMenuTile(tilemap, x, 19, 0x1005);
+        SetWideMenuTile(tilemap, x, 20, 0x1005);
+        SetWideMenuTile(tilemap, x, 21, 0x1801);
+    }
+
+    SetWideMenuTile(tilemap, 3 + OPTION_DESC_WIDTH, 18, 0x1002);
+    SetWideMenuTile(tilemap, 3 + OPTION_DESC_WIDTH, 19, 0x1006);
+    SetWideMenuTile(tilemap, 3 + OPTION_DESC_WIDTH, 20, 0x1006);
+    SetWideMenuTile(tilemap, 3 + OPTION_DESC_WIDTH, 21, 0x1802);
+}
+#endif
+
 static u32 LoopedTask_OpenMenu(s32 state)
 {
     struct Pokenav_MenuGfx *gfx = GetSubstructPtr(POKENAV_SUBSTRUCT_MENU_GFX);
@@ -455,7 +542,11 @@ static u32 LoopedTask_OpenMenu(s32 state)
         InitBgTemplates(sPokenavMainMenuBgTemplates, ARRAY_COUNT(sPokenavMainMenuBgTemplates));
         DecompressAndCopyTileDataToVram(1, gPokenavMessageBox_Gfx, 0, 0, 0);
         SetBgTilemapBuffer(1, gfx->bg1TilemapBuffer);
+#ifdef PLATFORM_SDL2
+        ExpandPokenavMessageBoxTilemap((u16 *)gfx->bg1TilemapBuffer);
+#else
         CopyToBgTilemapBuffer(1, gPokenavMessageBox_Tilemap, 0, 0);
+#endif
         CopyBgTilemapBufferToVram(1);
         CopyPaletteIntoBufferUnfaded(gPokenavMessageBox_Pal, BG_PLTT_ID(1), PLTT_SIZE_4BPP);
         ChangeBgX(1, 0, BG_COORD_SET);
@@ -469,14 +560,24 @@ static u32 LoopedTask_OpenMenu(s32 state)
         if (FreeTempTileDataBuffersIfPossible())
             return LT_PAUSE;
         DecompressAndCopyTileDataToVram(2, sPokenavDeviceBgTiles, 0, 0, 0);
+#ifdef PLATFORM_SDL2
+        LZDecompressWram(sPokenavDeviceBgTilemap, gDecompressionBuffer);
+        CpuFill16(0x2000, ((u16 *)gDecompressionBuffer) + 20 * 32, (2048 - 20 * 32) * sizeof(u16));
+        LoadBgVram(2, gDecompressionBuffer, BG_SCREEN_SIZE * 2, 0, 2);
+#else
         DecompressAndCopyTileDataToVram(2, sPokenavDeviceBgTilemap, 0, 0, 1);
+#endif
         CopyPaletteIntoBufferUnfaded(sPokenavDeviceBgPal, BG_PLTT_ID(2), sizeof(sPokenavDeviceBgPal));
         return LT_INC_AND_PAUSE;
     case 2:
         if (FreeTempTileDataBuffersIfPossible())
             return LT_PAUSE;
         DecompressAndCopyTileDataToVram(3, sPokenavBgDotsTiles, 0, 0, 0);
+#ifdef PLATFORM_SDL2
+        RequestDma3Fill(0x30013001, (void *)BG_SCREEN_ADDR(30), BG_SCREEN_SIZE * 2, 1);
+#else
         DecompressAndCopyTileDataToVram(3, sPokenavBgDotsTilemap, 0, 0, 1);
+#endif
         CopyPaletteIntoBufferUnfaded(sPokenavBgDotsPal, BG_PLTT_ID(3), sizeof(sPokenavBgDotsPal));
         if (GetPokenavMenuType() == POKENAV_MENU_TYPE_CONDITION || GetPokenavMenuType() == POKENAV_MENU_TYPE_CONDITION_SEARCH)
             ChangeBgDotsColorToPurple();
@@ -823,7 +924,7 @@ static void CreateMenuOptionSprites(void)
     {
         for (j = 0; j < NUM_OPTION_SUBSPRITES; j++)
         {
-            u8 spriteId = CreateSprite(&sMenuOptionSpriteTemplate, 0x8c, 20 * i + 40, 3);
+            u8 spriteId = CreateSprite(&sMenuOptionSpriteTemplate, OPTION_DEFAULT_X, 20 * i + 40, 3);
             gfx->iconSprites[i][j] = &gSprites[spriteId];
             gSprites[spriteId].x2 = 32 * j;
         }
@@ -1232,7 +1333,7 @@ static void PrintCurrentOptionDescription(void)
     const u8 *desc = sPageDescriptions[menuItem];
     u32 width = GetStringWidth(FONT_NORMAL, desc, -1);
     FillWindowPixelBuffer(gfx->optionDescWindowId, PIXEL_FILL(6));
-    AddTextPrinterParameterized3(gfx->optionDescWindowId, FONT_NORMAL, (192 - width) / 2, 1, sOptionDescTextColors, 0, desc);
+    AddTextPrinterParameterized3(gfx->optionDescWindowId, FONT_NORMAL, (OPTION_DESC_WIDTH * 8 - width) / 2, 1, sOptionDescTextColors, 0, desc);
 }
 
 // Printed when Ribbons is selected if no PC/party mons have ribbons
@@ -1243,7 +1344,7 @@ static void PrintNoRibbonWinners(void)
     const u8 *s = gText_NoRibbonWinners;
     u32 width = GetStringWidth(FONT_NORMAL, s, -1);
     FillWindowPixelBuffer(gfx->optionDescWindowId, PIXEL_FILL(6));
-    AddTextPrinterParameterized3(gfx->optionDescWindowId, FONT_NORMAL, (192 - width) / 2, 1, sOptionDescTextColors2, 0, s);
+    AddTextPrinterParameterized3(gfx->optionDescWindowId, FONT_NORMAL, (OPTION_DESC_WIDTH * 8 - width) / 2, 1, sOptionDescTextColors2, 0, s);
 }
 
 static bool32 IsDma3ManagerBusyWithBgCopy_(void)
@@ -1320,7 +1421,9 @@ static void SetupPokenavMenuScanlineEffects(void)
     SetGpuRegBits(REG_OFFSET_DISPCNT, DISPCNT_WIN0_ON);
     SetGpuRegBits(REG_OFFSET_WININ, WININ_WIN0_ALL);
     SetGpuRegBits(REG_OFFSET_WINOUT, WINOUT_WIN01_BG_ALL | WINOUT_WIN01_OBJ);
-#ifdef BUGFIX
+#ifdef PLATFORM_SDL2
+    SetGpuReg(REG_OFFSET_WIN0V, DISPLAY_HEIGHT);
+#elif defined(BUGFIX)
     // BUGFIX: Use full register write instead of |=.
     // SetGpuRegBits left leftover window values from the Party screen,
     // causing partial/missing glow highlights. SetGpuReg clears them fully.
@@ -1330,7 +1433,11 @@ static void SetupPokenavMenuScanlineEffects(void)
 #endif
     ScanlineEffect_Stop();
     SetMenuOptionGlow();
+#ifdef PLATFORM_SDL2
+    ScanlineEffect_SetWindow0HorizontalBuffers((u32 *)gScanlineEffectRegBuffers[0], (u32 *)gScanlineEffectRegBuffers[1]);
+#else
     ScanlineEffect_SetParams(sPokenavMainMenuScanlineEffectParams);
+#endif
     SetVBlankCallback_(VBlankCB_PokenavMainMenu);
     CreateTask(Task_CurrentMenuOptionGlow, 3);
 }
@@ -1373,10 +1480,24 @@ static void SetMenuOptionGlow(void)
     int menuType = GetPokenavMenuType();
     int cursorPos = GetPokenavCursorPos();
     int r4 = sPokenavMenuOptionLabelGfx[menuType].deltaY * cursorPos + sPokenavMenuOptionLabelGfx[menuType].yStart - 8;
+#ifdef PLATFORM_SDL2
+    u32 *buf0 = (u32 *)gScanlineEffectRegBuffers[0];
+    u32 *buf1 = (u32 *)gScanlineEffectRegBuffers[1];
+    int i;
+
+    CpuFill32(0, buf0, (DISPLAY_HEIGHT + 2) * sizeof(u32));
+    CpuFill32(0, buf1, (DISPLAY_HEIGHT + 2) * sizeof(u32));
+    for (i = 0; i < 16; i++)
+    {
+        buf0[r4 + i] = GPU_WINDOW_H_RANGE(OPTION_SELECTED_X - 16, DISPLAY_WIDTH);
+        buf1[r4 + i] = GPU_WINDOW_H_RANGE(OPTION_SELECTED_X - 16, DISPLAY_WIDTH);
+    }
+#else
     CpuFill16(0, gScanlineEffectRegBuffers[0], (DISPLAY_HEIGHT + 2) * sizeof(u16));
     CpuFill16(0, gScanlineEffectRegBuffers[1], (DISPLAY_HEIGHT + 2) * sizeof(u16));
     CpuFill16(WIN_RANGE(114, GBA_DISPLAY_WIDTH), &gScanlineEffectRegBuffers[0][r4], 0x20);
     CpuFill16(WIN_RANGE(114, GBA_DISPLAY_WIDTH), &gScanlineEffectRegBuffers[1][r4], 0x20);
+#endif
 }
 
 void ResetBldCnt_(void)

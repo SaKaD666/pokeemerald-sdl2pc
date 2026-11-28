@@ -24,7 +24,11 @@ struct Pokenav_MainMenu
     struct Sprite *spinningPokenav;
     struct Sprite *leftHeaderSprites[2];
     struct Sprite *submenuLeftHeaderSprites[2];
+#ifdef PLATFORM_SDL2
+    u8 tilemapBuffer[BG_SCREEN_SIZE * 2];
+#else
     u8 tilemapBuffer[BG_SCREEN_SIZE];
+#endif
 };
 
 // This struct uses a 32bit tag, and doesn't have a size field.
@@ -62,8 +66,13 @@ const struct BgTemplate gPokenavMainMenuBgTemplates[] =
     {
         .bg = 0,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 4,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 5,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 0,
         .baseTile = 0,
@@ -75,8 +84,13 @@ static const struct WindowTemplate sHelpBarWindowTemplate[] =
     {
         .bg = 0,
         .tilemapLeft = 1,
+#ifdef PLATFORM_SDL2
+        .tilemapTop = 24,
+        .width = 25,
+#else
         .tilemapTop = 22,
         .width = 16,
+#endif
         .height = 2,
         .paletteNum = 0,
         .baseBlock = 0x36,
@@ -330,6 +344,55 @@ bool32 WaitForPokenavShutdownFade(void)
     return TRUE;
 }
 
+#ifdef PLATFORM_SDL2
+static void SetWideTile(u16 *tilemap, u16 x, u16 y, u16 tile)
+{
+    u16 blockOffset = (x >= 32) ? 1024 : 0;
+
+    tilemap[blockOffset + y * 32 + (x & 31)] = tile;
+}
+
+static void ExpandPokenavHeaderTilemap(u16 *tilemap)
+{
+    u16 x;
+    u16 rightBarRow22[13];
+    u16 rightBarRow23[13];
+
+    CpuFill16(0, tilemap + 1024, BG_SCREEN_SIZE);
+
+    for (x = 0; x < 13; x++)
+    {
+        rightBarRow22[x] = tilemap[22 * 32 + 17 + x];
+        rightBarRow23[x] = tilemap[23 * 32 + 17 + x];
+    }
+
+    for (x = 21; x < 40; x++)
+    {
+        SetWideTile(tilemap, x, 0, 0x0006);
+        SetWideTile(tilemap, x, 1, 0x0006);
+    }
+    for (x = 0; x < 40; x++)
+    {
+        SetWideTile(tilemap, x, 2, 0x0014);
+        SetWideTile(tilemap, x, 3, 0x0013);
+        SetWideTile(tilemap, x, 22, 0);
+        SetWideTile(tilemap, x, 23, 0);
+        SetWideTile(tilemap, x, 26, 0x0006);
+    }
+
+    for (x = 0; x < 27; x++)
+    {
+        SetWideTile(tilemap, x, 24, 0x0028);
+        SetWideTile(tilemap, x, 25, 0x0006);
+    }
+    for (x = 0; x < 13; x++)
+    {
+        SetWideTile(tilemap, 27 + x, 24, rightBarRow22[x]);
+        SetWideTile(tilemap, 27 + x, 25, rightBarRow23[x]);
+    }
+}
+#endif
+
 static u32 LoopedTask_InitPokenavMenu(s32 state)
 {
     struct Pokenav_MainMenu *menu;
@@ -348,7 +411,12 @@ static u32 LoopedTask_InitPokenavMenu(s32 state)
         menu = GetSubstructPtr(POKENAV_SUBSTRUCT_MAIN_MENU);
         DecompressAndCopyTileDataToVram(0, &gPokenavHeader_Gfx, 0, 0, 0);
         SetBgTilemapBuffer(0, menu->tilemapBuffer);
+#ifdef PLATFORM_SDL2
+        LZDecompressWram(gPokenavHeader_Tilemap, menu->tilemapBuffer);
+        ExpandPokenavHeaderTilemap((u16 *)menu->tilemapBuffer);
+#else
         CopyToBgTilemapBuffer(0, &gPokenavHeader_Tilemap, 0, 0);
+#endif
         CopyPaletteIntoBufferUnfaded(gPokenavHeader_Pal, BG_PLTT_ID(0), PLTT_SIZE_4BPP);
         CopyBgTilemapBufferToVram(0);
         return LT_INC_AND_PAUSE;
@@ -574,7 +642,7 @@ bool32 WaitForHelpBar(void)
 static void DrawHelpBar(u32 windowId)
 {
     FillWindowPixelBuffer(windowId, PIXEL_FILL(4));
-    FillWindowPixelRect(windowId, PIXEL_FILL(5), 0, 0, 0x80, 1);
+    FillWindowPixelRect(windowId, PIXEL_FILL(5), 0, 0, sHelpBarWindowTemplate[0].width * 8, 1);
 }
 
 static void InitPokenavMainMenuResources(void)
@@ -588,7 +656,11 @@ static void InitPokenavMainMenuResources(void)
 
     Pokenav_AllocAndLoadPalettes(sSpinningNavgearPalettes);
     menu->palettes = PALETTES_ALL_FULL & ~(ObjPaletteMask(IndexOfSpritePaletteTag(0)) | 1);
+#ifdef PLATFORM_SDL2
+    spriteId = CreateSprite(&sSpinningPokenavSpriteTemplate, DISPLAY_WIDTH - 20, 12, 0);
+#else
     spriteId = CreateSprite(&sSpinningPokenavSpriteTemplate, 220, 12, 0);
+#endif
     menu->spinningPokenav = &gSprites[spriteId];
 }
 
@@ -620,7 +692,11 @@ void HideSpinningPokenavSprite(void)
     struct Pokenav_MainMenu *menu = GetSubstructPtr(POKENAV_SUBSTRUCT_MAIN_MENU);
 
     // Move sprite so it's no longer visible
+#ifdef PLATFORM_SDL2
+    menu->spinningPokenav->x = DISPLAY_WIDTH - 20;
+#else
     menu->spinningPokenav->x = 220;
+#endif
     menu->spinningPokenav->y = 12;
     menu->spinningPokenav->callback = SpriteCB_SpinningPokenav;
     menu->spinningPokenav->invisible = FALSE;
@@ -760,7 +836,11 @@ static void ShowLeftHeaderSprites(u32 startY, bool32 isOnRightSide)
     if (!isOnRightSide)
         start = -96, end = 32;
     else
+#ifdef PLATFORM_SDL2
+        start = DISPLAY_WIDTH + 16, end = DISPLAY_WIDTH - 80;
+#else
         start = 256, end = 160;
+#endif
 
     for (i = 0; i < (s32)ARRAY_COUNT(menu->leftHeaderSprites); i++)
     {
@@ -777,7 +857,11 @@ static void ShowLeftHeaderSubmenuSprites(u32 startY, bool32 isOnRightSide)
     if (!isOnRightSide)
         start = -96, end = 16;
     else
+#ifdef PLATFORM_SDL2
+        start = DISPLAY_WIDTH + 16, end = DISPLAY_WIDTH - 48;
+#else
         start = 256, end = 192;
+#endif
 
     for (i = 0; i < (s32)ARRAY_COUNT(menu->submenuLeftHeaderSprites); i++)
     {
@@ -794,7 +878,11 @@ static void HideLeftHeaderSprites(bool32 isOnRightSide)
     if (!isOnRightSide)
         start = 32, end = -96;
     else
+#ifdef PLATFORM_SDL2
+        start = DISPLAY_WIDTH - 48, end = DISPLAY_WIDTH + 16;
+#else
         start = 192, end = 256;
+#endif
 
     for (i = 0; i < (s32)ARRAY_COUNT(menu->leftHeaderSprites); i++)
     {
@@ -810,7 +898,11 @@ static void HideLeftHeaderSubmenuSprites(bool32 isOnRightSide)
     if (!isOnRightSide)
         start = 16, end = -96;
     else
+#ifdef PLATFORM_SDL2
+        start = DISPLAY_WIDTH - 48, end = DISPLAY_WIDTH + 16;
+#else
         start = 192, end = 256;
+#endif
 
     for (i = 0; i < (s32)ARRAY_COUNT(menu->submenuLeftHeaderSprites); i++)
     {
@@ -835,7 +927,11 @@ static void SpriteCB_MoveLeftHeader(struct Sprite *sprite)
         sprite->data[2]--;
         sprite->data[0] += sprite->data[1];
         sprite->x = sprite->data[0] >> 4;
+#ifdef PLATFORM_SDL2
+        if (sprite->x < -16 || sprite->x > DISPLAY_WIDTH + 16)
+#else
         if (sprite->x < -16 || sprite->x > 256)
+#endif
             sprite->invisible = TRUE;
         else
             sprite->invisible = FALSE;
