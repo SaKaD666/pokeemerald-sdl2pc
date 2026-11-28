@@ -217,8 +217,13 @@ static const struct BgTemplate sTrainerCardBgTemplates[4] =
     {
         .bg = 2,
         .charBaseIndex = 0,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 14,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 30,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -331,6 +336,11 @@ static bool8 (*const sTrainerCardFlipTasks[])(struct Task *) =
     Task_EndCardFlip,
 };
 
+#ifdef PLATFORM_SDL2
+#define CARD_VIEW_OFFSET_X ((DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2)
+#define CARD_VIEW_OFFSET_Y ((DISPLAY_HEIGHT - GBA_DISPLAY_HEIGHT) / 2)
+#endif
+
 static void VblankCb_TrainerCard(void)
 {
     LoadOam();
@@ -339,9 +349,11 @@ static void VblankCb_TrainerCard(void)
     BlinkTimeColon();
     if (sData->allowDMACopy)
     {
-        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], GBA_DISPLAY_HEIGHT * sizeof(u16));
 #ifdef PLATFORM_SDL2
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], DISPLAY_HEIGHT * sizeof(u16));
         REG_BG0VOFS = gScanlineEffectRegBuffers[1][0];
+#else
+        DmaCopy16(3, gScanlineEffectRegBuffers[0], gScanlineEffectRegBuffers[1], GBA_DISPLAY_HEIGHT * sizeof(u16));
 #endif
     }
 }
@@ -353,7 +365,7 @@ static void HblankCb_TrainerCard(void)
 
 #ifdef PLATFORM_SDL2
     // HBlank follows the line just rendered by SDL2.
-    if (++line >= GBA_DISPLAY_HEIGHT)
+    if (++line >= DISPLAY_HEIGHT)
         return;
 #endif
     backup = REG_IME;
@@ -372,9 +384,6 @@ static void CB2_TrainerCard(void)
 
 static void CloseTrainerCard(u8 taskId)
 {
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(FALSE);
-#endif
     SetMainCallback2(sData->callback2);
     FreeAllWindowBuffers();
     FREE_AND_SET_NULL(sData);
@@ -436,7 +445,11 @@ static void Task_TrainerCard(u8 taskId)
         if (gWirelessCommType == 1 && gReceivedRemoteLinkPlayers == TRUE)
         {
             LoadWirelessStatusIndicatorSpriteGfx();
+#ifdef PLATFORM_SDL2
+            CreateWirelessStatusIndicatorSprite(DISPLAY_WIDTH - 10, DISPLAY_HEIGHT - 10);
+#else
             CreateWirelessStatusIndicatorSprite(GBA_DISPLAY_WIDTH - 10, GBA_DISPLAY_HEIGHT - 10);
+#endif
         }
         BlendPalettes(PALETTES_ALL, 16, sData->blendColor);
         BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, sData->blendColor);
@@ -606,9 +619,6 @@ static bool8 LoadCardGfx(void)
 
 static void CB2_InitTrainerCard(void)
 {
-#ifdef PLATFORM_SDL2
-    SetFrameViewToGbaSize(TRUE);
-#endif
     switch (gMain.state)
     {
     case 0:
@@ -879,8 +889,13 @@ static void InitGpuRegs(void)
     SetGpuReg(REG_OFFSET_BLDY, 0);
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_BG_ALL | WININ_WIN0_OBJ | WININ_WIN0_CLR);
     SetGpuReg(REG_OFFSET_WINOUT, WINOUT_WIN01_BG1 | WINOUT_WIN01_BG2 | WINOUT_WIN01_BG3 | WINOUT_WIN01_OBJ);
+#ifdef PLATFORM_SDL2
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(CARD_VIEW_OFFSET_Y, DISPLAY_HEIGHT - CARD_VIEW_OFFSET_Y));
+    SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, CARD_VIEW_OFFSET_X, DISPLAY_WIDTH - CARD_VIEW_OFFSET_X);
+#else
     SetGpuReg(REG_OFFSET_WIN0V, GBA_DISPLAY_HEIGHT);
     SetGpuWindowHorizontalRange(REG_OFFSET_WIN0H, 0, GBA_DISPLAY_WIDTH);
+#endif
     if (gReceivedRemoteLinkPlayers)
         EnableInterrupts(INTR_FLAG_VBLANK | INTR_FLAG_HBLANK | INTR_FLAG_VCOUNT | INTR_FLAG_TIMER3 | INTR_FLAG_SERIAL);
     else
@@ -895,7 +910,11 @@ static void UpdateCardFlipRegs(u16 cardTop)
         blendY = 0;
     sData->flipBlendY = blendY;
     SetGpuReg(REG_OFFSET_BLDY, sData->flipBlendY);
+#ifdef PLATFORM_SDL2
+    SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(CARD_VIEW_OFFSET_Y + sData->cardTop, DISPLAY_HEIGHT - CARD_VIEW_OFFSET_Y - sData->cardTop));
+#else
     SetGpuReg(REG_OFFSET_WIN0V, WIN_RANGE(sData->cardTop, GBA_DISPLAY_HEIGHT - sData->cardTop));
+#endif
 }
 
 static void ResetGpuRegs(void)
@@ -913,6 +932,16 @@ static void InitBgsAndWindows(void)
 {
     ResetBgsAndClearDma3BusyFlags(0);
     InitBgsFromTemplates(0, sTrainerCardBgTemplates, ARRAY_COUNT(sTrainerCardBgTemplates));
+#ifdef PLATFORM_SDL2
+    ChangeBgX(0, -CARD_VIEW_OFFSET_X << 8, BG_COORD_SET);
+    ChangeBgY(0, -CARD_VIEW_OFFSET_Y << 8, BG_COORD_SET);
+    ChangeBgX(1, -CARD_VIEW_OFFSET_X << 8, BG_COORD_SET);
+    ChangeBgY(1, -CARD_VIEW_OFFSET_Y << 8, BG_COORD_SET);
+    ChangeBgX(2, 0, BG_COORD_SET);
+    ChangeBgY(2, 0, BG_COORD_SET);
+    ChangeBgX(3, -CARD_VIEW_OFFSET_X << 8, BG_COORD_SET);
+    ChangeBgY(3, -CARD_VIEW_OFFSET_Y << 8, BG_COORD_SET);
+#else
     ChangeBgX(0, 0, BG_COORD_SET);
     ChangeBgY(0, 0, BG_COORD_SET);
     ChangeBgX(1, 0, BG_COORD_SET);
@@ -921,6 +950,7 @@ static void InitBgsAndWindows(void)
     ChangeBgY(2, 0, BG_COORD_SET);
     ChangeBgX(3, 0, BG_COORD_SET);
     ChangeBgY(3, 0, BG_COORD_SET);
+#endif
     InitWindows(sTrainerCardWindowTemplates);
     DeactivateAllTextPrinters();
     LoadMessageBoxAndBorderGfx();
@@ -1473,7 +1503,11 @@ static u8 SetCardBgsAndPals(void)
         break;
     case 4:
         FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 32, 32);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(2, 0, 0, 0, 64, 32);
+#else
         FillBgTilemapBufferRect_Palette0(2, 0, 0, 0, 32, 32);
+#endif
         FillBgTilemapBufferRect_Palette0(3, 0, 0, 0, 32, 32);
     default:
         return 1;
@@ -1487,6 +1521,13 @@ static void DrawCardScreenBackground(u16 *ptr)
     s16 i, j;
     u16 *dst = sData->bgTilemapBuffer;
 
+#ifdef PLATFORM_SDL2
+    for (i = 0; i < 23; i++)
+    {
+        for (j = 0; j < 40; j++)
+            dst[(j >= 32 ? 1024 : 0) + 32 * i + (j & 31)] = ptr[30 * (i % 20) + (j % 30)];
+    }
+#else
     for (i = 0; i < 20; i++)
     {
         for (j = 0; j < 32; j++)
@@ -1497,6 +1538,7 @@ static void DrawCardScreenBackground(u16 *ptr)
                 dst[32 * i + j] = ptr[0];
         }
     }
+#endif
     CopyBgTilemapBufferToVram(2);
 }
 
@@ -1635,8 +1677,13 @@ static bool8 Task_BeginCardFlip(struct Task *task)
     HideBg(3);
     ScanlineEffect_Stop();
     ScanlineEffect_Clear();
+#ifdef PLATFORM_SDL2
+    for (i = 0; i < DISPLAY_HEIGHT; i++)
+        gScanlineEffectRegBuffers[1][i] = (u16)(-CARD_VIEW_OFFSET_Y);
+#else
     for (i = 0; i < GBA_DISPLAY_HEIGHT; i++)
         gScanlineEffectRegBuffers[1][i] = 0;
+#endif
     task->tFlipState++;
     return FALSE;
 }
@@ -1666,6 +1713,20 @@ static bool8 Task_AnimateCardFlipDown(struct Task *task)
     r10 = r5 / cardHeight;
     r5 *= 2;
 
+#ifdef PLATFORM_SDL2
+    for (i = 0; i < (s16)(CARD_VIEW_OFFSET_Y + cardTop); i++)
+        gScanlineEffectRegBuffers[0][i] = -i;
+    for (i = cardTop; i < (s16)cardBottom; i++)
+    {
+        var = r6 >> 16;
+        r6 += r5;
+        r5 -= r10;
+        gScanlineEffectRegBuffers[0][CARD_VIEW_OFFSET_Y + i] = var - CARD_VIEW_OFFSET_Y;
+    }
+    var = (var_24 >> 16) - CARD_VIEW_OFFSET_Y;
+    for (i = CARD_VIEW_OFFSET_Y + cardBottom; i < DISPLAY_HEIGHT; i++)
+        gScanlineEffectRegBuffers[0][i] = var;
+#else
     for (i = 0; i < cardTop; i++)
         gScanlineEffectRegBuffers[0][i] = -i;
     for (; i < (s16)cardBottom; i++)
@@ -1678,6 +1739,7 @@ static bool8 Task_AnimateCardFlipDown(struct Task *task)
     var = var_24 >> 16;
     for (; i < GBA_DISPLAY_HEIGHT; i++)
         gScanlineEffectRegBuffers[0][i] = var;
+#endif
 
     sData->allowDMACopy = TRUE;
     if (task->tCardTop >= CARD_FLIP_Y)
@@ -1785,6 +1847,20 @@ static bool8 Task_AnimateCardFlipUp(struct Task *task)
     r10 = r5 / cardHeight;
     r5 /= 2;
 
+#ifdef PLATFORM_SDL2
+    for (i = 0; i < (s16)(CARD_VIEW_OFFSET_Y + cardTop); i++)
+        gScanlineEffectRegBuffers[0][i] = -i;
+    for (i = cardTop; i < (s16)cardBottom; i++)
+    {
+        var = r6 >> 16;
+        r6 += r5;
+        r5 += r10;
+        gScanlineEffectRegBuffers[0][CARD_VIEW_OFFSET_Y + i] = var - CARD_VIEW_OFFSET_Y;
+    }
+    var = (var_24 >> 16) - CARD_VIEW_OFFSET_Y;
+    for (i = CARD_VIEW_OFFSET_Y + cardBottom; i < DISPLAY_HEIGHT; i++)
+        gScanlineEffectRegBuffers[0][i] = var;
+#else
     for (i = 0; i < cardTop; i++)
         gScanlineEffectRegBuffers[0][i] = -i;
     for (; i < (s16)cardBottom; i++)
@@ -1797,6 +1873,7 @@ static bool8 Task_AnimateCardFlipUp(struct Task *task)
     var = var_24 >> 16;
     for (; i < GBA_DISPLAY_HEIGHT; i++)
         gScanlineEffectRegBuffers[0][i] = var;
+#endif
 
     sData->allowDMACopy = TRUE;
     if (task->tCardTop <= 0)
@@ -1811,7 +1888,11 @@ static bool8 Task_EndCardFlip(struct Task *task)
     ShowBg(3);
     SetHBlankCallback(NULL);
     sData->allowDMACopy = FALSE;
+#ifdef PLATFORM_SDL2
+    REG_BG0VOFS = (u16)(-CARD_VIEW_OFFSET_Y);
+#else
     REG_BG0VOFS = 0;
+#endif
     DestroyTask(FindTaskIdByFunc(Task_DoCardFlipTask));
     return FALSE;
 }
