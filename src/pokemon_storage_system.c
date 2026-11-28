@@ -3935,52 +3935,11 @@ static void ScrollBackground(void)
     ChangeBgY(3, 128, BG_COORD_SUB);
 }
 
-#ifdef PLATFORM_SDL2
-static void AlignPartyTabButtonTiles(u32 *tiles)
-{
-    static const s8 sRowRemap[16] = { -1, 0, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15 };
-    u16 pair;
-
-    for (pair = 0; pair < 9; pair++)
-    {
-        u16 topTile = (pair < 8) ? (0x28 + pair) : 0x66;
-        u16 botTile = (pair < 8) ? (0x38 + pair) : 0x67;
-        u32 origRows[16];
-        u16 i;
-
-        for (i = 0; i < 8; i++)
-        {
-            origRows[i] = tiles[topTile * 8 + i];
-            origRows[8 + i] = tiles[botTile * 8 + i];
-        }
-        for (i = 0; i < 16; i++)
-        {
-            u32 rowVal = (sRowRemap[i] < 0) ? 0 : origRows[sRowRemap[i]];
-            if (i < 8)
-                tiles[topTile * 8 + i] = rowVal;
-            else
-                tiles[botTile * 8 + (i - 8)] = rowVal;
-        }
-    }
-}
-#endif
-
 static void LoadPokeStorageMenuGfx(void)
 {
     InitBgsFromTemplates(0, sBgTemplates, ARRAY_COUNT(sBgTemplates));
+    DecompressAndLoadBgGfxUsingHeap(1, gStorageSystemMenu_Gfx, 0, 0, 0);
 #ifdef PLATFORM_SDL2
-    {
-        u32 sizeOut;
-        void *ptr = malloc_and_decompress(gStorageSystemMenu_Gfx, &sizeOut);
-
-        if (ptr != NULL)
-        {
-            AlignPartyTabButtonTiles((u32 *)ptr);
-            CpuCopy32(ptr, (void *)(BG_CHAR_ADDR(GetBgAttribute(1, BG_ATTR_CHARBASEINDEX))
-                                      + GetBgAttribute(1, BG_ATTR_BASETILE) * TILE_SIZE_4BPP), sizeOut);
-            Free(ptr);
-        }
-    }
     memset(sStorage->displayMenuTilemapBuffer, 0, sizeof(sStorage->displayMenuTilemapBuffer));
     LZ77UnCompWram(sDisplayMenu_Tilemap, sStorage->displayMenuTilemapBuffer);
     {
@@ -3994,7 +3953,6 @@ static void LoadPokeStorageMenuGfx(void)
         }
     }
 #else
-    DecompressAndLoadBgGfxUsingHeap(1, gStorageSystemMenu_Gfx, 0, 0, 0);
     LZ77UnCompWram(sDisplayMenu_Tilemap, sStorage->displayMenuTilemapBuffer);
 #endif
     SetBgTilemapBuffer(1, sStorage->displayMenuTilemapBuffer);
