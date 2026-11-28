@@ -89,6 +89,15 @@ static u8 MoveRegionMapCursor_Zoomed(void);
 static void CalcZoomScrollParams(s16 scrollX, s16 scrollY, s16 c, s16 d, u16 e, u16 f, u8 rotation);
 static mapsec_u16_t GetMapSecIdAt(u16 x, u16 y);
 static void RegionMap_SetBG2XAndBG2Y(s16 x, s16 y);
+
+static s16 GetRegionMapPokenavXOffset(void)
+{
+#ifdef PLATFORM_SDL2
+    if (sRegionMap->bgManaged)
+        return (DISPLAY_WIDTH - GBA_DISPLAY_WIDTH) / 2;
+#endif
+    return 0;
+}
 static void InitMapBasedOnPlayerLocation(void);
 static void RegionMap_InitializeStateBasedOnSSTidalLocation(void);
 static u8 GetMapsecType(mapsec_u16_t mapSecId);
@@ -582,19 +591,25 @@ bool8 LoadRegionMapGfx(void)
         GetMapName(sRegionMap->mapSecName, sRegionMap->mapSecId, MAP_NAME_LENGTH);
         break;
     case 6:
+    {
+        s16 xOffset = GetRegionMapPokenavXOffset();
+
         if (sRegionMap->zoomed == FALSE)
         {
-            CalcZoomScrollParams(0, 0, 0, 0, 0x100, 0x100, 0);
+            sRegionMap->scrollX = -xOffset;
+            sRegionMap->scrollY = 0;
+            CalcZoomScrollParams(sRegionMap->scrollX, 0, 0, 0, 0x100, 0x100, 0);
         }
         else
         {
-            sRegionMap->scrollX = sRegionMap->cursorPosX * 8 - 0x34;
+            sRegionMap->scrollX = sRegionMap->cursorPosX * 8 - (0x34 + xOffset);
             sRegionMap->scrollY = sRegionMap->cursorPosY * 8 - 0x44;
             sRegionMap->zoomedCursorPosX = sRegionMap->cursorPosX;
             sRegionMap->zoomedCursorPosY = sRegionMap->cursorPosY;
-            CalcZoomScrollParams(sRegionMap->scrollX, sRegionMap->scrollY, 0x38, 0x48, 0x80, 0x80, 0);
+            CalcZoomScrollParams(sRegionMap->scrollX, sRegionMap->scrollY, 0x38 + xOffset, 0x48, 0x80, 0x80, 0);
         }
         break;
+    }
     case 7:
         GetPositionOfCursorWithinMapSec();
         UpdateRegionMapVideoRegs();
@@ -728,6 +743,7 @@ static u8 MoveRegionMapCursor_Full(void)
 static u8 ProcessRegionMapInput_Zoomed(void)
 {
     u8 input;
+    s16 xOffset = GetRegionMapPokenavXOffset();
 
     input = MAP_INPUT_NONE;
     sRegionMap->zoomedCursorDeltaX = 0;
@@ -742,12 +758,12 @@ static u8 ProcessRegionMapInput_Zoomed(void)
         sRegionMap->zoomedCursorDeltaY = +1;
         input = MAP_INPUT_MOVE_START;
     }
-    if (JOY_HELD(DPAD_LEFT) && sRegionMap->scrollX > -0x2c)
+    if (JOY_HELD(DPAD_LEFT) && sRegionMap->scrollX > -0x2c - xOffset)
     {
         sRegionMap->zoomedCursorDeltaX = -1;
         input = MAP_INPUT_MOVE_START;
     }
-    if (JOY_HELD(DPAD_RIGHT) && sRegionMap->scrollX < 0xac)
+    if (JOY_HELD(DPAD_RIGHT) && sRegionMap->scrollX < 0xac - xOffset)
     {
         sRegionMap->zoomedCursorDeltaX = +1;
         input = MAP_INPUT_MOVE_START;
@@ -780,7 +796,7 @@ static u8 MoveRegionMapCursor_Zoomed(void)
     sRegionMap->zoomedCursorMovementFrameCounter++;
     if (sRegionMap->zoomedCursorMovementFrameCounter == 8)
     {
-        x = (sRegionMap->scrollX + 0x2c) / 8 + 1;
+        x = (sRegionMap->scrollX + GetRegionMapPokenavXOffset() + 0x2c) / 8 + 1;
         y = (sRegionMap->scrollY + 0x34) / 8 + 2;
         if (x != sRegionMap->zoomedCursorPosX || y != sRegionMap->zoomedCursorPosY)
         {
@@ -804,15 +820,17 @@ static u8 MoveRegionMapCursor_Zoomed(void)
 
 void SetRegionMapDataForZoom(void)
 {
+    s16 xOffset = GetRegionMapPokenavXOffset();
+
     if (sRegionMap->zoomed == FALSE)
     {
         sRegionMap->scrollY = 0;
-        sRegionMap->scrollX = 0;
+        sRegionMap->scrollX = -xOffset;
         sRegionMap->unk_040 = 0;
-        sRegionMap->unk_03c = 0;
-        sRegionMap->unk_060 = sRegionMap->cursorPosX * 8 - 0x34;
+        sRegionMap->unk_03c = sRegionMap->scrollX * 0x100;
+        sRegionMap->unk_060 = sRegionMap->cursorPosX * 8 - (0x34 + xOffset);
         sRegionMap->unk_062 = sRegionMap->cursorPosY * 8 - 0x44;
-        sRegionMap->unk_044 = (sRegionMap->unk_060 << 8) / 16;
+        sRegionMap->unk_044 = ((sRegionMap->unk_060 - sRegionMap->scrollX) << 8) / 16;
         sRegionMap->unk_048 = (sRegionMap->unk_062 << 8) / 16;
         sRegionMap->zoomedCursorPosX = sRegionMap->cursorPosX;
         sRegionMap->zoomedCursorPosY = sRegionMap->cursorPosY;
@@ -823,9 +841,9 @@ void SetRegionMapDataForZoom(void)
     {
         sRegionMap->unk_03c = sRegionMap->scrollX * 0x100;
         sRegionMap->unk_040 = sRegionMap->scrollY * 0x100;
-        sRegionMap->unk_060 = 0;
+        sRegionMap->unk_060 = -xOffset;
         sRegionMap->unk_062 = 0;
-        sRegionMap->unk_044 = -(sRegionMap->unk_03c / 16);
+        sRegionMap->unk_044 = ((sRegionMap->unk_060 << 8) - sRegionMap->unk_03c) / 16;
         sRegionMap->unk_048 = -(sRegionMap->unk_040 / 16);
         sRegionMap->cursorPosX = sRegionMap->zoomedCursorPosX;
         sRegionMap->cursorPosY = sRegionMap->zoomedCursorPosY;
@@ -894,7 +912,7 @@ bool8 UpdateRegionMapZoom(void)
         }
         retVal = TRUE;
     }
-    CalcZoomScrollParams(sRegionMap->scrollX, sRegionMap->scrollY, 0x38, 0x48, sRegionMap->unk_04c >> 8, sRegionMap->unk_04c >> 8, 0);
+    CalcZoomScrollParams(sRegionMap->scrollX, sRegionMap->scrollY, 0x38 + GetRegionMapPokenavXOffset(), 0x48, sRegionMap->unk_04c >> 8, sRegionMap->unk_04c >> 8, 0);
     return retVal;
 }
 
@@ -923,7 +941,7 @@ static void CalcZoomScrollParams(s16 scrollX, s16 scrollY, s16 c, s16 d, u16 e, 
 
 static void RegionMap_SetBG2XAndBG2Y(s16 x, s16 y)
 {
-    sRegionMap->bg2x = (x << 8) + 0x1c00;
+    sRegionMap->bg2x = (x << 8) + ((0x38 + GetRegionMapPokenavXOffset()) << 7);
     sRegionMap->bg2y = (y << 8) + 0x2400;
     sRegionMap->needUpdateVideoRegs = TRUE;
 }
@@ -1402,7 +1420,7 @@ void CreateRegionMapCursor(u16 tileTag, u16 paletteTag)
     }
     LoadSpriteSheet(&sheet);
     LoadSpritePalette(&palette);
-    spriteId = CreateSprite(&template, 56, 72, 0);
+    spriteId = CreateSprite(&template, 56 + GetRegionMapPokenavXOffset(), 72, 0);
     if (spriteId != MAX_SPRITES)
     {
         sRegionMap->cursorSprite = &gSprites[spriteId];
@@ -1416,7 +1434,7 @@ void CreateRegionMapCursor(u16 tileTag, u16 paletteTag)
         else
         {
             sRegionMap->cursorSprite->oam.size = SPRITE_SIZE(16x16);
-            sRegionMap->cursorSprite->x = 8 * sRegionMap->cursorPosX + 4;
+            sRegionMap->cursorSprite->x = 8 * sRegionMap->cursorPosX + 4 + GetRegionMapPokenavXOffset();
             sRegionMap->cursorSprite->y = 8 * sRegionMap->cursorPosY + 4;
         }
         sRegionMap->cursorSprite->data[1] = 2;
@@ -1468,13 +1486,13 @@ void CreateRegionMapPlayerIcon(u16 tileTag, u16 paletteTag)
     sRegionMap->playerIconSprite = &gSprites[spriteId];
     if (!sRegionMap->zoomed)
     {
-        sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 8 + 4;
+        sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 8 + 4 + GetRegionMapPokenavXOffset();
         sRegionMap->playerIconSprite->y = sRegionMap->playerIconSpritePosY * 8 + 4;
         sRegionMap->playerIconSprite->callback = SpriteCB_PlayerIconMapFull;
     }
     else
     {
-        sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 16 - 0x30;
+        sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 16 - (0x30 + GetRegionMapPokenavXOffset());
         sRegionMap->playerIconSprite->y = sRegionMap->playerIconSpritePosY * 16 - 0x42;
         sRegionMap->playerIconSprite->callback = SpriteCB_PlayerIconMapZoomed;
     }
@@ -1493,16 +1511,18 @@ static void UnhideRegionMapPlayerIcon(void)
 {
     if (sRegionMap->playerIconSprite != NULL)
     {
+        s16 xOffset = GetRegionMapPokenavXOffset();
+
         if (sRegionMap->zoomed == TRUE)
         {
-            sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 16 - 0x30;
+            sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 16 - (0x30 + xOffset);
             sRegionMap->playerIconSprite->y = sRegionMap->playerIconSpritePosY * 16 - 0x42;
             sRegionMap->playerIconSprite->callback = SpriteCB_PlayerIconMapZoomed;
             sRegionMap->playerIconSprite->invisible = FALSE;
         }
         else
         {
-            sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 8 + 4;
+            sRegionMap->playerIconSprite->x = sRegionMap->playerIconSpritePosX * 8 + 4 + xOffset;
             sRegionMap->playerIconSprite->y = sRegionMap->playerIconSpritePosY * 8 + 4;
             sRegionMap->playerIconSprite->x2 = 0;
             sRegionMap->playerIconSprite->y2 = 0;
@@ -1519,11 +1539,21 @@ static void UnhideRegionMapPlayerIcon(void)
 
 static void SpriteCB_PlayerIconMapZoomed(struct Sprite *sprite)
 {
+    int maxX = GBA_DISPLAY_WIDTH + 8;
+    int maxY = GBA_DISPLAY_HEIGHT + 8;
+
+#ifdef PLATFORM_SDL2
+    if (sRegionMap->bgManaged)
+    {
+        maxX = DISPLAY_WIDTH + 8;
+        maxY = DISPLAY_HEIGHT + 8;
+    }
+#endif
     sprite->x2 = -2 * sRegionMap->scrollX;
     sprite->y2 = -2 * sRegionMap->scrollY;
     sprite->sY = sprite->y + sprite->y2 + sprite->centerToCornerVecY;
     sprite->sX = sprite->x + sprite->x2 + sprite->centerToCornerVecX;
-    if (sprite->sY < -8 || sprite->sY > GBA_DISPLAY_HEIGHT + 8 || sprite->sX < -8 || sprite->sX > GBA_DISPLAY_WIDTH + 8)
+    if (sprite->sY < -8 || sprite->sY > maxY || sprite->sX < -8 || sprite->sX > maxX)
         sprite->sVisible = FALSE;
     else
         sprite->sVisible = TRUE;

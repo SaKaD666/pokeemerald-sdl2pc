@@ -22,6 +22,14 @@
 
 #define NUM_CITY_MAPS 22
 
+#ifdef PLATFORM_SDL2
+#define POKENAV_MAP_INFO_LEFT 27
+#define POKENAV_MAP_TILEMAP_SIZE (BG_SCREEN_SIZE * 2)
+#else
+#define POKENAV_MAP_INFO_LEFT 17
+#define POKENAV_MAP_TILEMAP_SIZE BG_SCREEN_SIZE
+#endif
+
 struct Pokenav_RegionMapMenu
 {
     u8 unused[12];
@@ -35,7 +43,7 @@ struct Pokenav_RegionMapGfx
     u32 loopTaskId;
     u16 infoWindowId;
     struct Sprite *cityZoomTextSprites[3];
-    u8 ALIGNED(2) tilemapBuffer[BG_SCREEN_SIZE];
+    u8 ALIGNED(2) tilemapBuffer[POKENAV_MAP_TILEMAP_SIZE];
     u8 cityZoomPics[NUM_CITY_MAPS][200];
 };
 
@@ -87,8 +95,13 @@ static const struct BgTemplate sRegionMapBgTemplates[3] =
     {
         .bg = 1,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x1E,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x1F,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -136,7 +149,7 @@ static const struct SpritePalette sCityZoomTilesSpritePalette[] =
 static const struct WindowTemplate sMapSecInfoWindowTemplate =
 {
     .bg = 1,
-    .tilemapLeft = 17,
+    .tilemapLeft = POKENAV_MAP_INFO_LEFT,
     .tilemapTop = 4,
     .width = 12,
     .height = 13,
@@ -514,7 +527,7 @@ static void LoadPokenavRegionMapGfx(struct Pokenav_RegionMapGfx *state)
 {
     BgDmaFill(1, PIXEL_FILL(0), 0x40, 1);
     BgDmaFill(1, PIXEL_FILL(1), 0x41, 1);
-    CpuFill16(0x1040, state->tilemapBuffer, 0x800);
+    CpuFill16(0x1040, state->tilemapBuffer, POKENAV_MAP_TILEMAP_SIZE);
     SetBgTilemapBuffer(1, state->tilemapBuffer);
     state->infoWindowId = AddWindow(&sMapSecInfoWindowTemplate);
     LoadUserWindowBorderGfx_(state->infoWindowId, 0x42, BG_PLTT_ID(4));
@@ -555,7 +568,7 @@ static void UpdateMapSecInfoWindow(struct Pokenav_RegionMapGfx *state)
         FillWindowPixelBuffer(state->infoWindowId, PIXEL_FILL(1));
         PutWindowRectTilemap(state->infoWindowId, 0, 0, 12, 2);
         AddTextPrinterParameterized(state->infoWindowId, FONT_NARROW, regionMap->mapSecName, 0, 1, TEXT_SKIP_DRAW, NULL);
-        FillBgTilemapBufferRect(1, 0x1041, 17, 6, 12, 11, 17);
+        FillBgTilemapBufferRect(1, 0x1041, POKENAV_MAP_INFO_LEFT, 6, 12, 11, 17);
         CopyWindowToVram(state->infoWindowId, COPYWIN_FULL);
         SetCityZoomTextInvisibility(TRUE);
         break;
@@ -569,7 +582,7 @@ static void UpdateMapSecInfoWindow(struct Pokenav_RegionMapGfx *state)
         SetCityZoomTextInvisibility(TRUE);
         break;
     case MAPSECTYPE_NONE:
-        FillBgTilemapBufferRect(1, 0x1041, 17, 4, 12, 13, 17);
+        FillBgTilemapBufferRect(1, 0x1041, POKENAV_MAP_INFO_LEFT, 4, 12, 13, 17);
         CopyBgTilemapBufferToVram(1);
         SetCityZoomTextInvisibility(TRUE);
         break;
@@ -651,8 +664,8 @@ static void DrawCityMap(struct Pokenav_RegionMapGfx *state, mapsec_s32_t mapSecI
     if (i == NUM_CITY_MAPS)
         return;
 
-    FillBgTilemapBufferRect_Palette0(1, 0x1041, 17, 6, 12, 11);
-    CopyToBgTilemapBufferRect(1, state->cityZoomPics[i], 18, 6, 10, 10);
+    FillBgTilemapBufferRect_Palette0(1, 0x1041, POKENAV_MAP_INFO_LEFT, 6, 12, 11);
+    CopyToBgTilemapBufferRect(1, state->cityZoomPics[i], POKENAV_MAP_INFO_LEFT + 1, 6, 10, 10);
 }
 
 static void PrintLandmarkNames(struct Pokenav_RegionMapGfx *state, mapsec_s32_t mapSecId, int pos)
@@ -685,7 +698,7 @@ static void CreateCityZoomTextSprites(void)
 
     for (i = 0; i < (int)ARRAY_COUNT(state->cityZoomTextSprites); i++)
     {
-        u8 spriteId = CreateSprite(&sCityZoomTextSpriteTemplate, 152 + i * 32, y, 8);
+        u8 spriteId = CreateSprite(&sCityZoomTextSpriteTemplate, 152 + (POKENAV_MAP_INFO_LEFT - 17) * 8 + i * 32, y, 8);
         sprite = &gSprites[spriteId];
         sprite->data[0] = 0;
         sprite->data[1] = i * 4;
