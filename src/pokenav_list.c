@@ -57,7 +57,11 @@ struct PokenavList
     struct Sprite *upArrow;
     struct Sprite *downArrow;
     u8 itemTextBuffer[64];
+#ifdef PLATFORM_SDL2
+    u8 tilemapBuffer[BG_SCREEN_SIZE * 2];
+#else
     u8 tilemapBuffer[BG_SCREEN_SIZE];
+#endif
     struct PokenavListWindowState windowState;
     s32 eraseIndex;
     u32 loopedTaskId;
@@ -166,7 +170,11 @@ static void InitPokenavListBg(struct PokenavList *list)
     BgDmaFill(list->listWindow.bg, PIXEL_FILL(1), list->listWindow.tileOffset, 1);
     BgDmaFill(list->listWindow.bg, PIXEL_FILL(4), list->listWindow.tileOffset + 1, 1);
     SetBgTilemapBuffer(list->listWindow.bg, list->tilemapBuffer);
+#ifdef PLATFORM_SDL2
+    FillBgTilemapBufferRect_Palette0(list->listWindow.bg, tileNum, 0, 0, GetBgAttribute(list->listWindow.bg, BG_ATTR_SCREENSIZE) == 1 ? 64 : 32, 32);
+#else
     FillBgTilemapBufferRect_Palette0(list->listWindow.bg, tileNum, 0, 0, 32, 32);
+#endif
     ChangeBgY(list->listWindow.bg, 0, BG_COORD_SET);
     ChangeBgX(list->listWindow.bg, 0, BG_COORD_SET);
     ChangeBgY(list->listWindow.bg, list->listWindow.y << 11, BG_COORD_SUB);
@@ -686,19 +694,32 @@ static void EraseListEntry(struct PokenavListMenuWindow *listWindow, s32 offset,
 static void SetListMarginTile(struct PokenavListMenuWindow *listWindow, bool32 draw)
 {
     u16 var;
-    u16 *tilemapBuffer = (u16 *)GetBgTilemapBuffer(GetWindowAttribute(listWindow->windowId, WINDOW_BG));
-    tilemapBuffer += (listWindow->unkA << 6) + listWindow->x - 1;
+    u8 bg = GetWindowAttribute(listWindow->windowId, WINDOW_BG);
+    u16 *tilemapBuffer = (u16 *)GetBgTilemapBuffer(bg);
+    u16 *rowPtr = tilemapBuffer + (listWindow->unkA << 6) + listWindow->x - 1;
 
     if (draw)
         var = (listWindow->fillValue << 12) | (listWindow->tileOffset + 1);
     else
         var = (listWindow->fillValue << 12) | (listWindow->tileOffset);
 
-    tilemapBuffer[0] = var;
-    tilemapBuffer[0x20] = var;
+    rowPtr[0] = var;
+    rowPtr[0x20] = var;
 #ifdef PLATFORM_SDL2
-    InvalidateBgTilemapRamRange(&tilemapBuffer[0], sizeof(*tilemapBuffer));
-    InvalidateBgTilemapRamRange(&tilemapBuffer[0x20], sizeof(*tilemapBuffer));
+    InvalidateBgTilemapRamRange(&rowPtr[0], sizeof(*rowPtr));
+    InvalidateBgTilemapRamRange(&rowPtr[0x20], sizeof(*rowPtr));
+    if (GetBgAttribute(bg, BG_ATTR_SCREENSIZE) == 1 && listWindow->x + listWindow->width < 39)
+    {
+        s32 x;
+        for (x = listWindow->x + listWindow->width; x < 39; x++)
+        {
+            u16 *cell = tilemapBuffer + (x >= 32 ? 1024 : 0) + (listWindow->unkA << 6) + (x & 31);
+            cell[0] = var;
+            cell[0x20] = var;
+            InvalidateBgTilemapRamRange(&cell[0], sizeof(*cell));
+            InvalidateBgTilemapRamRange(&cell[0x20], sizeof(*cell));
+        }
+    }
 #endif
 }
 
@@ -848,7 +869,14 @@ static void CreateListArrowSprites(const struct PokenavListWindowState *windowSt
     spriteId = CreateSprite(&sSpriteTemplate_RightArrow, list->listWindow.x * 8 + 3, (list->listWindow.y + 1) * 8, 7);
     list->rightArrow = &gSprites[spriteId];
 
+#ifdef PLATFORM_SDL2
+    if (GetBgAttribute(list->listWindow.bg, BG_ATTR_SCREENSIZE) == 1)
+        x = (list->listWindow.x * 8 + DISPLAY_WIDTH) / 2 - 4;
+    else
+        x = list->listWindow.x * 8 + (list->listWindow.width - 1) * 4;
+#else
     x = list->listWindow.x * 8 + (list->listWindow.width - 1) * 4;
+#endif
     spriteId = CreateSprite(&sSpriteTemplate_UpDownArrow, x, list->listWindow.y * 8 + windowState->entriesOnscreen * 16, 7);
     list->downArrow = &gSprites[spriteId];
     SetSpriteSheetTileOffset(list->downArrow, 2);

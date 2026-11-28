@@ -45,9 +45,15 @@ struct Pokenav_MatchCallGfx
     u16 trainerPicPalOffset;
     struct Sprite *optionsCursorSprite;
     struct Sprite *trainerPicSprite;
+#ifdef PLATFORM_SDL2
+    u8 bgTilemapBuffer1[BG_SCREEN_SIZE * 2];
+    u8 unusedTilemapBuffer[BG_SCREEN_SIZE];
+    u8 bgTilemapBuffer2[BG_SCREEN_SIZE * 2];
+#else
     u8 bgTilemapBuffer1[BG_SCREEN_SIZE];
     u8 unusedTilemapBuffer[BG_SCREEN_SIZE];
     u8 bgTilemapBuffer2[BG_SCREEN_SIZE];
+#endif
     u8 *trainerPicGfxPtr;
     u8 trainerPicGfx[TRAINER_PIC_SIZE];
     u8 trainerPicPal[0x20];
@@ -132,8 +138,13 @@ static const struct BgTemplate sMatchCallBgTemplates[3] =
     {
         .bg = 1,
         .charBaseIndex = 3,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x1E,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x1F,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -141,8 +152,13 @@ static const struct BgTemplate sMatchCallBgTemplates[3] =
     {
         .bg = 2,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 22,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x06,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0x80
@@ -150,8 +166,13 @@ static const struct BgTemplate sMatchCallBgTemplates[3] =
     {
         .bg = 3,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x06,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x07,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -215,7 +236,11 @@ static const struct WindowTemplate sCallMsgBoxWindowTemplate =
     .bg = 1,
     .tilemapLeft = 1,
     .tilemapTop = 12,
+#ifdef PLATFORM_SDL2
+    .width = 38,
+#else
     .width = 28,
+#endif
     .height = 4,
     .paletteNum = 1,
     .baseBlock = 10
@@ -340,6 +365,12 @@ static u32 LoopedTask_OpenMatchCall(s32 state)
         DecompressAndCopyTileDataToVram(2, sMatchCallUI_Gfx, 0, 0, 0);
         SetBgTilemapBuffer(2, gfx->bgTilemapBuffer2);
         CopyToBgTilemapBuffer(2, sMatchCallUI_Tilemap, 0, 0);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(2, 0x2081, 30, 0, 10, 1);
+        FillBgTilemapBufferRect_Palette0(2, 0x2086, 30, 1, 10, 16);
+        FillBgTilemapBufferRect_Palette0(2, 0x208a, 30, 17, 10, 1);
+        FillBgTilemapBufferRect_Palette0(2, 0x2082, 30, 18, 10, 2);
+#endif
         CopyBgTilemapBufferToVram(2);
         CopyPaletteIntoBufferUnfaded(sMatchCallUI_Pal, BG_PLTT_ID(2), sizeof(sMatchCallUI_Pal));
         CopyBgTilemapBufferToVram(2);
@@ -350,7 +381,11 @@ static u32 LoopedTask_OpenMatchCall(s32 state)
 
         BgDmaFill(1, 0, 0, 1);
         SetBgTilemapBuffer(1, gfx->bgTilemapBuffer1);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(1, 0x1000, 0, 0, 40, 20);
+#else
         FillBgTilemapBufferRect_Palette0(1, 0x1000, 0, 0, 32, 20);
+#endif
         CopyPaletteIntoBufferUnfaded(sCallWindow_Pal, BG_PLTT_ID(1), sizeof(sCallWindow_Pal));
         CopyBgTilemapBufferToVram(1);
         return LT_INC_AND_PAUSE;
@@ -941,7 +976,11 @@ static void TryDrawRematchPokeballIcon(u16 windowId, u32 rematchId, u32 tileOffs
 {
     u8 bg = GetWindowAttribute(windowId, WINDOW_BG);
     u16 *tilemap = GetBgTilemapBuffer(bg);
+#ifdef PLATFORM_SDL2
+    tilemap += 1024 + tileOffset * 64 + 7;
+#else
     tilemap += tileOffset * 64 + 0x1D;
+#endif
     if (ShouldDrawRematchPokeballIcon(rematchId))
     {
         tilemap[0] = POKEBALL_ICON_TOP;
@@ -962,7 +1001,11 @@ void ClearRematchPokeballIcon(u16 windowId, u32 tileOffset)
 {
     u8 bg = GetWindowAttribute(windowId, WINDOW_BG);
     u16 *tilemap = GetBgTilemapBuffer(bg);
+#ifdef PLATFORM_SDL2
+    tilemap += 1024 + tileOffset * 64 + 7;
+#else
     tilemap += tileOffset * 64 + 0x1D;
+#endif
     tilemap[0] = POKEBALL_ICON_EMPTY;
     tilemap[0x20] = POKEBALL_ICON_EMPTY;
 #ifdef PLATFORM_SDL2
@@ -1174,7 +1217,11 @@ static bool32 WaitForMatchCallMessageText(struct Pokenav_MatchCallGfx *gfx)
 static void EraseCallMessageBox(struct Pokenav_MatchCallGfx *gfx)
 {
     HideSpinningPokenavSprite();
+#ifdef PLATFORM_SDL2
+    FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 40, 20);
+#else
     FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 32, 20);
+#endif
     CopyBgTilemapBufferToVram(1);
 }
 
