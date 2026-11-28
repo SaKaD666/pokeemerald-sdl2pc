@@ -65,7 +65,11 @@ struct Pokenav_RibbonsSummaryMenu
     u16 monSpriteId;
     struct Sprite *bigRibbonSprite;
     u32 unused;
+#ifdef PLATFORM_SDL2
+    u8 tilemapBuffers[2][BG_SCREEN_SIZE * 2];
+#else
     u8 tilemapBuffers[2][BG_SCREEN_SIZE];
+#endif
 };
 
 // Used for the initial drawing of the ribbons
@@ -158,8 +162,13 @@ static const struct BgTemplate sBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 3,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x1E,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x07,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -168,7 +177,11 @@ static const struct BgTemplate sBgTemplates[] =
         .bg = 2,
         .charBaseIndex = 1,
         .mapBaseIndex = 0x06,
+#ifdef PLATFORM_SDL2
+        .screenSize = 1,
+#else
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
@@ -573,6 +586,9 @@ static u32 LoopedTask_OpenRibbonsSummaryMenu(s32 state)
         DecompressAndCopyTileDataToVram(2, gPokenavRibbonsSummaryBg_Gfx, 0, 0, 0);
         SetBgTilemapBuffer(2, menu->tilemapBuffers[0]);
         CopyToBgTilemapBuffer(2, gPokenavRibbonsSummaryBg_Tilemap, 0, 0);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(2, 0x1008, 32, 0, 8, 20);
+#endif
         CopyPaletteIntoBufferUnfaded(gPokenavRibbonsSummaryBg_Pal, BG_PLTT_ID(1), PLTT_SIZE_4BPP);
         CopyBgTilemapBufferToVram(2);
         return LT_INC_AND_PAUSE;
@@ -582,7 +598,11 @@ static u32 LoopedTask_OpenRibbonsSummaryMenu(s32 state)
             BgDmaFill(1, 0, 0, 1);
             DecompressAndCopyTileDataToVram(1, sRibbonIconsSmall_Gfx, 0, 1, 0);
             SetBgTilemapBuffer(1, menu->tilemapBuffers[1]);
+#ifdef PLATFORM_SDL2
+            FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 40, 20);
+#else
             FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 32, 20);
+#endif
             CopyPaletteIntoBufferUnfaded(sRibbonIcons1_Pal, BG_PLTT_ID(2), 5 * PLTT_SIZE_4BPP);
             CopyPaletteIntoBufferUnfaded(sMonInfo_Pal, BG_PLTT_ID(10), sizeof(sMonInfo_Pal));
             CopyBgTilemapBufferToVram(1);
@@ -1051,7 +1071,11 @@ static void DrawAllRibbonsSmall(struct Pokenav_RibbonsSummaryMenu *menu)
 // Redundant, the same FillBg is called in LoopedTask_OpenRibbonsSummaryMenu
 static void ClearRibbonsSummaryBg(void)
 {
+#ifdef PLATFORM_SDL2
+    FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 40, 20);
+#else
     FillBgTilemapBufferRect_Palette0(1, 0, 0, 0, 32, 20);
+#endif
 }
 
 static void DrawRibbonSmall(u32 i, u32 ribbonId)

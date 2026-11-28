@@ -39,7 +39,11 @@ struct Pokenav_RibbonsMonMenu
     u32 loopedTaskId;
     u16 winid;
     bool32 fromSummary;
+#ifdef PLATFORM_SDL2
+    u8 buff[BG_SCREEN_SIZE * 2];
+#else
     u8 buff[BG_SCREEN_SIZE];
+#endif
 };
 
 static u32 HandleRibbonsMonListInput_WaitListInit(struct Pokenav_RibbonsMonList *);
@@ -82,16 +86,26 @@ static const struct BgTemplate sMonRibbonListBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x1E,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x06,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
     }, {
         .bg = 2,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x06,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x07,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -430,6 +444,12 @@ static u32 LoopedTask_OpenRibbonsMonList(s32 state)
         DecompressAndCopyTileDataToVram(1, sMonRibbonListFrameTiles, 0, 0, 0);
         SetBgTilemapBuffer(1, menu->buff);
         CopyToBgTilemapBuffer(1, sMonRibbonListFrameTilemap, 0, 0);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(1, 0x1001, 30, 0, 10, 1);
+        FillBgTilemapBufferRect_Palette0(1, 0x1007, 30, 1, 10, 16);
+        FillBgTilemapBufferRect_Palette0(1, 0x100c, 30, 17, 10, 1);
+        FillBgTilemapBufferRect_Palette0(1, 0x1002, 30, 18, 10, 2);
+#endif
         CopyPaletteIntoBufferUnfaded(sMonRibbonListFramePal, BG_PLTT_ID(1), sizeof(sMonRibbonListFramePal));
         CopyBgTilemapBufferToVram(1);
         return LT_INC_AND_PAUSE;
