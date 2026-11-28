@@ -35,8 +35,13 @@ static const struct BgTemplate sMenuBgTemplates[3] =
     {
         .bg = 1,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x0E,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x1F,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 1,
         .baseTile = 0
@@ -44,8 +49,13 @@ static const struct BgTemplate sMenuBgTemplates[3] =
     {
         .bg = 2,
         .charBaseIndex = 3,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x1E,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x1D,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
@@ -53,8 +63,13 @@ static const struct BgTemplate sMenuBgTemplates[3] =
     {
         .bg = 3,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x16,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x1E,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -116,7 +131,11 @@ static const LoopedTask sLoopedTaskFuncs[] =
     [CONDITION_FUNC_CLOSE_MARKINGS] = LoopedTask_CloseMonMarkingsWindow
 };
 
+#ifdef PLATFORM_SDL2
+typedef u8 ALIGNED(4) TilemapBuffer[BG_SCREEN_SIZE * 2];
+#else
 typedef u8 ALIGNED(4) TilemapBuffer[BG_SCREEN_SIZE];
+#endif
 
 struct Pokenav_ConditionMenuGfx
 {
@@ -222,6 +241,9 @@ static u32 LoopedTask_OpenConditionGraphMenu(s32 state)
 
         LZ77UnCompVram(gPokenavCondition_Tilemap, menu->tilemapBuffers[0]);
         SetBgTilemapBuffer(3, menu->tilemapBuffers[0]);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(3, 0x1000, 30, 0, 10, 20);
+#endif
         if (IsConditionMenuSearchMode() == TRUE)
             CopyToBgTilemapBufferRect(3, gPokenavOptions_Tilemap, 0, 5, 9, 4);
 
@@ -236,6 +258,9 @@ static u32 LoopedTask_OpenConditionGraphMenu(s32 state)
 
         LZ77UnCompVram(sConditionGraphData_Tilemap, menu->tilemapBuffers[2]);
         SetBgTilemapBuffer(2, menu->tilemapBuffers[2]);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(2, 0x3001, 30, 0, 10, 20);
+#endif
         CopyBgTilemapBufferToVram(2);
         CopyPaletteIntoBufferUnfaded(gConditionGraphData_Pal, BG_PLTT_ID(3), PLTT_SIZE_4BPP);
         ConditionGraph_InitWindow(2);
@@ -243,7 +268,7 @@ static u32 LoopedTask_OpenConditionGraphMenu(s32 state)
     case 5:
         BgDmaFill(1, 0, 0, 1);
         BgDmaFill(1, 17, 1, 1);
-        CpuFill32(0, menu->tilemapBuffers[1], BG_SCREEN_SIZE);
+        CpuFill32(0, menu->tilemapBuffers[1], sizeof(TilemapBuffer));
         SetBgTilemapBuffer(1, menu->tilemapBuffers[1]);
         return LT_INC_AND_PAUSE;
     case 6:
@@ -686,6 +711,45 @@ static void CreateMonMarkingsOrPokeballIndicators(void)
         LoadSpriteSheets(sprSheets);
         Pokenav_AllocAndLoadPalettes(sprPals);
 
+#ifdef PLATFORM_SDL2
+        // Add icons for occupied slots
+        for (i = 0; i < GetMonListCount() - 1; i++)
+        {
+            spriteId = CreateSprite(&sprTemplate, 226 + DISPLAY_WIDTH - GBA_DISPLAY_WIDTH, (i * 20) + 8, 0);
+            if (spriteId != MAX_SPRITES)
+            {
+                menu->partyPokeballSpriteIds[i] = spriteId;
+                gSprites[spriteId].data[0] = i;
+                gSprites[spriteId].callback = SpriteCB_PartyPokeball;
+            }
+            else
+            {
+                menu->partyPokeballSpriteIds[i] = SPRITE_NONE;
+            }
+        }
+
+        // Add icons for empty slots
+        sprTemplate.tileTag = TAG_CONDITION_BALL_PLACEHOLDER;
+        sprTemplate.callback = SpriteCallbackDummy;
+        for (; i < PARTY_SIZE; i++)
+        {
+            spriteId = CreateSprite(&sprTemplate, 230 + DISPLAY_WIDTH - GBA_DISPLAY_WIDTH, (i * 20) + 8, 0);
+            if (spriteId != MAX_SPRITES)
+            {
+                menu->partyPokeballSpriteIds[i] = spriteId;
+                gSprites[spriteId].oam.size = 0;
+            }
+            else
+            {
+                menu->partyPokeballSpriteIds[i] = SPRITE_NONE;
+            }
+        }
+
+        // Add cancel icon
+        sprTemplate.tileTag = TAG_CONDITION_CANCEL;
+        sprTemplate.callback = HighlightCurrentPartyIndexPokeball;
+        spriteId = CreateSprite(&sprTemplate, 222 + DISPLAY_WIDTH - GBA_DISPLAY_WIDTH, (i * 20) + 8, 0);
+#else
         // Add icons for occupied slots
         for (i = 0; i < GetMonListCount() - 1; i++)
         {
@@ -723,6 +787,7 @@ static void CreateMonMarkingsOrPokeballIndicators(void)
         sprTemplate.tileTag = TAG_CONDITION_CANCEL;
         sprTemplate.callback = HighlightCurrentPartyIndexPokeball;
         spriteId = CreateSprite(&sprTemplate, 222, (i * 20) + 8, 0);
+#endif
         if (spriteId != MAX_SPRITES)
         {
             menu->partyPokeballSpriteIds[i] = spriteId;

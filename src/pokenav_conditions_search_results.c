@@ -41,7 +41,11 @@ struct Pokenav_SearchResultsGfx
     u32 loopedTaskId;
     u16 winid;
     bool32 fromGraph;
+#ifdef PLATFORM_SDL2
+    u8 buff[BG_SCREEN_SIZE * 2];
+#else
     u8 buff[BG_SCREEN_SIZE];
+#endif
 }; // size: 0x810
 
 static u32 HandleConditionSearchInput_WaitSetup(struct Pokenav_SearchResults *);
@@ -87,16 +91,26 @@ static const struct BgTemplate sConditionSearchResultBgTemplates[] =
     {
         .bg = 1,
         .charBaseIndex = 1,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x1E,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x06,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 2,
         .baseTile = 0
     }, {
         .bg = 2,
         .charBaseIndex = 2,
+#ifdef PLATFORM_SDL2
+        .mapBaseIndex = 0x06,
+        .screenSize = 1,
+#else
         .mapBaseIndex = 0x07,
         .screenSize = 0,
+#endif
         .paletteMode = 0,
         .priority = 3,
         .baseTile = 0
@@ -441,6 +455,12 @@ static u32 LoopedTask_OpenConditionSearchResults(s32 state)
         DecompressAndCopyTileDataToVram(1, sConditionSearchResultTiles, 0, 0, 0);
         SetBgTilemapBuffer(1, gfx->buff);
         CopyToBgTilemapBuffer(1, sConditionSearchResultTilemap, 0, 0);
+#ifdef PLATFORM_SDL2
+        FillBgTilemapBufferRect_Palette0(1, 0x1001, 30, 0, 10, 1);
+        FillBgTilemapBufferRect_Palette0(1, 0x1007, 30, 1, 10, 16);
+        FillBgTilemapBufferRect_Palette0(1, 0x100c, 30, 17, 10, 1);
+        FillBgTilemapBufferRect_Palette0(1, 0x1002, 30, 18, 10, 2);
+#endif
         CopyBgTilemapBufferToVram(1);
         CopyPaletteIntoBufferUnfaded(sConditionSearchResultFramePal, BG_PLTT_ID(1), sizeof(sConditionSearchResultFramePal));
         CopyBgTilemapBufferToVram(1);
